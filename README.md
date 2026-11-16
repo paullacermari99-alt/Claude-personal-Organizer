@@ -28,3 +28,5 @@ python3 -m http.server 8000
 ```
 
 Al cambiar archivos, sube el número de `CACHE` en `sw.js` para que los dispositivos instalados reciban la nueva versión.
+
+Al cambiar archivos, sube también el número `?v=` de `styles.css` y `app.js` en `index.html` y en `sw.js`.
