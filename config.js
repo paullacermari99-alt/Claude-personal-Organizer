@@ -1,8 +1,7 @@
-/* P Organizer — conexión con Supabase (sincronización y avisos con la app cerrada).
-   La URL y la clave «anon/publishable» son públicas por diseño: la seguridad la dan las reglas RLS de supabase/schema.sql.
-   Si están vacías, la app funciona igual, solo en este dispositivo. */
+/* Configuración pública de la nube (Supabase). La clave "publishable" es pública por diseño:
+   la seguridad la ponen las reglas RLS de supabase/schema.sql. */
 window.PO_CONFIG = {
-  supabaseUrl: '',
-  supabaseKey: '',
-  vapidPublicKey: '',
+  supabaseUrl: 'https://cyxhcxpstmdnlksicbba.supabase.co',
+  supabaseKey: 'sb_publishable_poKXFzBE-RbbLf6Fd4MRLw_3Rgl9bnG',
+  vapidPublicKey: 'BBlMeko_49x3rBFLkDRo2x5TnZa1N-57wQOKhCpLjUJA8__0PUwFQ7feBrlmpZsA2w9XTcS3fy6kRzdc4RUpe2U'
 };

@@ -4,11 +4,19 @@
 import webpush from 'npm:web-push@3.6.7';
 
 const URL_ = Deno.env.get('SUPABASE_URL')!;
-const KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+function secretKey(): string {
+  try {
+    const all = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}');
+    const k = all.default || Object.values(all)[0];
+    if (k) return k as string;
+  } catch (_) { /* fall back */ }
+  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+}
+const KEY = secretKey();
 webpush.setVapidDetails('https://paullacermari99-alt.github.io/Claude-personal-Organizer/', Deno.env.get('VAPID_PUBLIC_KEY')!, Deno.env.get('VAPID_PRIVATE_KEY')!);
 
 const db = (path: string, init: RequestInit = {}) =>
-  fetch(`${URL_}/rest/v1/${path}`, { ...init, headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json', ...(init.headers || {}) } });
+  fetch(`${URL_}/rest/v1/${path}`, { ...init, headers: { apikey: KEY, ...(KEY.startsWith('eyJ') ? { Authorization: `Bearer ${KEY}` } : {}), 'Content-Type': 'application/json', ...(init.headers || {}) } });
 
 // ---- Fechas en la zona horaria del usuario ----
 const pad = (n: number) => String(n).padStart(2, '0');

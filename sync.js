@@ -3,7 +3,7 @@
 
 const CFG = window.PO_CONFIG || {};
 const SESSION_KEY = 'organizador.session';
-const syncInfo = { status: 'off', lastSync: null, error: '', pendingEmail: '' };
+const syncInfo = { status: 'off', lastSync: null, error: '', notice: '', needPassword: false };
 let syncTimer = null, pushing = false;
 
 const cloudReady = () => !!(CFG.supabaseUrl && CFG.supabaseKey);
@@ -38,22 +38,57 @@ async function accessToken() {
   } catch (e) { if (/invalid|not found|revoked/i.test(e.message)) setSession(null); return null; }
 }
 
-/* ---------- Entrar con un código de 6 dígitos (funciona también en la app instalada) ---------- */
-async function sendLoginCode(email) {
-  await sb('/auth/v1/otp', { method: 'POST', auth: false, body: { email, create_user: true } });
-  syncInfo.pendingEmail = email;
-}
-async function verifyLoginCode(code) {
-  const d = await sb('/auth/v1/verify', { method: 'POST', auth: false, body: { type: 'email', email: syncInfo.pendingEmail, token: code.trim() } });
-  setSession(sessionFrom(d));
-  syncInfo.pendingEmail = '';
+/* ---------- Entrar con email y contraseña ---------- */
+const AUTH_ERRORS = [
+  [/invalid login credentials/i, 'Email o contraseña incorrectos'],
+  [/email not confirmed/i, 'Primero confirma tu email: abre el enlace que te he enviado'],
+  [/already registered|already been registered|already exists/i, 'Ya hay una cuenta con ese email: pulsa «Entrar»'],
+  [/password should be|at least \d+ characters|weak password/i, 'La contraseña debe tener al menos 6 caracteres'],
+  [/rate limit|too many|security purposes/i, 'Demasiados intentos seguidos. Espera unos minutos'],
+  [/unable to validate email|invalid format/i, 'Ese email no parece válido'],
+];
+const authError = e => { const m = (AUTH_ERRORS.find(([re]) => re.test(e.message)) || [])[1]; return m ? new Error(m) : e; };
+
+async function signIn(email, password) {
+  try {
+    const d = await sb('/auth/v1/token?grant_type=password', { method: 'POST', auth: false, body: { email, password } });
+    setSession(sessionFrom(d));
+  } catch (e) { throw authError(e); }
+  syncInfo.notice = '';
   await firstSync();
 }
-/* Enlace mágico: si el correo trae un enlace, los tokens llegan en la dirección */
+/* Devuelve true si ya ha entrado; false si tiene que confirmar el email primero */
+async function signUp(email, password) {
+  let d;
+  try { d = await sb('/auth/v1/signup', { method: 'POST', auth: false, body: { email, password } }); }
+  catch (e) { throw authError(e); }
+  if (d && d.access_token) { setSession(sessionFrom(d)); syncInfo.notice = ''; await firstSync(); return true; }
+  syncInfo.notice = `Te he enviado un email a <b>${esc(email)}</b>. Abre el enlace para confirmar tu cuenta y vuelve aquí.`;
+  return false;
+}
+async function sendPasswordReset(email) {
+  try { await sb('/auth/v1/recover', { method: 'POST', auth: false, body: { email } }); }
+  catch (e) { throw authError(e); }
+  syncInfo.notice = `Si hay una cuenta con <b>${esc(email)}</b>, te llegará un email con un enlace para poner una contraseña nueva.`;
+}
+async function setNewPassword(password) {
+  try { await sb('/auth/v1/user', { method: 'PUT', body: { password } }); }
+  catch (e) { throw authError(e); }
+  syncInfo.needPassword = false;
+}
+/* Los enlaces del email (confirmar cuenta o cambiar contraseña) traen la sesión en la dirección */
 function captureAuthRedirect() {
-  if (!/access_token=/.test(location.hash)) return false;
-  const q = new URLSearchParams(location.hash.slice(1));
+  const h = location.hash.slice(1);
+  if (/error_description=/.test(h)) {
+    const q = new URLSearchParams(h);
+    syncInfo.notice = /expired|invalid/i.test(q.get('error_description') || '') ? 'El enlace del email ha caducado. Pide otro.' : esc(q.get('error_description'));
+    history.replaceState(null, '', location.pathname + '#ajustes');
+    return false;
+  }
+  if (!/access_token=/.test(h)) return false;
+  const q = new URLSearchParams(h);
   setSession(sessionFrom({ access_token: q.get('access_token'), refresh_token: q.get('refresh_token'), expires_in: q.get('expires_in') }));
+  if (q.get('type') === 'recovery') syncInfo.needPassword = true;
   history.replaceState(null, '', location.pathname + '#ajustes');
   return true;
 }

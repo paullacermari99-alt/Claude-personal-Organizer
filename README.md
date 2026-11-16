@@ -42,7 +42,7 @@ Gestos en el móvil: desliza una tarea a la derecha para completarla y a la izqu
 
 1. Crea un proyecto en supabase.com (plan Free).
 2. SQL Editor → pega y ejecuta `supabase/schema.sql`.
-3. Authentication → Email: activa el inicio de sesión por email y añade `{{ .Token }}` a la plantilla «Magic Link» (la app entra con un código de 6 dígitos).
+3. Authentication → URL Configuration: pon la dirección de la app como «Site URL» (los enlaces de confirmar cuenta y cambiar contraseña vuelven ahí). La app entra con email y contraseña.
 4. Edge Functions → crea `reminders` con `supabase/functions/reminders/index.ts`, desactiva «Verify JWT» y añade los secretos `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` y `CRON_SECRET`.
 5. SQL Editor → ejecuta `supabase/cron.sql` con tu `PROJECT_REF` y `CRON_SECRET`.
 6. Rellena `config.js` con la URL del proyecto, la clave pública (anon/publishable) y la clave VAPID pública.

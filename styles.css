@@ -298,7 +298,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .02em; color: v
 .why-box strong { color: var(--orange); display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
 
 /* ---------- Formularios ---------- */
-input[type=text], input[type=date], input[type=time], select, textarea {
+input[type=text], input[type=email], input[type=password], input[type=date], input[type=time], select, textarea {
   width: 100%; min-height: 44px; padding: 10px 14px; border: 0; border-radius: 12px; background: var(--fill);
   font-size: 16px; /* evita el zoom automático de iOS */
 }
@@ -916,4 +916,7 @@ body.focus-open { overflow: hidden; }
 .bar-label { font-size: 12px; color: var(--muted); font-weight: 600; }
 .bar-col.today .bar-label { color: var(--orange); }
 .login { gap: 8px !important; }
+.login { flex-wrap: wrap; }
 .login input { flex: 1 1 160px; width: auto; min-height: 38px; }
+.login-actions { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+.login-actions .ghost { margin-left: auto; }

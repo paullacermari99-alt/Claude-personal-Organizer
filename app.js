@@ -620,14 +620,16 @@ function agoLabel(ts) {
 function syncSection() {
   let body;
   if (!cloudReady()) body = `<div class="item"><span class="muted">Aún no está activada. Cuando esté, podrás entrar con tu email y tener los mismos datos en el móvil y el ordenador.</span></div>`;
-  else if (!getSession()) body = syncInfo.pendingEmail
-    ? `<form class="item login" data-act="login-code"><span class="grow">Te he enviado un código a <b>${esc(syncInfo.pendingEmail)}</b></span>
-        <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="Código" aria-label="Código del email" required>
-        <button class="btn small primary" type="submit">Entrar</button><button class="btn small ghost" type="button" data-act="login-reset">Cambiar email</button></form>`
-    : `<form class="item login" data-act="login-email"><input type="email" name="email" placeholder="tu email" autocomplete="email" aria-label="Email" required><button class="btn small primary" type="submit">Enviar código</button></form>`;
+  else if (!getSession()) body = `${syncInfo.notice ? `<div class="item"><span class="grow">${syncInfo.notice}</span></div>` : ''}
+    <form class="item login" data-act="login">
+      <input type="email" name="email" placeholder="Email" autocomplete="email" aria-label="Email" required>
+      <input type="password" name="password" placeholder="Contraseña" autocomplete="current-password" aria-label="Contraseña" minlength="6">
+      <div class="login-actions"><button class="btn small primary" type="submit" value="in">Entrar</button><button class="btn small" type="submit" value="up">Crear cuenta</button><button class="btn small ghost" type="submit" value="reset" formnovalidate>¿Olvidaste la contraseña?</button></div>
+    </form>`;
   else {
     const s = getSession();
-    body = `<div class="item"><span>Cuenta</span><span class="muted">${esc((s.user && s.user.email) || '…')}</span></div>
+    body = `${syncInfo.needPassword ? `<form class="item login" data-act="new-password"><span class="grow">Pon tu contraseña nueva</span><input type="password" name="password" placeholder="Contraseña nueva" autocomplete="new-password" aria-label="Contraseña nueva" minlength="6" required><button class="btn small primary" type="submit">Guardar</button></form>` : ''}
+      <div class="item"><span>Cuenta</span><span class="muted">${esc((s.user && s.user.email) || '…')}</span></div>
       <div class="item" data-live="sync"><span>${syncInfo.status === 'error' ? `<span style="color:var(--red)">Error: ${esc(syncInfo.error)}</span>` : syncInfo.status === 'syncing' ? 'Sincronizando…' : `Sincronizado ${agoLabel(syncInfo.lastSync)}`}</span><button class="btn small" data-act="sync-now">Sincronizar ahora</button></div>
       ${CFG.vapidPublicKey ? `<div class="item"><span>Avisos con la app cerrada</span><button class="btn small ${pushActive() ? '' : 'primary'}" data-act="push-toggle">${pushActive() ? 'Desactivar' : 'Activar'}</button></div>` : ''}
       <div class="item"><span>Cerrar sesión en este dispositivo</span><button class="btn small danger" data-act="sign-out">Salir</button></div>`;
@@ -635,7 +637,7 @@ function syncSection() {
   return `<div class="section">
     <div class="section-head"><h2>Cuenta y sincronización</h2></div>
     <div class="settings-group glass">${body}</div>
-    <p class="hint">${getSession() ? 'Los cambios se guardan en tu cuenta al momento y se cargan en tus otros dispositivos al abrir la app.' : 'Entra con el mismo email en el móvil y en el ordenador. En iPhone, para recibir avisos con la app cerrada, instálala en la pantalla de inicio.'}</p>
+    <p class="hint">${getSession() ? 'Los cambios se guardan en tu cuenta al momento y se cargan en tus otros dispositivos al abrir la app.' : 'Crea tu cuenta una vez y entra con el mismo email y contraseña en el móvil y en el ordenador. En iPhone, para recibir avisos con la app cerrada, instálala en la pantalla de inicio.'}</p>
   </div>`;
 }
 
@@ -1466,7 +1468,6 @@ document.addEventListener('click', e => {
       break;
     }
     case 'sync-now': syncNow(true); return;
-    case 'login-reset': syncInfo.pendingEmail = ''; rerender(); return;
     case 'sign-out': if (!confirm('¿Cerrar sesión? Tus datos se quedan en este dispositivo y en tu cuenta.')) return; signOut().then(() => { toast('Sesión cerrada'); rerender(); }); return;
     case 'push-toggle':
       (pushActive() ? unsubscribePush().then(() => toast('Avisos push desactivados'))
@@ -1491,12 +1492,18 @@ document.addEventListener('keydown', e => {
 
 document.addEventListener('submit', e => {
   const f = e.target;
-  if (f.dataset.act === 'login-email' || f.dataset.act === 'login-code') {
+  if (f.dataset.act === 'login' || f.dataset.act === 'new-password') {
     e.preventDefault();
-    const btn = f.querySelector('button[type=submit]'); btn.disabled = true;
-    const job = f.dataset.act === 'login-email' ? sendLoginCode(f.elements.email.value.trim()).then(() => toast('Código enviado. Mira tu email.'))
-      : verifyLoginCode(f.elements.code.value).then(() => toast('¡Dentro! Tus datos ya se sincronizan.'));
-    job.catch(err => toast(err.message)).finally(() => { btn.disabled = false; rerender(); });
+    const btns = [...f.querySelectorAll('button')]; btns.forEach(x => { x.disabled = true; });
+    const how = (e.submitter && e.submitter.value) || 'in';
+    const email = f.elements.email ? f.elements.email.value.trim() : '', pass = f.elements.password.value;
+    let job;
+    if (f.dataset.act === 'new-password') job = setNewPassword(pass).then(() => toast('Contraseña cambiada'));
+    else if (how === 'reset') job = email ? sendPasswordReset(email) : Promise.reject(new Error('Escribe tu email arriba'));
+    else if (pass.length < 6) job = Promise.reject(new Error('La contraseña debe tener al menos 6 caracteres'));
+    else if (how === 'up') job = signUp(email, pass).then(ok => toast(ok ? '¡Cuenta creada! Tus datos ya se sincronizan.' : 'Mira tu email para confirmar la cuenta'));
+    else job = signIn(email, pass).then(() => toast('¡Dentro! Tus datos ya se sincronizan.'));
+    job.then(() => rerender(), err => { toast(err.message); btns.forEach(x => { x.disabled = false; }); });
     return;
   }
   if (f.dataset.act === 'tag-add') {
