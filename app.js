@@ -700,6 +700,8 @@ function openModal(title, body, opts = {}) {
   if (modal.open) modal.close();
   modal.showModal();
   modalForm.scrollTop = 0;
+  /* Sin esto el navegador enfoca «Cancelar» y lo dibuja como seleccionado */
+  modalForm.focus({ preventScroll: true });
   const first = modalForm.querySelector('input[type=text]');
   if (first && !first.value && matchMedia('(pointer: fine)').matches) first.focus();
 }
@@ -773,7 +775,8 @@ function defaultEventCtx(date) {
   const today = todayStr();
   let d = date;
   if (!d) {
-    if (location.hash.startsWith('#semana') && (state.settings.ui.weekMode || '7') !== '1' && weekStart) d = weekDays(weekStart).includes(today) ? today : weekStart;
+    if (location.hash.startsWith('#semana') && isPhone()) { const ds = phoneDays(); d = ds.includes(today) ? today : ds[0]; }
+    else if (location.hash.startsWith('#semana') && (state.settings.ui.weekMode || '7') !== '1' && weekStart) d = weekDays(weekStart).includes(today) ? today : weekStart;
     else d = viewDate;
   }
   const slot = nextFreeSlot(d, 60) || { start: '09:00', end: '10:00' };

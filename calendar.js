@@ -17,7 +17,8 @@ function weekNumber(s) {
 /* ---------- Vista: Semana ---------- */
 
 function viewWeek() {
-  const mode = state.settings.ui.weekMode || '7';
+  if (isPhone()) return viewWeekPhone();
+  const mode = state.settings.ui.weekMode === '1' ? '1' : '7';
   if (!weekStart) weekStart = startOfWeek(viewDate || todayStr());
   const days = weekDays(weekStart);
   const shown = mode === '1' ? [viewDate] : days;
@@ -49,7 +50,6 @@ function viewWeek() {
   <div class="week-toolbar">
     <div class="segmented compact" role="tablist" aria-label="Vista">
       <button role="tab" class="${mode === '1' ? 'on' : ''}" data-act="week-mode" data-v="1">Día</button>
-      <button role="tab" class="${mode === '3' ? 'on' : ''} mobile-only-inline" data-act="week-mode" data-v="3">3 días</button>
       <button role="tab" class="${mode === '7' ? 'on' : ''}" data-act="week-mode" data-v="7">Semana</button>
     </div>
     <div class="toolbar-right">
@@ -133,7 +133,7 @@ function calendarGrid(dates, opts = {}) {
       ${d === today ? `<div class="now-line" style="top:calc(var(--hour-h) * ${nowM / 60})"></div>` : ''}
     </div>`;
   }).join('');
-  return `<div class="cal-scroll glass ${opts.compact || dates.length === 1 ? 'compact' : ''} mode-${opts.mode || '7'}" data-key="${dates[0]}:${dates.length}" style="--days:${dates.length}">
+  return `<div class="cal-scroll glass ${opts.compact || dates.length === 1 ? 'compact' : ''} ${opts.phone ? 'phone' : ''} mode-${opts.mode || '7'}" data-key="${dates[0]}:${dates.length}" style="--days:${dates.length}">
     <div class="cal-grid">
       <div class="cal-corner"></div>
       ${heads}
@@ -173,10 +173,200 @@ document.addEventListener('click', e => {
   }
   const open = e.target.closest('[data-act="open-day"]');
   if (open) {
+    if (location.hash.startsWith('#semana') && isPhone()) { phoneDate = open.dataset.date; state.settings.ui.weekModeMobile = '1'; save(); navigate(() => route()); return; }
     viewDate = open.dataset.date;
     if (location.hash.startsWith('#semana')) { state.settings.ui.weekMode = '1'; save(); route(); } else location.hash = '#hoy';
   }
 });
+
+/* ---------- Semana en el teléfono: Semana (días desplegables), 3 días y Día ---------- */
+
+const isPhone = () => matchMedia('(max-width: 1023px)').matches;
+let phoneDate = null;            /* día de referencia del calendario del móvil */
+let openDays = null;             /* días desplegados en la vista Semana */
+
+function phoneMode() { const m = state.settings.ui.weekModeMobile; return m === '1' || m === '3' ? m : '7'; }
+function phoneDays() {
+  if (!phoneDate) phoneDate = todayStr();
+  const mode = phoneMode();
+  if (mode === '7') return weekDays(startOfWeek(phoneDate));
+  if (mode === '3') return [0, 1, 2].map(i => addDays(phoneDate, i));
+  return [phoneDate];
+}
+function shiftPhone(n) {
+  const step = { '7': 7, '3': 3, '1': 1 }[phoneMode()];
+  phoneDate = addDays(phoneMode() === '7' ? startOfWeek(phoneDate) : phoneDate, n * step);
+}
+
+function viewWeekPhone() {
+  const mode = phoneMode(), days = phoneDays(), today = todayStr();
+  weekStart = startOfWeek(days[0]);
+  const first = parseYmd(days[0]), last = parseYmd(days[days.length - 1]);
+  const mon = d => d.toLocaleDateString('es-ES', { month: 'short' }).replace('.', '');
+  const range = days.length > 1 ? `${first.getDate()} ${mon(first)} – ${last.getDate()} ${mon(last)}` : fmtShortDate(days[0]);
+  const title = mode === '1' ? cap(first.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' }))
+    : first.getMonth() === last.getMonth() ? cap(first.toLocaleDateString('es-ES', { month: 'long' })) : `${cap(mon(first))} – ${mon(last)}`;
+  const reviewed = state.settings.ui.lastReview === startOfWeek(today);
+  const wkDays = weekDays(weekStart);
+  const open = state.tasks.filter(t => !t.done && !isRoutineTask(t));
+  const unscheduled = open.filter(t => t.due && t.due >= wkDays[0] && t.due <= wkDays[6] && !hasBlockInRange(t.id, wkDays[0], wkDays[6])).sort(sortByDue);
+  const soon = open.filter(t => t.due && t.due >= today && daysBetween(today, t.due) <= 14).sort(sortByDue);
+  const soonGoals = state.goals.filter(g => goalStatus(g) === 'activo' && g.due && daysBetween(today, g.due) <= 30).sort(sortByDue);
+  const inbox = open.filter(t => !t.due && !t.projectId && !t.goalId && !blocksOfTask(t.id).length);
+  const wp = state.weekPlans[weekStart];
+  const weekPrios = ((wp && wp.priorities) || []).map(task).filter(t => t && !t.done);
+  const nPlan = unscheduled.length + inbox.length;
+  const trayOpen = !!state.settings.ui.weekTrayOpen;
+  return `
+  <div class="page page-week phone-week">
+  ${pageHead({
+    eyebrow: `Semana ${weekNumber(days[0])} · ${range}`,
+    title: esc(title),
+    actions: `${days.includes(today) ? '' : `<button class="btn small" data-act="pweek" data-n="0">Hoy</button>`}
+      <button class="icon-btn round" data-act="pweek" data-n="-1" aria-label="Anterior">${I.left}</button>
+      <button class="icon-btn round" data-act="pweek" data-n="1" aria-label="Siguiente">${I.right}</button>`,
+  })}
+  <div class="week-toolbar">
+    <div class="segmented compact grow-seg" role="tablist" aria-label="Vista">
+      <button role="tab" class="${mode === '7' ? 'on' : ''}" data-act="pweek-mode" data-v="7">Semana</button>
+      <button role="tab" class="${mode === '3' ? 'on' : ''}" data-act="pweek-mode" data-v="3">3 días</button>
+      <button role="tab" class="${mode === '1' ? 'on' : ''}" data-act="pweek-mode" data-v="1">Día</button>
+    </div>
+    <a class="icon-btn round ${reviewed ? '' : 'attention'}" href="#revision" aria-label="Revisión semanal" title="Revisión semanal">${I.review}</a>
+  </div>
+  <div class="ptray glass ${trayOpen ? 'open' : ''}">
+    <button class="ptray-head" data-act="ptray" aria-expanded="${trayOpen}"><span>Por planificar</span><span class="seg-count ${nPlan ? 'warn' : ''}">${nPlan}</span><span class="muted small grow">${soon.length + soonGoals.length ? `${soon.length + soonGoals.length} plazos cerca` : ''}</span><span class="wk-chev">${I.down}</span></button>
+    <div class="ptray-body tray" data-drop="tray">
+      ${weekPrios.length ? traySection('Prioridades de la semana', weekPrios, '') : ''}
+      ${traySection('Sin hora esta semana', unscheduled, 'Todo tiene su hueco')}
+      ${traySection('Plazos cercanos', soon, 'Nada vence pronto', soonGoals)}
+      ${traySection('Bandeja', inbox, 'Bandeja vacía')}
+    </div>
+  </div>
+  <div class="swipe-area" data-mode="${mode}">
+    ${mode === '7' ? weekAgenda(days) : calendarGrid(days, { mode, phone: true })}
+  </div>
+  <p class="hint">Desliza a los lados para cambiar de ${mode === '7' ? 'semana' : mode === '3' ? 'días' : 'día'}. Mantén pulsada una tarea para arrastrarla.</p>
+  </div>`;
+}
+
+function weekAgenda(days) {
+  const today = todayStr();
+  if (!openDays || openDays.week !== days[0]) openDays = { week: days[0], set: new Set([days.includes(today) ? today : days[0]]) };
+  return `<div class="wk-list">${days.map(d => {
+    const evs = eventsOn(d), clash = overlapIds(d), dt = parseYmd(d);
+    const due = state.tasks.filter(t => t.due === d && !isRoutineTask(t)).sort(sortByDue);
+    const isOpen = openDays.set.has(d);
+    const pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+    const sum = [evs.length ? pl(evs.length, 'bloque') : '', due.length ? pl(due.length, 'tarea') : ''].filter(Boolean).join(' · ') || 'Libre';
+    return `<section class="wk-day glass ${isOpen ? 'open' : ''} ${d === today ? 'is-today' : ''} ${d < today ? 'past' : ''}" data-drop="lane" data-date="${d}">
+      <button class="wk-head" data-act="wk-day" data-date="${d}" aria-expanded="${isOpen}">
+        <span class="wk-date"><span class="wk-dow">${DOW_SHORT[dt.getDay()]}</span><span class="wk-num">${dt.getDate()}</span></span>
+        <span class="wk-sum"><span class="wk-sum-text">${clash.size ? '<span class="ev-warn">⚠</span> ' : ''}${sum}</span><span class="wk-dots">${evs.slice(0, 8).map(e => `<i style="--c:${colorOfEvent(e)}"></i>`).join('')}</span></span>
+        <span class="wk-chev">${I.down}</span>
+      </button>
+      <div class="wk-body">
+        ${evs.map(e => {
+          const t = e.taskId && task(e.taskId);
+          return `<div class="wk-ev ${clash.has(e.id) ? 'clash' : ''} ${t && t.done ? 'done' : ''}" data-act="edit-event" data-id="${e.id}" style="--c:${colorOfEvent(e)}" role="button" tabindex="0">
+            <span class="wk-time">${esc(e.start)}<small>${esc(e.end)}</small></span>
+            <span class="wk-title">${clash.has(e.id) ? '<span class="ev-warn">⚠</span> ' : ''}${e.recurrence ? '↻ ' : ''}${t ? '☑ ' : ''}${esc(e.title)}${t && t.due ? `<small>plazo ${esc(relDay(t.due).toLowerCase())}</small>` : ''}</span>
+          </div>`;
+        }).join('')}
+        ${due.length ? `<div class="wk-tasks"><div class="wk-label">Vencen este día</div>${due.map(t => taskChip(t)).join('')}</div>` : ''}
+        ${evs.length || due.length ? '' : '<div class="wk-empty">Nada planificado</div>'}
+        <div class="wk-actions">
+          <button class="btn small" data-act="new-event" data-date="${d}">${I.plus}<span>Bloque</span></button>
+          <button class="btn small ghost" data-act="open-day" data-date="${d}">Ver horario del día</button>
+        </div>
+      </div>
+    </section>`;
+  }).join('')}</div>`;
+}
+
+/* Botones del calendario del móvil */
+document.addEventListener('click', e => {
+  if (Date.now() < suppressClickUntil) return;
+  const el = e.target.closest('[data-act="pweek"], [data-act="pweek-mode"], [data-act="wk-day"], [data-act="ptray"]');
+  if (!el) return;
+  const act = el.dataset.act;
+  if (act === 'pweek') {
+    const n = Number(el.dataset.n);
+    if (n === 0) phoneDate = todayStr(); else shiftPhone(n);
+    slideTo(n === 0 ? 0 : n);
+  } else if (act === 'pweek-mode') {
+    const v = el.dataset.v, ds = phoneDays(), today = todayStr();
+    if (v !== '7') phoneDate = ds.includes(today) ? today : ds[0];
+    state.settings.ui.weekModeMobile = v; save(); navigate(() => route());
+  } else if (act === 'wk-day') {
+    const d = el.dataset.date, sec = el.closest('.wk-day');
+    const on = !openDays.set.has(d);
+    on ? openDays.set.add(d) : openDays.set.delete(d);
+    sec.classList.toggle('open', on);
+    el.setAttribute('aria-expanded', String(on));
+    haptic(6);
+  } else if (act === 'ptray') {
+    const on = !state.settings.ui.weekTrayOpen;
+    state.settings.ui.weekTrayOpen = on; save();
+    el.closest('.ptray').classList.toggle('open', on);
+    el.setAttribute('aria-expanded', String(on));
+  }
+});
+
+/* Pintar con una entrada deslizante en la dirección del cambio */
+function slideTo(n) {
+  route();
+  const a = $('.swipe-area');
+  if (!a || !n) return;
+  a.classList.add(n > 0 ? 'in-right' : 'in-left');
+  setTimeout(() => a.classList.remove('in-right', 'in-left'), 300);
+}
+
+/* Deslizar a los lados: cambia de semana, de 3 días o de día */
+let pswipe = null;
+document.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse' || drag || !isPhone()) return;
+  const area = e.target.closest('.swipe-area');
+  if (!area || e.target.closest('input, .ev-resize')) return;
+  pswipe = { area, x0: e.clientX, y0: e.clientY, dx: 0, axis: null };
+});
+document.addEventListener('pointermove', e => {
+  if (!pswipe) return;
+  if (drag) { pswipe.area.style.transform = ''; pswipe = null; return; }
+  const dx = e.clientX - pswipe.x0, dy = e.clientY - pswipe.y0;
+  if (!pswipe.axis) {
+    if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
+    pswipe.axis = Math.abs(dx) > Math.abs(dy) * 1.3 ? 'x' : 'y';
+    if (pswipe.axis === 'y') { pswipe = null; return; }
+    cancelPending();
+    pswipe.area.style.transition = 'none';
+  }
+  pswipe.dx = dx;
+  pswipe.area.style.transform = `translateX(${dx * .85}px)`;
+  pswipe.area.style.opacity = String(1 - Math.min(Math.abs(dx) / 600, .4));
+});
+function endPhoneSwipe(commit) {
+  const s = pswipe;
+  pswipe = null;
+  if (!s || s.axis !== 'x') return;
+  suppressClickUntil = Date.now() + 300;
+  const a = s.area;
+  if (commit && Math.abs(s.dx) > 60) {
+    const n = s.dx < 0 ? 1 : -1;
+    a.style.transition = 'transform .18s ease-in, opacity .18s';
+    a.style.transform = `translateX(${n > 0 ? '-' : ''}60%)`;
+    a.style.opacity = '0';
+    haptic(8);
+    setTimeout(() => { shiftPhone(n); slideTo(n); }, 170);
+  } else {
+    a.style.transition = 'transform .25s cubic-bezier(.2,.9,.3,1), opacity .25s';
+    a.style.transform = ''; a.style.opacity = '';
+  }
+}
+document.addEventListener('pointerup', () => endPhoneSwipe(true));
+document.addEventListener('pointercancel', () => endPhoneSwipe(false));
+/* Al girar el móvil o cambiar el tamaño de la ventana, cambia de diseño */
+matchMedia('(max-width: 1023px)').addEventListener('change', () => { if (location.hash.startsWith('#semana')) route(); });
 
 /* ---------- Mover eventos ---------- */
 
