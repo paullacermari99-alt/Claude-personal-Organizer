@@ -4,19 +4,33 @@
 import webpush from 'npm:web-push@3.6.7';
 
 const URL_ = Deno.env.get('SUPABASE_URL')!;
-function secretKey(): string {
+// Clave de servidor: las nuevas (sb_secret_…) o la antigua service_role. Se prueba cuál acepta la API.
+function candidateKeys(): string[] {
+  const out: string[] = [];
   try {
     const all = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}');
-    const k = all.default || Object.values(all)[0];
-    if (k) return k as string;
-  } catch (_) { /* fall back */ }
-  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    for (const v of Object.values(all)) if (typeof v === 'string') out.push(v);
+  } catch (_) { /* sin claves nuevas */ }
+  const legacy = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (legacy) out.push(legacy);
+  return out;
 }
-const KEY = secretKey();
+const authHeaders = (k: string): Record<string, string> => ({ apikey: k, ...(k.startsWith('eyJ') ? { Authorization: `Bearer ${k}` } : {}) });
+let KEY = '';
+async function pickKey() {
+  if (KEY) return;
+  const errors: string[] = [];
+  for (const k of candidateKeys()) {
+    const r = await fetch(`${URL_}/rest/v1/push_subscriptions?select=endpoint&limit=1`, { headers: authHeaders(k) });
+    if (r.ok) { KEY = k; return; }
+    errors.push(`${k.slice(0, 8)}…: ${r.status} ${await r.text()}`);
+  }
+  throw new Error('Ninguna clave de servidor funciona: ' + errors.join(' | '));
+}
 webpush.setVapidDetails('https://paullacermari99-alt.github.io/Claude-personal-Organizer/', Deno.env.get('VAPID_PUBLIC_KEY')!, Deno.env.get('VAPID_PRIVATE_KEY')!);
 
 const db = (path: string, init: RequestInit = {}) =>
-  fetch(`${URL_}/rest/v1/${path}`, { ...init, headers: { apikey: KEY, ...(KEY.startsWith('eyJ') ? { Authorization: `Bearer ${KEY}` } : {}), 'Content-Type': 'application/json', ...(init.headers || {}) } });
+  fetch(`${URL_}/rest/v1/${path}`, { ...init, headers: { ...authHeaders(KEY), 'Content-Type': 'application/json', ...(init.headers || {}) } });
 
 // ---- Fechas en la zona horaria del usuario ----
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -93,7 +107,10 @@ function remindersFor(st: Any) {
 
 Deno.serve(async req => {
   if (req.headers.get('x-cron-secret') !== Deno.env.get('CRON_SECRET')) return new Response('forbidden', { status: 403 });
-  const subs: Any[] = await (await db('push_subscriptions?select=*')).json();
+  await pickKey();
+  const res = await db('push_subscriptions?select=*');
+  if (!res.ok) throw new Error(`push_subscriptions ${res.status}: ${await res.text()}`);
+  const subs: Any[] = await res.json();
   const byUser = new Map<string, Any[]>();
   for (const s of subs) byUser.set(s.user_id, [...(byUser.get(s.user_id) || []), s]);
   let sent = 0;
