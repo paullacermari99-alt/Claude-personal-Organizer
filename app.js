@@ -1,4 +1,4 @@
-/* Mi Organizador — app de una sola página, sin dependencias.
+/* P Organizer — app de una sola página, sin dependencias.
    Los datos se guardan en localStorage del navegador (clave STORE_KEY). */
 'use strict';
 
@@ -145,8 +145,10 @@ function renderView() {
   const hash = location.hash.replace(/^#/, '') || 'hoy';
   const [name, id] = hash.split('/');
   const sec = name === 'proyecto' ? 'proyectos' : name === 'objetivo' ? 'objetivos' : name;
+  document.body.dataset.view = sec;
   $$('[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === sec));
   switch (name) {
+    case 'semana': return viewWeek();
     case 'proyectos': return viewProjects();
     case 'proyecto': return viewProject(id);
     case 'objetivos': return viewGoals();
@@ -155,8 +157,20 @@ function renderView() {
     default: return viewToday();
   }
 }
-function route() { $('#app').innerHTML = renderView(); updateTimerUI(); }
+function route() {
+  const app = $('#app');
+  const calScroll = $('.cal-scroll');
+  const keep = calScroll ? { top: calScroll.scrollTop, left: calScroll.scrollLeft, key: calScroll.dataset.key } : null;
+  app.innerHTML = renderView();
+  updateTimerUI();
+  afterRenderCalendar(keep);
+}
 function rerender() { const y = window.scrollY; route(); window.scrollTo(0, y); }
+/* Transición suave entre pantallas (si el navegador la soporta) */
+function navigate(fn) {
+  if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(fn);
+  else fn();
+}
 
 /* Actualiza solo las zonas marcadas con data-live (progreso, selector de enfoque…)
    sin volver a pintar la lista: así nada se mueve al marcar una tarea. */
@@ -172,9 +186,20 @@ function refreshLive() {
     if (nsel && keep && [...nsel.options].some(o => o.value === keep)) nsel.value = keep;
   });
 }
-window.addEventListener('hashchange', () => { route(); window.scrollTo(0, 0); });
+window.addEventListener('hashchange', () => navigate(() => { route(); window.scrollTo(0, 0); }));
 
 /* ---------- Componentes ---------- */
+
+/* Cabecera idéntica en todas las pantallas: misma altura y tamaños */
+function pageHead({ eyebrow = '', title, actions = '', dot = '' }) {
+  return `<header class="page-head">
+    <div class="ph-text">
+      <div class="eyebrow">${eyebrow || '&nbsp;'}</div>
+      <h1>${dot ? `<span class="title-dot" style="--c:${dot}"></span>` : ''}${title}</h1>
+    </div>
+    ${actions ? `<div class="ph-actions">${actions}</div>` : ''}
+  </header>`;
+}
 
 function progressBar(pct) { return `<div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>`; }
 function statRow(key, pr, label) {
@@ -191,7 +216,10 @@ function taskItem(t, opts = {}) {
   }
   if (p && !opts.hideProject) tags.push(`<span class="tag dot" style="--c:${p.color}">${esc(p.name)}</span>`);
   if (g && !opts.hideGoal) tags.push(`<span class="tag dot" style="--c:${g.color}">${esc(g.title)}</span>`);
-  return `<li class="task ${t.done ? 'done' : ''}" data-task="${t.id}">
+  return `<li class="task ${t.done ? 'done' : ''}" data-task="${t.id}" data-drag="task" data-id="${t.id}">
+    <div class="swipe-act done-act" aria-hidden="true">✓ Hecha</div>
+    <div class="swipe-act later-act" aria-hidden="true">Mañana →</div>
+    <div class="task-row">
     <input type="checkbox" class="check" data-act="toggle-task" data-id="${t.id}" ${t.done ? 'checked' : ''} aria-label="Completar ${esc(t.title)}">
     <div class="body" data-act="edit-task" data-id="${t.id}">
       <div class="title">${esc(t.title)}</div>
@@ -199,6 +227,7 @@ function taskItem(t, opts = {}) {
     </div>
     ${opts.moveToday ? `<button class="btn small" data-act="move-today" data-id="${t.id}">${viewDate === todayStr() ? 'A hoy' : 'Aquí'}</button>` : ''}
     <button class="icon-btn ${t.important ? 'on' : ''}" data-act="star-task" data-id="${t.id}" aria-label="${t.important ? 'Quitar de importantes' : 'Marcar como importante'}">${t.important ? I.starFill : I.star}</button>
+    </div>
   </li>`;
 }
 
@@ -229,53 +258,62 @@ function viewToday() {
   const undated = state.tasks.filter(t => !t.done && !t.date);
   const h = new Date().getHours();
   const greeting = h < 6 ? 'Buenas noches' : h < 13 ? 'Buenos días' : h < 20 ? 'Buenas tardes' : 'Buenas noches';
+  const weekday = cap(parseYmd(d).toLocaleDateString('es-ES', { weekday: 'long' }));
+  const dayMonth = parseYmd(d).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
 
   return `
-  <div class="page-head">
-    <div>
-      <div class="eyebrow">${isToday ? greeting + ', Pau' : relDay(d)}</div>
-      <h1>${esc(fmtLongDate(d))}</h1>
-    </div>
-    <div class="date-nav">
-      <button class="icon-btn round" data-act="day" data-n="-1" aria-label="Día anterior">${I.left}</button>
+  <div class="page page-today">
+  ${pageHead({
+    eyebrow: isToday ? `${weekday} · ${greeting}, Pau` : `${weekday} · ${relDay(d)}`,
+    title: esc(dayMonth),
+    actions: `<button class="icon-btn round" data-act="day" data-n="-1" aria-label="Día anterior">${I.left}</button>
       ${isToday ? '' : `<button class="btn small" data-act="day" data-n="0">Hoy</button>`}
-      <button class="icon-btn round" data-act="day" data-n="1" aria-label="Día siguiente">${I.right}</button>
+      <button class="icon-btn round" data-act="day" data-n="1" aria-label="Día siguiente">${I.right}</button>`,
+  })}
+
+  <div class="today-grid">
+    <div class="col-main">
+      ${isToday ? focusCard(dayTasks) : ''}
+
+      <div class="section">${statRow('day-progress', prog, dayTasks.length ? `${prog.done} de ${prog.total}` : 'Sin tareas')}</div>
+
+      ${overdue.length ? `<div class="section">
+        <div class="section-head"><h2>Atrasadas · ${overdue.length}</h2><button class="btn small ghost" data-act="move-all-today">Pasar a hoy</button></div>
+        ${taskList(sortTasks(overdue), { showDate: true, moveToday: true })}
+      </div>` : ''}
+
+      <div class="section">
+        <div class="section-head"><h2>Las 3 importantes</h2></div>
+        ${important.length ? taskList(important) : `<div class="empty">¿Qué 3 cosas harían que hoy fuera un buen día? Toca la estrella de una tarea para traerla aquí.</div>`}
+        <div data-live="too-many">${important.filter(t => !t.done).length > 3 ? `<p class="hint">Tienes más de 3 importantes. Elegir menos ayuda a empezar.</p>` : ''}</div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><h2>Tareas</h2></div>
+        ${taskList(rest)}
+        ${quickAdd({ date: d })}
+        <p class="hint touch-only">Desliza una tarea a la derecha para completarla o a la izquierda para pasarla a mañana.</p>
+      </div>
+
+      ${undated.length ? `<div class="section">
+        <div class="section-head"><h2>Sin fecha · ${undated.length}</h2></div>
+        ${taskList(sortTasks(undated).slice(0, 8), { moveToday: true })}
+      </div>` : ''}
     </div>
+
+    <aside class="col-side">
+      <div class="section">
+        <div class="section-head"><h2>Agenda</h2><button class="btn small" data-act="new-block">Añadir bloque</button></div>
+        <div class="agenda-list">
+          ${blocks.length ? `<div class="timeline">${blocks.map(b => blockItem(b, isToday, now)).join('')}</div>`
+            : `<div class="empty">Reserva tiempo para lo que importa. Un bloque es una cita contigo.</div>`}
+        </div>
+        <div class="agenda-cal">${calendarGrid([d], { compact: true })}</div>
+        <p class="hint desktop-only">Arrastra una tarea a una hora para reservarle tiempo. Arrastra un bloque para moverlo o su borde inferior para cambiar la duración.</p>
+      </div>
+    </aside>
   </div>
-
-  ${isToday ? focusCard(dayTasks) : ''}
-
-  ${dayTasks.length ? `<div class="section">${statRow('day-progress', prog, `${prog.done} de ${prog.total}`)}</div>` : ''}
-
-  ${overdue.length ? `<div class="section">
-    <div class="section-head"><h2>Atrasadas · ${overdue.length}</h2><button class="btn small ghost" data-act="move-all-today">Pasar a hoy</button></div>
-    ${taskList(sortTasks(overdue), { showDate: true, moveToday: true })}
-  </div>` : ''}
-
-  <div class="section">
-    <div class="section-head"><h2>Las 3 importantes</h2></div>
-    ${important.length ? taskList(important) : `<div class="empty">¿Qué 3 cosas harían que hoy fuera un buen día? Toca la estrella de una tarea para traerla aquí.</div>`}
-    <div data-live="too-many">${important.filter(t => !t.done).length > 3 ? `<p class="hint">Tienes más de 3 importantes. Elegir menos ayuda a empezar.</p>` : ''}</div>
-  </div>
-
-  <div class="section">
-    <div class="section-head"><h2>Tareas</h2></div>
-    ${taskList(rest)}
-    ${quickAdd({ date: d })}
-  </div>
-
-  <div class="section">
-    <div class="section-head"><h2>Bloques de tiempo</h2><button class="btn small" data-act="new-block">Añadir</button></div>
-    ${blocks.length ? `<div class="timeline">${blocks.map(b => blockItem(b, isToday, now)).join('')}</div>`
-      : `<div class="empty">Reserva tiempo para lo que importa. Un bloque es una cita contigo.</div>`}
-  </div>
-
-  ${undated.length ? `<div class="section">
-    <div class="section-head"><h2>Sin fecha · ${undated.length}</h2></div>
-    ${taskList(sortTasks(undated).slice(0, 8), { moveToday: true })}
-    <p class="hint">Toca «${isToday ? 'A hoy' : 'Aquí'}» para planificarlas este día.</p>
-  </div>` : ''}
-  `;
+  </div>`;
 }
 
 function blockItem(b, isToday, now) {
@@ -344,19 +382,19 @@ function focusCard(dayTasks) {
 function updateTimerUI() {
   const el = $('#focus-time');
   const timer = getTimer();
-  if (!timer) { document.title = 'Mi Organizador'; }
+  if (!timer) { document.title = 'P Organizer'; }
   if (!el) { if (timer && timer.endAt <= Date.now()) finishTimer(timer); return; }
   const ring = $('#focus-ring');
   if (!timer) { el.textContent = pad(state.settings.focusMinutes) + ':00'; ring.style.strokeDashoffset = 0; return; }
   const left = Math.max(0, timer.endAt - Date.now());
   el.textContent = `${pad(Math.floor(left / 60000))}:${pad(Math.floor(left / 1000) % 60)}`;
   ring.style.strokeDashoffset = RING * (1 - left / (timer.minutes * 60000));
-  document.title = `${el.textContent} · Mi Organizador`;
+  document.title = `${el.textContent} · P Organizer`;
   if (left <= 0) finishTimer(timer);
 }
 function finishTimer(timer) {
   setTimer(null);
-  document.title = 'Mi Organizador';
+  document.title = 'P Organizer';
   state.focusLog.push({ date: todayStr(), minutes: timer.minutes, taskId: timer.taskId || null });
   save();
   haptic([200, 100, 200]);
@@ -383,13 +421,11 @@ function viewProjects() {
   const list = state.projects.filter(p => projectFilter === 'todos' || p.status === projectFilter);
   const segs = [['activo', 'Activos'], ['pausado', 'En pausa'], ['hecho', 'Hechos'], ['todos', 'Todos']];
   return `
-  <div class="page-head">
-    <div><h1>Proyectos</h1><div class="sub">Lo que estás construyendo, paso a paso.</div></div>
-    <button class="btn primary" data-act="new-project">Nuevo</button>
-  </div>
+  <div class="page">
+  ${pageHead({ eyebrow: 'Lo que estás construyendo, paso a paso', title: 'Proyectos', actions: `<button class="btn primary" data-act="new-project">${I.plus}<span>Nuevo</span></button>` })}
   <div class="segmented" role="tablist">${segs.map(([v, l]) => `<button role="tab" aria-selected="${projectFilter === v}" class="${projectFilter === v ? 'on' : ''}" data-act="project-filter" data-v="${v}">${l}</button>`).join('')}</div>
   ${list.length ? `<div class="grid">${list.map(projectCard).join('')}</div>` : `<div class="empty">No hay proyectos aquí. Crea uno y divídelo en tareas pequeñas.</div>`}
-  `;
+  </div>`;
 }
 function projectCard(p) {
   const tasks = tasksOfProject(p.id);
@@ -398,36 +434,40 @@ function projectCard(p) {
   const next = sortTasks(tasks).find(t => !t.done);
   return `<a class="card glass item-card" href="#proyecto/${p.id}" style="--c:${p.color}">
     <div class="top"><div class="swatch">${I.folder}</div><div class="name">${esc(p.name)}</div></div>
-    ${g ? `<div class="meta"><span class="tag dot" style="--c:${g.color}">${esc(g.title)}</span></div>` : ''}
+    <div class="meta">${g ? `<span class="tag dot" style="--c:${g.color}">${esc(g.title)}</span>` : `<span class="tag">Sin objetivo</span>`}</div>
     <div class="stat-row">${progressBar(pr.pct)}<span class="count">${pr.done}/${pr.total}</span></div>
-    <div class="small muted">${next ? 'Siguiente: ' + esc(next.title) : pr.total ? '¡Todo hecho!' : 'Sin tareas todavía'}</div>
+    <div class="small muted one-line">${next ? 'Siguiente: ' + esc(next.title) : pr.total ? '¡Todo hecho!' : 'Sin tareas todavía'}</div>
   </a>`;
 }
 
-function backLink(href, label) { return `<a class="back" href="${href}">${I.left}${label}</a>`; }
+function backLink(href, label) { return `<a class="back" href="${href}">${I.left}<span>${label}</span></a>`; }
 
 function viewProject(id) {
   const p = project(id);
-  if (!p) return `${backLink('#proyectos', 'Proyectos')}<div class="empty">Este proyecto ya no existe.</div>`;
+  if (!p) return `<div class="page">${pageHead({ eyebrow: backLink('#proyectos', 'Proyectos'), title: 'No encontrado' })}<div class="empty">Este proyecto ya no existe.</div></div>`;
   const tasks = sortTasks(tasksOfProject(id));
   const pr = progressOf(tasks);
   const g = p.goalId && goal(p.goalId);
   const statusLabel = { activo: 'Activo', pausado: 'En pausa', hecho: 'Terminado' }[p.status];
   return `
-  ${backLink('#proyectos', 'Proyectos')}
-  <div class="page-head">
-    <div>
-      <h1><span class="title-dot" style="--c:${p.color}"></span>${esc(p.name)}</h1>
-      <div class="sub">${statusLabel}${g ? ` · <a href="#objetivo/${g.id}">${esc(g.title)}</a>` : ''}</div>
+  <div class="page">
+  ${pageHead({ eyebrow: backLink('#proyectos', 'Proyectos'), title: esc(p.name), dot: p.color, actions: `<button class="btn" data-act="edit-project" data-id="${p.id}">Editar</button>` })}
+  <div class="detail-grid">
+    <div class="col-side">
+      <div class="card glass info-card">
+        <div class="meta"><span class="tag">${statusLabel}</span>${g ? `<a class="tag dot" style="--c:${g.color}" href="#objetivo/${g.id}">${esc(g.title)}</a>` : ''}</div>
+        ${statRow('project-progress', pr, `${pr.pct}% · ${pr.done}/${pr.total}`)}
+        ${p.notes ? `<div class="notes">${esc(p.notes)}</div>` : ''}
+      </div>
     </div>
-    <button class="btn" data-act="edit-project" data-id="${p.id}">Editar</button>
+    <div class="col-main">
+      <div class="section">
+        <div class="section-head"><h2>Tareas</h2></div>
+        ${tasks.length ? taskList(tasks, { showDate: true, hideProject: true, hideGoal: true }) : `<div class="empty">Divide el proyecto en pasos que puedas hacer en menos de una hora.</div>`}
+        ${quickAdd({ project: p.id })}
+      </div>
+    </div>
   </div>
-  ${p.notes ? `<div class="card glass notes">${esc(p.notes)}</div>` : ''}
-  <div class="section">${statRow('project-progress', pr, `${pr.pct}% · ${pr.done}/${pr.total}`)}</div>
-  <div class="section">
-    <div class="section-head"><h2>Tareas</h2></div>
-    ${tasks.length ? taskList(tasks, { showDate: true, hideProject: true, hideGoal: true }) : `<div class="empty">Divide el proyecto en pasos que puedas hacer en menos de una hora.</div>`}
-    ${quickAdd({ project: p.id })}
   </div>`;
 }
 
@@ -437,13 +477,11 @@ function viewGoals() {
   const active = state.goals.filter(g => g.status === 'activo').sort((a, b) => (a.deadline || '9').localeCompare(b.deadline || '9'));
   const done = state.goals.filter(g => g.status === 'logrado');
   return `
-  <div class="page-head">
-    <div><h1>Objetivos</h1><div class="sub">Hacia dónde vas y por qué.</div></div>
-    <button class="btn primary" data-act="new-goal">Nuevo</button>
-  </div>
+  <div class="page">
+  ${pageHead({ eyebrow: 'Hacia dónde vas y por qué', title: 'Objetivos', actions: `<button class="btn primary" data-act="new-goal">${I.plus}<span>Nuevo</span></button>` })}
   ${active.length ? `<div class="grid">${active.map(goalCard).join('')}</div>` : `<div class="empty">Define un objetivo concreto, con fecha y con un «para qué».</div>`}
-  ${done.length ? `<div class="section" style="margin-top:28px"><div class="section-head"><h2>Logrados</h2></div><div class="grid">${done.map(goalCard).join('')}</div></div>` : ''}
-  `;
+  ${done.length ? `<div class="section section-gap"><div class="section-head"><h2>Logrados</h2></div><div class="grid">${done.map(goalCard).join('')}</div></div>` : ''}
+  </div>`;
 }
 function deadlineTag(g) {
   if (!g.deadline) return '';
@@ -456,42 +494,43 @@ function goalCard(g) {
   const nProjects = state.projects.filter(p => p.goalId === g.id).length;
   return `<a class="card glass item-card" href="#objetivo/${g.id}" style="--c:${g.color}">
     <div class="top"><div class="swatch">${I.target}</div><div class="name">${esc(g.title)}</div></div>
-    ${g.why ? `<div class="why">${esc(g.why)}</div>` : ''}
     <div class="meta">${g.area ? `<span class="tag">${esc(g.area)}</span>` : ''}${deadlineTag(g)}${nProjects ? `<span class="tag">${nProjects} proyecto${nProjects > 1 ? 's' : ''}</span>` : ''}</div>
     <div class="stat-row">${progressBar(pr.pct)}<span class="count">${pr.pct}%</span></div>
+    <div class="small muted one-line">${g.why ? esc(g.why) : 'Sin «para qué» todavía'}</div>
   </a>`;
 }
 
 function viewGoal(id) {
   const g = goal(id);
-  if (!g) return `${backLink('#objetivos', 'Objetivos')}<div class="empty">Este objetivo ya no existe.</div>`;
+  if (!g) return `<div class="page">${pageHead({ eyebrow: backLink('#objetivos', 'Objetivos'), title: 'No encontrado' })}<div class="empty">Este objetivo ya no existe.</div></div>`;
   const projects = state.projects.filter(p => p.goalId === id);
   const direct = sortTasks(state.tasks.filter(t => t.goalId === id));
   const pr = progressOf(tasksOfGoal(id));
   return `
-  ${backLink('#objetivos', 'Objetivos')}
-  <div class="page-head">
-    <div>
-      <h1><span class="title-dot" style="--c:${g.color}"></span>${esc(g.title)}</h1>
-      <div class="meta" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${g.area ? `<span class="tag">${esc(g.area)}</span>` : ''}${g.deadline ? `<span class="tag">${esc(fmtShortDate(g.deadline))}</span>` : ''}${deadlineTag(g)}</div>
-    </div>
-    <div style="display:flex;gap:8px">
+  <div class="page">
+  ${pageHead({ eyebrow: backLink('#objetivos', 'Objetivos'), title: esc(g.title), dot: g.color, actions: `
       ${g.status === 'activo' ? `<button class="btn" data-act="goal-done" data-id="${g.id}">Logrado</button>` : `<button class="btn" data-act="goal-reopen" data-id="${g.id}">Reabrir</button>`}
-      <button class="btn" data-act="edit-goal" data-id="${g.id}">Editar</button>
+      <button class="btn" data-act="edit-goal" data-id="${g.id}">Editar</button>` })}
+  <div class="detail-grid">
+    <div class="col-side">
+      <div class="card glass info-card">
+        <div class="meta">${g.area ? `<span class="tag">${esc(g.area)}</span>` : ''}${g.deadline ? `<span class="tag">${esc(fmtShortDate(g.deadline))}</span>` : ''}${deadlineTag(g)}</div>
+        ${statRow('goal-progress', pr, `${pr.pct}% · ${pr.done}/${pr.total}`)}
+        ${g.why ? `<div class="why-box"><strong>Para qué</strong>${esc(g.why)}</div>` : ''}
+      </div>
+      <div class="section section-gap">
+        <div class="section-head"><h2>Proyectos</h2><button class="btn small" data-act="new-project" data-goal="${g.id}">Añadir</button></div>
+        ${projects.length ? `<div class="grid grid-tight">${projects.map(projectCard).join('')}</div>` : `<div class="empty">Sin proyectos vinculados.</div>`}
+      </div>
+    </div>
+    <div class="col-main">
+      <div class="section">
+        <div class="section-head"><h2>Tareas e hitos</h2></div>
+        ${taskList(direct, { showDate: true, hideGoal: true })}
+        ${quickAdd({ goal: g.id })}
+      </div>
     </div>
   </div>
-  ${g.why ? `<div class="why-box"><strong>Para qué</strong>${esc(g.why)}</div>` : ''}
-  <div class="section">${statRow('goal-progress', pr, `${pr.pct}% · ${pr.done}/${pr.total}`)}</div>
-
-  <div class="section">
-    <div class="section-head"><h2>Proyectos</h2><button class="btn small" data-act="new-project" data-goal="${g.id}">Añadir</button></div>
-    ${projects.length ? `<div class="grid">${projects.map(projectCard).join('')}</div>` : `<div class="empty">Sin proyectos vinculados.</div>`}
-  </div>
-
-  <div class="section">
-    <div class="section-head"><h2>Tareas e hitos</h2></div>
-    ${taskList(direct, { showDate: true, hideGoal: true })}
-    ${quickAdd({ goal: g.id })}
   </div>`;
 }
 
@@ -501,7 +540,8 @@ function viewSettings() {
   const stats = `${state.tasks.length} tareas · ${state.projects.length} proyectos · ${state.goals.length} objetivos`;
   const focusToday = state.focusLog.filter(f => f.date === todayStr()).reduce((a, f) => a + f.minutes, 0);
   return `
-  <div class="page-head"><div><h1>Ajustes</h1><div class="sub">${stats}</div></div></div>
+  <div class="page page-narrow">
+  ${pageHead({ eyebrow: stats, title: 'Ajustes' })}
   <div class="section">
     <div class="section-head"><h2>Enfoque</h2></div>
     <div class="settings-group glass">
@@ -533,6 +573,7 @@ function viewSettings() {
       </div>
       ${deferredInstall ? `<div class="item"><div>Instalar en este dispositivo</div><button class="btn small primary" data-act="install">Instalar</button></div>` : ''}
     </div>
+  </div>
   </div>`;
 }
 
@@ -597,7 +638,7 @@ function taskModal(t) {
       Object.assign(obj, { title: d.title.trim(), date: d.date || null, important: !!d.important, projectId: d.projectId || null, goalId: d.goalId || null });
       if (isNew) state.tasks.push(obj);
     },
-    onDelete: isNew ? null : () => { state.tasks = state.tasks.filter(x => x.id !== t.id); toast('Tarea eliminada'); },
+    onDelete: isNew ? null : () => { state.tasks = state.tasks.filter(x => x.id !== t.id); state.blocks.forEach(b => { if (b.taskId === t.id) b.taskId = null; }); toast('Tarea eliminada'); },
   });
 }
 
@@ -711,6 +752,7 @@ function toggleTask(id, checkbox) {
 }
 
 document.addEventListener('click', e => {
+  if (Date.now() < suppressClickUntil) { e.preventDefault(); e.stopPropagation(); return; }
   const el = e.target.closest('[data-act]');
   if (!el || el.tagName === 'FORM' || el.tagName === 'SELECT' || (el.tagName === 'INPUT' && el.type !== 'checkbox')) return;
   const id = el.dataset.id;
@@ -720,12 +762,22 @@ document.addEventListener('click', e => {
     case 'edit-task': taskModal(task(id)); return;
     case 'move-today': { const t = task(id); t.date = viewDate; toast('Planificada para ' + relDay(viewDate).toLowerCase()); break; }
     case 'move-all-today': state.tasks.forEach(t => { if (!t.done && t.date && t.date < todayStr()) t.date = todayStr(); }); toast('Todas en hoy'); break;
-    case 'day': viewDate = el.dataset.n === '0' ? todayStr() : addDays(viewDate, Number(el.dataset.n)); route(); return;
+    case 'day': {
+      const n = Number(el.dataset.n);
+      viewDate = n === 0 ? todayStr() : addDays(viewDate, n);
+      navigate(() => route()); return;
+    }
+    case 'week': {
+      const n = Number(el.dataset.n);
+      weekStart = n === 0 ? startOfWeek(todayStr()) : addDays(weekStart, 7 * n);
+      navigate(() => route()); return;
+    }
+    case 'week-mode': weekMode = el.dataset.v; try { localStorage.setItem('organizador.weekMode', weekMode); } catch {} route(); return;
     case 'new-block': blockModal({ date: viewDate, ...suggestBlockTime() }); return;
     case 'edit-block': blockModal(byId(state.blocks, id)); return;
     case 'new-project': projectModal({ goalId: el.dataset.goal || null }); return;
     case 'edit-project': projectModal(project(id)); return;
-    case 'project-filter': projectFilter = el.dataset.v; route(); return;
+    case 'project-filter': projectFilter = el.dataset.v; navigate(() => route()); return;
     case 'new-goal': goalModal({}); return;
     case 'edit-goal': goalModal(goal(id)); return;
     case 'goal-done': goal(id).status = 'logrado'; toast('¡Objetivo logrado! 🎉'); break;
@@ -811,7 +863,7 @@ document.addEventListener('visibilitychange', () => {
 });
 /* Sincroniza entre pestañas abiertas del mismo navegador */
 window.addEventListener('storage', e => { if (e.key === STORE_KEY && !modal.open) { state = loadState() || emptyState(); rerender(); } });
-setInterval(refreshNow, 30000);
+setInterval(() => { refreshNow(); refreshNowLine(); }, 30000);
 
 /* ---------- PWA ---------- */
 
