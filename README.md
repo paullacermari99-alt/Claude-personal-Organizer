@@ -48,3 +48,13 @@ Gestos en el móvil: desliza una tarea a la derecha para completarla y a la izqu
 6. Rellena `config.js` con la URL del proyecto, la clave pública (anon/publishable) y la clave VAPID pública.
 
 Sin `config.js` relleno, la app funciona igual pero solo en el dispositivo.
+
+## Novedades v13
+- Escribir en lenguaje normal: «dentista mañana 17h #salud», «pagar alquiler cada mes el 1/12», «informe 45 min !alta @proyecto».
+- Tareas que se repiten cada N días, semanas, meses o años (se crea la siguiente al completarla).
+- «¿Me cabe hoy?»: compara la duración de tus tareas con tu tiempo libre (tu jornada se ajusta en Ajustes).
+- Calendarios externos (Google, Outlook, iCloud) de solo lectura con la dirección secreta iCal. Pasa por la función `supabase/functions/ics` (Verify JWT desactivado; comprueba la sesión dentro).
+- Copiar los bloques de la semana anterior.
+- Diario del día (ánimo y energía) y conclusiones en Progreso.
+- Accesos directos del icono (#nueva, #enfoque, #buscar) y teclado (N, /, Ctrl+K, F, H, S).
+- Buscador global.

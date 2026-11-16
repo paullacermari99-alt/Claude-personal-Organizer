@@ -35,6 +35,7 @@ const I = {
   warn: svg('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>'),
   review: svg('<path d="M9 11l2.5 2.5L16 9"/><rect x="3.5" y="3.5" width="17" height="17" rx="4"/>'),
   chart: svg('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
+  copy: svg('<rect x="8.5" y="8.5" width="12" height="12" rx="3"/><path d="M15.5 8.5V6a2.5 2.5 0 00-2.5-2.5H6A2.5 2.5 0 003.5 6v7A2.5 2.5 0 006 15.5h2.5"/>'),
   daily: svg('<path d="M4 12a8 8 0 0113.7-5.6M20 12a8 8 0 01-13.7 5.6"/><path d="M18 3v4h-4M6 21v-4h4"/>'),
 };
 
@@ -114,13 +115,13 @@ function defaultSettings() {
   let tz = 'Europe/Madrid';
   try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch {}
   return {
-    timezone: tz, weekStart: 1, focusMinutes: 25,
+    timezone: tz, weekStart: 1, focusMinutes: 25, dayStart: '08:00', dayEnd: '21:00', calendars: [],
     reminders: { enabled: false, blocks: 10, deadlines: 'day-before', deadlineTime: '09:00', dailySummary: '', quietFrom: '22:00', quietTo: '08:00' },
     ui: { collapsed: {}, projectsView: 'cards', projectsSort: 'manual', projectsArchived: false, tasksTab: 'bandeja', weekMode: '7', goalsHorizon: 'todos', goalsStatus: 'activos', goalsProject: '', lastReview: null },
   };
 }
 function emptyState() {
-  return { version: 2, tasks: [], events: [], routines: [], goals: [], projects: [], tags: [], dayPlans: {}, weekPlans: {}, focusLog: [], notified: {}, settings: defaultSettings() };
+  return { version: 2, tasks: [], events: [], routines: [], goals: [], projects: [], tags: [], dayPlans: {}, weekPlans: {}, journal: {}, focusLog: [], notified: {}, settings: defaultSettings() };
 }
 function horizonFor(due) {
   if (!due) return 'medio';
@@ -298,12 +299,23 @@ function overlapIds(d) {
 function overlapsWith(d, start, end, ignoreId) {
   return eventsOn(d).filter(e => e.id !== ignoreId && e.seriesId !== ignoreId && start < e.end && e.start < end);
 }
-/* Primer hueco libre de un día (entre 8:00 y 21:00) */
+/* Tu jornada (Ajustes) y lo que ya está ocupado ese día, incluidos los calendarios externos */
+function dayBounds() {
+  const st = state.settings;
+  const a = toMin(st.dayStart || '08:00'), b = toMin(st.dayEnd || '21:00');
+  return b > a ? [a, b] : [8 * 60, 21 * 60];
+}
+function busyOn(d) {
+  const ext = typeof extEventsOn === 'function' ? extEventsOn(d).filter(e => !e.allDay) : [];
+  return [...eventsOn(d), ...ext].map(e => [toMin(e.start), toMin(e.end)]);
+}
+/* Primer hueco libre de un día dentro de tu jornada */
 function nextFreeSlot(d, dur = 60) {
-  const busy = eventsOn(d).map(e => [toMin(e.start), toMin(e.end)]);
-  let m = 8 * 60;
+  const busy = busyOn(d);
+  const [d0, d1] = dayBounds();
+  let m = d0;
   if (d === todayStr()) m = Math.max(m, Math.ceil((toMin(nowHHMM()) + 5) / 15) * 15);
-  for (; m + dur <= 21 * 60; m += 15) {
+  for (; m + dur <= d1; m += 15) {
     if (!busy.some(([s, e]) => m < e && s < m + dur)) return { start: fmtHM(m), end: fmtHM(m + dur) };
   }
   return null;
@@ -364,12 +376,13 @@ function dateOfTs(ts) {
     return `${g('year')}-${g('month')}-${g('day')}`;
   } catch { return ymd(new Date(ts)); }
 }
-/* Huecos libres de un día (de 8:00 a 21:00, desde ahora si es hoy) */
+/* Huecos libres de un día dentro de tu jornada (desde ahora si es hoy) */
 function freeIntervals(d, minLen = 30) {
-  const busy = eventsOn(d).map(e => [toMin(e.start), toMin(e.end)]).sort((a, b) => a[0] - b[0]);
-  let cur = 8 * 60;
+  const busy = busyOn(d).sort((a, b) => a[0] - b[0]);
+  const [d0, end] = dayBounds();
+  let cur = d0;
   if (d === todayStr()) cur = Math.max(cur, Math.ceil(toMin(nowHHMM()) / 15) * 15);
-  const out = [], end = 21 * 60;
+  const out = [];
   for (const [s, e] of busy) { if (s > cur && Math.min(s, end) - cur >= minLen) out.push([cur, Math.min(s, end)]); cur = Math.max(cur, e); }
   if (end - cur >= minLen) out.push([cur, end]);
   return out;

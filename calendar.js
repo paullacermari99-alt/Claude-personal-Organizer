@@ -53,6 +53,7 @@ function viewWeek() {
       <button role="tab" class="${mode === '7' ? 'on' : ''}" data-act="week-mode" data-v="7">Semana</button>
     </div>
     <div class="toolbar-right">
+      <button class="btn small" data-act="copy-week" data-ws="${weekStart}" title="Copiar los bloques de la semana anterior">${I.copy}<span>Copiar semana anterior</span></button>
       <a class="btn small ${reviewed ? '' : 'attention'}" href="#revision">${I.review}<span>Revisión${reviewed ? ' ✓' : ''}</span></a>
       <button class="btn small" data-act="new-event">${I.plus}<span>Evento</span></button>
     </div>
@@ -81,6 +82,7 @@ function traySection(title, tasks, empty, goals = []) {
   </div>`;
 }
 
+function extChip(e) { return `<button class="chip ext" data-act="ext-event" data-id="${e.id}" style="--c:${e.color}" title="De tu calendario">${esc(e.title)}</button>`; }
 function taskChip(t, showDue) {
   return `<div class="chip ${t.done ? 'done' : ''} ${isOverdue(t) ? 'late' : ''}" data-task="${t.id}" data-drag="task" data-id="${t.id}" style="--c:${colorOfTask(t)}">
     <input type="checkbox" class="check sm" data-act="toggle-task" data-id="${t.id}" ${t.done ? 'checked' : ''} aria-label="Completar ${esc(t.title)}">
@@ -110,17 +112,21 @@ function calendarGrid(dates, opts = {}) {
   const heads = dates.map(d => {
     const dt = parseYmd(d);
     const due = state.tasks.filter(t => t.due === d && !isRoutineTask(t)).sort(sortByDue);
+    const allDay = extEventsOn(d).filter(e => e.allDay);
     return `<div class="cal-dayhead ${d === today ? 'is-today' : ''}" data-date="${d}">
       <button class="cal-dtitle" data-act="open-day" data-date="${d}"><span class="cal-dname">${DOW_SHORT[dt.getDay()]}</span><span class="cal-dnum">${dt.getDate()}</span></button>
-      ${opts.compact ? '' : `<div class="cal-lane" data-drop="lane" data-date="${d}" title="Plazos de este día">${due.map(t => taskChip(t)).join('')}</div>`}
+      ${opts.compact ? (allDay.length ? `<div class="cal-lane">${allDay.map(extChip).join('')}</div>` : '') : `<div class="cal-lane" data-drop="lane" data-date="${d}" title="Plazos de este día">${allDay.map(extChip).join('')}${due.map(t => taskChip(t)).join('')}</div>`}
     </div>`;
   }).join('');
   const hours = Array.from({ length: 24 }, (_, h) => `<div class="cal-hour"><span>${h ? pad(h) + ':00' : ''}</span></div>`).join('');
   const cols = dates.map(d => {
     const clash = overlapIds(d);
-    const evs = layoutEvents(eventsOn(d));
+    const evs = layoutEvents([...eventsOn(d), ...extEventsOn(d).filter(x => !x.allDay)]);
     return `<div class="cal-col ${d === today ? 'is-today' : ''}" data-drop="col" data-date="${d}">
       ${evs.map(({ b, s, e, lane, n }) => {
+        if (b.ext) return `<div class="ev ext ${d < today || (d === today && e <= nowM) ? 'past' : ''} ${e - s <= 30 ? 'short' : ''}" data-act="ext-event" data-id="${b.id}" title="De tu calendario"
+          style="--c:${b.color};top:calc(var(--hour-h) * ${s / 60});height:calc(var(--hour-h) * ${(e - s) / 60} - 2px);left:calc(${lane / n * 100}% + 2px);width:calc(${100 / n}% - 4px)">
+          <div class="ev-title">${esc(b.title)}</div><div class="ev-time">${esc(b.start)}–${esc(b.end)}</div></div>`;
         const t = b.taskId && task(b.taskId);
         const past = d < today || (d === today && e <= nowM);
         return `<div class="ev ${past ? 'past' : ''} ${t && t.done ? 'done' : ''} ${e - s <= 30 ? 'short' : ''} ${clash.has(b.id) ? 'clash' : ''}" data-drag="block" data-act="edit-event" data-id="${b.id}"
@@ -232,6 +238,7 @@ function viewWeekPhone() {
       <button role="tab" class="${mode === '3' ? 'on' : ''}" data-act="pweek-mode" data-v="3">3 días</button>
       <button role="tab" class="${mode === '1' ? 'on' : ''}" data-act="pweek-mode" data-v="1">Día</button>
     </div>
+    <button class="icon-btn round" data-act="copy-week" data-ws="${weekStart}" aria-label="Copiar la semana anterior" title="Copiar la semana anterior">${I.copy}</button>
     <a class="icon-btn round ${reviewed ? '' : 'attention'}" href="#revision" aria-label="Revisión semanal" title="Revisión semanal">${I.review}</a>
   </div>
   <div class="ptray glass ${trayOpen ? 'open' : ''}">
@@ -254,11 +261,12 @@ function weekAgenda(days) {
   const today = todayStr();
   if (!openDays || openDays.week !== days[0]) openDays = { week: days[0], set: new Set([days.includes(today) ? today : days[0]]) };
   return `<div class="wk-list">${days.map(d => {
-    const evs = eventsOn(d), clash = overlapIds(d), dt = parseYmd(d);
+    const ext = extEventsOn(d), extAll = ext.filter(x => x.allDay);
+    const evs = [...eventsOn(d), ...ext.filter(x => !x.allDay)].sort((a, b) => a.start.localeCompare(b.start)), clash = overlapIds(d), dt = parseYmd(d);
     const due = state.tasks.filter(t => t.due === d && !isRoutineTask(t)).sort(sortByDue);
     const isOpen = openDays.set.has(d);
     const pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-    const sum = [evs.length ? pl(evs.length, 'bloque') : '', due.length ? pl(due.length, 'tarea') : ''].filter(Boolean).join(' · ') || 'Libre';
+    const sum = [evs.length ? pl(evs.length, 'bloque') : '', due.length ? pl(due.length, 'tarea') : '', extAll.length ? esc(extAll[0].title) + (extAll.length > 1 ? ` +${extAll.length - 1}` : '') : ''].filter(Boolean).join(' · ') || 'Libre';
     return `<section class="wk-day glass ${isOpen ? 'open' : ''} ${d === today ? 'is-today' : ''} ${d < today ? 'past' : ''}" data-drop="lane" data-date="${d}">
       <button class="wk-head" data-act="wk-day" data-date="${d}" aria-expanded="${isOpen}">
         <span class="wk-date"><span class="wk-dow">${DOW_SHORT[dt.getDay()]}</span><span class="wk-num">${dt.getDate()}</span></span>
@@ -266,7 +274,9 @@ function weekAgenda(days) {
         <span class="wk-chev">${I.down}</span>
       </button>
       <div class="wk-body">
+        ${extAll.map(e => `<div class="wk-allday" data-act="ext-event" data-id="${e.id}" style="--c:${e.color}" role="button" tabindex="0">${esc(e.title)}</div>`).join('')}
         ${evs.map(e => {
+          if (e.ext) return `<div class="wk-ev ext" data-act="ext-event" data-id="${e.id}" style="--c:${e.color}" role="button" tabindex="0"><span class="wk-time">${esc(e.start)}<small>${esc(e.end)}</small></span><span class="wk-title">${esc(e.title)}${e.loc ? `<small>${esc(e.loc)}</small>` : ''}</span></div>`;
           const t = e.taskId && task(e.taskId);
           return `<div class="wk-ev ${clash.has(e.id) ? 'clash' : ''} ${t && t.done ? 'done' : ''}" data-act="edit-event" data-id="${e.id}" style="--c:${colorOfEvent(e)}" role="button" tabindex="0">
             <span class="wk-time">${esc(e.start)}<small>${esc(e.end)}</small></span>
@@ -274,7 +284,7 @@ function weekAgenda(days) {
           </div>`;
         }).join('')}
         ${due.length ? `<div class="wk-tasks"><div class="wk-label">Vencen este día</div>${due.map(t => taskChip(t)).join('')}</div>` : ''}
-        ${evs.length || due.length ? '' : '<div class="wk-empty">Nada planificado</div>'}
+        ${evs.length || due.length || extAll.length ? '' : '<div class="wk-empty">Nada planificado</div>'}
         <div class="wk-actions">
           <button class="btn small" data-act="new-event" data-date="${d}">${I.plus}<span>Bloque</span></button>
           <button class="btn small ghost" data-act="open-day" data-date="${d}">Ver horario del día</button>
