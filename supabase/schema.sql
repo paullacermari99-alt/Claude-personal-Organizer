@@ -31,3 +31,8 @@ create table if not exists public.sent_reminders (
   primary key (user_id, key)
 );
 alter table public.sent_reminders enable row level security;
+
+-- Permisos (los proyectos nuevos de Supabase no los dan solos)
+grant usage on schema public to authenticated, service_role;
+grant select, insert, update, delete on public.organizer_state, public.push_subscriptions to authenticated;
+grant select, insert, update, delete on public.organizer_state, public.push_subscriptions, public.sent_reminders to service_role;
