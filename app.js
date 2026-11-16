@@ -612,6 +612,33 @@ function viewProject(id, sub) {
 
 /* ---------- Vista: Ajustes ---------- */
 
+function agoLabel(ts) {
+  if (!ts) return 'nunca';
+  const m = Math.round((Date.now() - ts) / 60000);
+  return m < 1 ? 'ahora mismo' : m < 60 ? `hace ${m} min` : `hace ${Math.round(m / 60)} h`;
+}
+function syncSection() {
+  let body;
+  if (!cloudReady()) body = `<div class="item"><span class="muted">Aún no está activada. Cuando esté, podrás entrar con tu email y tener los mismos datos en el móvil y el ordenador.</span></div>`;
+  else if (!getSession()) body = syncInfo.pendingEmail
+    ? `<form class="item login" data-act="login-code"><span class="grow">Te he enviado un código a <b>${esc(syncInfo.pendingEmail)}</b></span>
+        <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="Código" aria-label="Código del email" required>
+        <button class="btn small primary" type="submit">Entrar</button><button class="btn small ghost" type="button" data-act="login-reset">Cambiar email</button></form>`
+    : `<form class="item login" data-act="login-email"><input type="email" name="email" placeholder="tu email" autocomplete="email" aria-label="Email" required><button class="btn small primary" type="submit">Enviar código</button></form>`;
+  else {
+    const s = getSession();
+    body = `<div class="item"><span>Cuenta</span><span class="muted">${esc((s.user && s.user.email) || '…')}</span></div>
+      <div class="item" data-live="sync"><span>${syncInfo.status === 'error' ? `<span style="color:var(--red)">Error: ${esc(syncInfo.error)}</span>` : syncInfo.status === 'syncing' ? 'Sincronizando…' : `Sincronizado ${agoLabel(syncInfo.lastSync)}`}</span><button class="btn small" data-act="sync-now">Sincronizar ahora</button></div>
+      ${CFG.vapidPublicKey ? `<div class="item"><span>Avisos con la app cerrada</span><button class="btn small ${pushActive() ? '' : 'primary'}" data-act="push-toggle">${pushActive() ? 'Desactivar' : 'Activar'}</button></div>` : ''}
+      <div class="item"><span>Cerrar sesión en este dispositivo</span><button class="btn small danger" data-act="sign-out">Salir</button></div>`;
+  }
+  return `<div class="section">
+    <div class="section-head"><h2>Cuenta y sincronización</h2></div>
+    <div class="settings-group glass">${body}</div>
+    <p class="hint">${getSession() ? 'Los cambios se guardan en tu cuenta al momento y se cargan en tus otros dispositivos al abrir la app.' : 'Entra con el mismo email en el móvil y en el ordenador. En iPhone, para recibir avisos con la app cerrada, instálala en la pantalla de inicio.'}</p>
+  </div>`;
+}
+
 let deferredInstall = null;
 function viewSettings() {
   const s = state.settings, r = s.reminders;
@@ -622,6 +649,7 @@ function viewSettings() {
   return `
   <div class="page page-narrow">
   ${pageHead({ eyebrow: `${state.tasks.filter(t => !isRoutineTask(t)).length} tareas · ${state.projects.length} proyectos · ${state.goals.length} objetivos`, title: 'Ajustes' })}
+  ${syncSection()}
 
   <div class="section">
     <div class="section-head"><h2>Recordatorios</h2></div>
@@ -1255,7 +1283,7 @@ function inQuiet(hm) {
 function notify(key, title, body) {
   if (state.notified[key]) return;
   state.notified[key] = Date.now();
-  save();
+  save(true);
   const opts = { body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: key };
   try {
     if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts));
@@ -1264,7 +1292,7 @@ function notify(key, title, body) {
 }
 function checkReminders() {
   const r = state.settings.reminders;
-  if (!r.enabled || !('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!r.enabled || pushActive() || !('Notification' in window) || Notification.permission !== 'granted') return;
   const now = nowHHMM(), today = todayStr();
   /* Limpia avisos antiguos */
   const old = Date.now() - 4 * 86400000;
@@ -1437,6 +1465,14 @@ document.addEventListener('click', e => {
       [state.events, state.routines].forEach(l => l.forEach(x => { if (x.tagId === id) x.tagId = null; }));
       break;
     }
+    case 'sync-now': syncNow(true); return;
+    case 'login-reset': syncInfo.pendingEmail = ''; rerender(); return;
+    case 'sign-out': if (!confirm('¿Cerrar sesión? Tus datos se quedan en este dispositivo y en tu cuenta.')) return; signOut().then(() => { toast('Sesión cerrada'); rerender(); }); return;
+    case 'push-toggle':
+      (pushActive() ? unsubscribePush().then(() => toast('Avisos push desactivados'))
+        : subscribePush().then(ok => { if (ok) { state.settings.reminders.enabled = true; save(); toast('Te avisaré aunque la app esté cerrada'); } else toast('Sin permiso para avisar en este dispositivo'); }))
+        .catch(err => toast('No se pudo: ' + err.message)).finally(rerender);
+      return;
     case 'export': exportData(); return;
     case 'reset':
       if (!confirm('¿Seguro? Se borrarán todas tus tareas, proyectos y objetivos de este dispositivo.')) return;
@@ -1455,6 +1491,14 @@ document.addEventListener('keydown', e => {
 
 document.addEventListener('submit', e => {
   const f = e.target;
+  if (f.dataset.act === 'login-email' || f.dataset.act === 'login-code') {
+    e.preventDefault();
+    const btn = f.querySelector('button[type=submit]'); btn.disabled = true;
+    const job = f.dataset.act === 'login-email' ? sendLoginCode(f.elements.email.value.trim()).then(() => toast('Código enviado. Mira tu email.'))
+      : verifyLoginCode(f.elements.code.value).then(() => toast('¡Dentro! Tus datos ya se sincronizan.'));
+    job.catch(err => toast(err.message)).finally(() => { btn.disabled = false; rerender(); });
+    return;
+  }
   if (f.dataset.act === 'tag-add') {
     e.preventDefault();
     const name = f.elements.name.value.trim();
@@ -1495,7 +1539,7 @@ document.addEventListener('change', e => {
     if (path === 'reminders.enabled' && v && 'Notification' in window && Notification.permission !== 'granted') {
       Notification.requestPermission().then(p => {
         if (p !== 'granted') { state.settings.reminders.enabled = false; save(); toast('Sin permiso para avisar'); }
-        else { toast('Recordatorios activados'); checkReminders(); }
+        else { toast('Recordatorios activados'); checkReminders(); if (getSession() && CFG.vapidPublicKey) subscribePush().then(() => rerender()).catch(err => toast('Avisos push: ' + err.message)); }
         rerender();
       });
       return;
@@ -1540,11 +1584,11 @@ function onNewDayOrReturn() {
   const created = generateRoutines();
   const changed = lastDay !== todayStr();
   if (changed) { if (viewDate === lastDay) viewDate = todayStr(); lastDay = todayStr(); }
-  if (created) save();
+  if (created) save(true);
   return created || changed;
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { save(); return; }
+  if (document.visibilityState === 'hidden') { save(true); return; }
   if (modal.open) return;
   const fresh = loadState();
   if (fresh) state = fresh;
@@ -1552,8 +1596,9 @@ document.addEventListener('visibilitychange', () => {
   const typing = document.activeElement && document.activeElement.matches('input, textarea');
   if (!typing) rerender();
   checkReminders();
+  syncNow();
 });
-window.addEventListener('pagehide', save);
+window.addEventListener('pagehide', () => save(true));
 window.addEventListener('storage', e => { if (e.key === STORE_KEY && !modal.open) { state = loadState() || emptyState(); rerender(); } });
 setInterval(() => {
   refreshNow(); refreshNowLine();
@@ -1571,9 +1616,12 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 }
 
 /* ---------- Arranque ---------- */
+const cameFromLogin = captureAuthRedirect();
 state = loadState();
 if (!state) seedState();
 generateRoutines();
-save();
+save(true);
 route();
 setTimeout(checkReminders, 2000);
+if (cameFromLogin) firstSync().then(rerender).catch(e => toast(e.message)); else syncNow();
+setInterval(() => { if (document.visibilityState === 'visible' && !modal.open) syncNow(); }, 120000);

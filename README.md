@@ -37,3 +37,14 @@ Al cambiar archivos, sube el número de `CACHE` en `sw.js` para que los disposit
 Al cambiar archivos, sube también el número `?v=` de los CSS/JS en `index.html` y en `sw.js` (y `CACHE` en `sw.js`). Orden de carga: `core.js` (datos), `calendar.js`, `gestures.js`, `app.js`.
 
 Gestos en el móvil: desliza una tarea a la derecha para completarla y a la izquierda para pasarla a mañana; arrastra una hoja hacia abajo para cerrarla.
+
+## Sincronización y avisos con la app cerrada (Supabase, gratis)
+
+1. Crea un proyecto en supabase.com (plan Free).
+2. SQL Editor → pega y ejecuta `supabase/schema.sql`.
+3. Authentication → Email: activa el inicio de sesión por email y añade `{{ .Token }}` a la plantilla «Magic Link» (la app entra con un código de 6 dígitos).
+4. Edge Functions → crea `reminders` con `supabase/functions/reminders/index.ts`, desactiva «Verify JWT» y añade los secretos `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` y `CRON_SECRET`.
+5. SQL Editor → ejecuta `supabase/cron.sql` con tu `PROJECT_REF` y `CRON_SECRET`.
+6. Rellena `config.js` con la URL del proyecto, la clave pública (anon/publishable) y la clave VAPID pública.
+
+Sin `config.js` relleno, la app funciona igual pero solo en el dispositivo.

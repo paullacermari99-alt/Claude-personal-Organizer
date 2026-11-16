@@ -1,7 +1,7 @@
 /* Service worker: permite abrir la app sin conexión.
    Sube CACHE cuando cambien los archivos para forzar la actualización. */
-const CACHE = 'organizador-v7';
-const ASSETS = ['./', 'index.html', 'styles.css?v=7', 'core.js?v=7', 'calendar.js?v=7', 'gestures.js?v=7', 'app.js?v=7', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
+const CACHE = 'organizador-v8';
+const ASSETS = ['./', 'index.html', 'styles.css?v=8', 'config.js?v=8', 'core.js?v=8', 'sync.js?v=8', 'calendar.js?v=8', 'gestures.js?v=8', 'app.js?v=8', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -19,4 +19,18 @@ self.addEventListener('fetch', e => {
       return res;
     }).catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match('index.html')))
   );
+});
+
+/* Avisos push (recordatorios con la app cerrada) */
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { title: 'P Organizer', body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'P Organizer', { body: d.body || '', tag: d.tag, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png' }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+    const c = list.find(x => 'focus' in x);
+    return c ? c.focus() : self.clients.openWindow('./#hoy');
+  }));
 });

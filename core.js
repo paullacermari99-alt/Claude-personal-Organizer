@@ -162,9 +162,12 @@ function loadState() {
     return raw ? migrate(JSON.parse(raw)) : null;
   } catch (e) { console.warn('No se pudo leer el estado', e); return null; }
 }
-function save() {
+/* quiet = guardar sin marcarlo como cambio (p. ej. diarias generadas): no pisa datos más nuevos de otro dispositivo */
+function save(quiet) {
+  if (!quiet) state.updatedAt = Date.now();
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
   catch (e) { toast('No se pudo guardar: ' + e.message); }
+  if (!quiet && typeof scheduleSync === 'function') scheduleSync();
 }
 
 /* ---------- Datos de ejemplo (solo la primera vez) ---------- */
