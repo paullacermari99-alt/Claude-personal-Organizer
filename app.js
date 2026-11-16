@@ -645,7 +645,7 @@ function projectCard(p) {
   return `<a class="card glass item-card" href="#proyecto/${p.id}" style="--c:${p.color}">
     <div class="top"><div class="swatch emoji">${esc(p.icon || '📁')}</div><div class="name">${esc(p.name)}</div>${favBtn(p)}</div>
     <div class="meta"><span class="tag">${goals.length} objetivo${goals.length === 1 ? '' : 's'}</span><span class="tag">${pr.total - pr.done} pendiente${pr.total - pr.done === 1 ? '' : 's'}</span>${p.archived ? '<span class="tag">Archivado</span>' : ''}</div>
-    <div class="stat-row">${progressBar(pr.pct)}<span class="count">${pr.done}/${pr.total}</span></div>
+    <div class="stat-row">${progressBar(pr.pct)}<span class="count">${pr.total ? pr.pct + ' %' : '–'}</span></div>
     <div class="small muted one-line">${next ? 'Siguiente: ' + esc(next.title) : pr.total ? '¡Todo hecho!' : 'Sin tareas todavía'}</div>
   </a>`;
 }
@@ -662,13 +662,8 @@ function viewProjects() {
   const ui = state.settings.ui, list = sortedProjects();
   const nArch = state.projects.filter(p => p.archived).length;
   return `
-  <div class="page">
+  <div class="page page-projects">
   ${pageHead({ eyebrow: 'Lo que estás construyendo, paso a paso', title: 'Proyectos', actions: `
-    <div class="segmented compact icons" role="tablist" aria-label="Vista">
-      <button role="tab" class="${ui.projectsView !== 'list' ? 'on' : ''}" data-act="set-ui" data-k="projectsView" data-v="cards" aria-label="Tarjetas">${I.grid}</button>
-      <button role="tab" class="${ui.projectsView === 'list' ? 'on' : ''}" data-act="set-ui" data-k="projectsView" data-v="list" aria-label="Lista">${I.list}</button>
-    </div>
-    <button class="btn" data-act="templates" data-kind="project" title="Plantillas de proyecto">${I.template}<span>Plantillas</span></button>
     <button class="btn primary" data-act="new-project">${I.plus}<span>Nuevo</span></button>` })}
   <div class="toolbar">
     <div class="segmented compact" role="tablist">
@@ -676,8 +671,12 @@ function viewProjects() {
       <button role="tab" class="${ui.projectsArchived ? 'on' : ''}" data-act="set-ui" data-k="projectsArchived" data-v="1">Archivados${nArch ? ' · ' + nArch : ''}</button>
     </div>
     <select data-set-ui="projectsSort" aria-label="Ordenar">${[['manual', 'Orden: creación'], ['nombre', 'Orden: nombre'], ['recientes', 'Orden: recientes'], ['progreso', 'Orden: progreso']].map(([v, l]) => `<option value="${v}" ${ui.projectsSort === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <div class="segmented compact icons view-switch" role="tablist" aria-label="Vista">
+      <button role="tab" class="${ui.projectsView !== 'list' ? 'on' : ''}" data-act="set-ui" data-k="projectsView" data-v="cards" aria-label="Tarjetas">${I.grid}</button>
+      <button role="tab" class="${ui.projectsView === 'list' ? 'on' : ''}" data-act="set-ui" data-k="projectsView" data-v="list" aria-label="Lista">${I.list}</button>
+    </div>
   </div>
-  ${!list.length ? emptyBox(ui.projectsArchived ? 'No hay proyectos archivados.' : 'Crea un proyecto y divídelo en objetivos y tareas pequeñas.')
+  ${!list.length ? (ui.projectsArchived ? emptyBox('No hay proyectos archivados.') : `<div class="empty">Crea un proyecto y divídelo en objetivos y tareas pequeñas.<div class="tpl-suggest"><div class="small muted">O empieza con una plantilla:</div><div class="chips-row">${BUILTIN_TEMPLATES.slice(0, 4).map(t => `<button class="chip-btn" data-act="tpl-pick" data-id="${t.id}">${t.data.project.icon} ${esc(t.name)}</button>`).join('')}</div></div></div>`)
     : ui.projectsView === 'list' ? `<ul class="proj-list glass">${list.map(projectRow).join('')}</ul>` : `<div class="grid">${list.map(projectCard).join('')}</div>`}
   </div>`;
 }
@@ -713,7 +712,7 @@ function viewProject(id, sub) {
       <p class="hint">Aquí también aparecen las tareas de los objetivos de este proyecto.</p></div>`;
   }
   return `
-  <div class="page">
+  <div class="page page-project">
   ${pageHead({ eyebrow: backLink('#proyectos', 'Proyectos'), title: `${esc(p.icon || '')} ${esc(p.name)}`, dot: p.color, actions: `${favBtn(p)}<button class="btn" data-act="templates" data-kind="project" data-id="${p.id}" title="Guardar como plantilla">${I.template}<span>Plantilla</span></button><button class="btn" data-act="edit-project" data-id="${p.id}">Editar</button>` })}
   <div class="segmented" role="tablist">${[['resumen', 'Resumen'], ['objetivos', 'Objetivos'], ['tareas', 'Tareas']].map(([v, l]) => `<button role="tab" class="${tab === v ? 'on' : ''}" data-act="proj-tab" data-id="${p.id}" data-v="${v}">${l}</button>`).join('')}</div>
   ${body}
@@ -2025,12 +2024,8 @@ document.addEventListener('click', e => {
       save(); navigate(() => route()); return;
     }
     case 'tasks-tab': state.settings.ui.tasksTab = el.dataset.v; save(); navigate(() => route()); return;
-    case 'new-project': {
-      const tpls = (state.templates || []).filter(t => t.kind === 'project');
-      if (!tpls.length) { projectModal({}); return; }
-      actionSheet('Nuevo proyecto', [['Proyecto vacío', I.plus, () => projectModal({})], ...tpls.map(t => [`Desde «${esc(t.name)}»`, I.template, () => useProjectTemplate(t)])]);
-      return;
-    }
+    case 'new-project': newProjectSheet(); return;
+    case 'tpl-pick': { const t = projectTemplateById(el.dataset.id); if (t) templatePreview(t); return; }
     case 'templates': templatesSheet(el.dataset.kind, { ws: el.dataset.ws || startOfWeek(todayStr()), projectId: id || null }); return;
     case 'trash-open': trashSheet(); return;
     case 'bulk-resched': bulkReschedSheet(); return;

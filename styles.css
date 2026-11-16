@@ -1443,3 +1443,46 @@ dialog.is-closing::backdrop { animation: fade-out .2s forwards; }
 .focus-layer.focus-full .ring.big .time { font-size: calc(var(--rs) * .2); font-weight: 600; }
 @media (min-width: 700px) { .focus-layer.focus-full .focus-card { padding-top: calc(28px + env(safe-area-inset-top)); } .focus-layer.focus-full .focus-close, .focus-layer.focus-full .focus-fullbtn { top: calc(26px + env(safe-area-inset-top)); } }
 @media (prefers-reduced-motion: reduce) { #app.page-enter > *, .focus-card.swap * { animation: none !important; } .seg-slide::before, .focus-layer { transition: none; } }
+
+/* v24: Proyectos (títulos completos, barra de vista, plantillas hechas) */
+.page-projects h1, .page-project h1, .item-card .name, .proj-row .name { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.page-projects .eyebrow, .page-project .eyebrow { white-space: normal; height: auto; }
+.page-project .page-head { flex-wrap: wrap; align-items: flex-end; }
+.page-project .ph-text { flex: 1 1 240px; }
+.page-project .ph-actions { flex-wrap: wrap; }
+.item-card .top .swatch, .proj-row .swatch { flex: none; }
+.item-card .top .name { flex: 1; min-width: 0; line-height: 1.25; }
+.item-card .top { align-items: flex-start; }
+.item-card .top .fav { margin: -4px -6px 0 0; }
+.item-card[style*="--c"] .progress > span { background: var(--c); }
+.page-projects .toolbar .view-switch { margin-left: auto; }
+.tpl-blank { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border: 0; border-radius: 16px; background: var(--fill); color: var(--text); text-align: left; cursor: pointer; font: inherit; }
+.tpl-blank .grow { display: flex; flex-direction: column; gap: 2px; }
+.tpl-blank .tpl-ic { background: var(--action-bg); color: var(--on-action); }
+.tpl-blank .tpl-ic svg { width: 20px; height: 20px; }
+.tpl-h { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 4px 0 -6px; }
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.tpl-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px; border: 0; border-radius: 16px; background: var(--fill); color: var(--text); text-align: left; cursor: pointer; font: inherit; transition: transform .15s; }
+.tpl-card:active { transform: scale(.97); }
+.tpl-ic { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-size: 20px; flex: none; background: color-mix(in srgb, var(--c, #007aff) 22%, transparent); }
+.tpl-name { font-weight: 600; font-size: 15px; line-height: 1.25; }
+.tpl-meta { font-size: 12px; color: var(--muted); }
+.tpl-hero { display: flex; align-items: center; gap: 12px; }
+.tpl-goal { background: var(--fill); border-radius: 14px; padding: 10px 12px; }
+.tpl-goal-h { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+.tpl-tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.tpl-tasks li { display: flex; justify-content: space-between; gap: 10px; }
+.tpl-tasks li .small { flex: none; }
+.tpl-suggest { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.tpl-suggest .chips-row { flex-wrap: wrap; justify-content: center; }
+.tpl-suggest .chip-btn { background: var(--fill-2); color: var(--text); font-weight: 500; }
+@media (max-width: 600px) {
+  .page-projects .toolbar .segmented { flex: 1; }
+  .page-projects .toolbar .view-switch { order: 1; flex: none; margin-left: 0; }
+  .page-projects .toolbar .view-switch button { flex: none; }
+  .page-projects .toolbar > :not(.segmented):not(.view-switch) { order: 2; }
+}
+/* Aviso: ocupa lo que necesita (antes se encogía a media pantalla y partía el texto palabra a palabra) */
+#toast { width: max-content; }
+#toast.actionable > span { flex: 1; min-width: 0; text-align: left; }
+.toast-btn { flex: none; }
