@@ -1403,11 +1403,43 @@ ul.plain { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-di
 .sum-big { font-size: 44px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .sum-dis { width: 100%; text-align: left; background: var(--fill); border-radius: 14px; padding: 10px 12px; }
 .focus-summary .rate .chip-btn { font-size: 22px; padding: 6px 12px; }
-.focus-layer.focus-full { background: var(--bg, #000); -webkit-backdrop-filter: none; backdrop-filter: none; }
 .focus-layer.focus-full .focus-card { max-width: 560px; background: transparent; box-shadow: none; border: 0; }
 .focus-layer.focus-full .focus-extra { display: none; }
-.focus-layer.focus-full .focus-title { text-align: center; padding: 0 8px; margin-top: 30px; }
-.focus-layer.focus-full .eyebrow { text-align: center; padding: 0; }
-.focus-layer.focus-full .ring.big, .focus-layer.focus-full .ring.big svg { width: min(72vw, 300px); height: min(72vw, 300px); }
-.focus-layer.focus-full .ring.big .time { font-size: clamp(44px, 14vw, 64px); }
 .focus-card.is-summary .focus-extra { display: none; }
+
+/* v23: transiciones suaves y enfoque a pantalla completa en el móvil */
+#app.page-enter > * { animation: page-in .3s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes page-in { from { opacity: 0; transform: translateY(10px); } }
+dialog.is-closing { animation: sheet-down .2s cubic-bezier(.4,0,1,1) forwards; }
+dialog.is-closing::backdrop { animation: fade-out .2s forwards; }
+@keyframes sheet-down { to { transform: translateY(100%); } }
+@keyframes fade-out { to { opacity: 0; } }
+@media (min-width: 640px) { dialog.is-closing { animation: pop-out .18s ease-in forwards; } }
+@keyframes pop-out { to { transform: scale(.96); opacity: 0; } }
+.focus-layer { transition: background-color .3s ease, -webkit-backdrop-filter .3s ease, backdrop-filter .3s ease; }
+.focus-layer.is-closing { animation: fade-out .19s ease-in forwards; }
+.focus-layer.is-closing .focus-card { animation: pop-out .19s ease-in forwards; }
+.focus-card.no-pop { animation: none; }
+.focus-card.swap .focus-plan, .focus-card.swap .focus-timer > .chips-row, .focus-card.swap #focus-sub { animation: swap-in .3s cubic-bezier(.2,.8,.2,1); }
+@keyframes swap-in { from { opacity: 0; transform: translateY(4px); } }
+/* Selector deslizante (Sesión única / Con descansos) */
+:root { --seg-thumb: #fff; }
+@media (prefers-color-scheme: dark) { :root { --seg-thumb: rgba(255, 255, 255, .17); } }
+.segmented button.on { background: var(--seg-thumb); }
+.seg-slide { position: relative; isolation: isolate; }
+.seg-slide::before { content: ""; position: absolute; z-index: -1; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px); border-radius: 8px; background: var(--seg-thumb); box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.04); transform: translateX(calc(var(--i, 0) * 100%)); transition: transform .32s cubic-bezier(.2,.8,.2,1); }
+.seg-slide button, .seg-slide button.on { background: transparent; box-shadow: none; font-weight: 600; color: var(--muted); transition: color .25s; }
+.seg-slide button.on { color: var(--text); }
+/* Pantalla completa: ocupa todo, respeta la muesca y reparte arriba / centro / abajo */
+.focus-layer.focus-full { padding: 0; place-items: stretch; background: var(--solid); -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0); }
+.focus-layer.focus-full .focus-card { --rs: min(62vw, 32vh, 280px); width: 100%; max-width: 560px; min-height: 100%; margin: 0 auto; border-radius: 0; border: 0; box-shadow: none; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; padding: calc(18px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom)); justify-content: flex-start; }
+.focus-layer.focus-full .focus-card.is-running { --rs: min(76vw, 44vh, 330px); }
+.focus-layer.focus-full .focus-close, .focus-layer.focus-full .focus-fullbtn { top: calc(12px + env(safe-area-inset-top)); }
+.focus-layer.focus-full .eyebrow { text-align: left; padding-right: 96px; min-height: 32px; display: flex; align-items: center; }
+.focus-layer.focus-full .focus-title { margin: auto 0 0; text-align: center; padding: 0 8px; font-size: clamp(22px, 6.4vw, 30px); }
+.focus-layer.focus-full .focus-actions { margin-top: auto; }
+.focus-layer.focus-full .ring.big, .focus-layer.focus-full .ring.big svg { width: var(--rs); height: var(--rs); }
+.focus-layer.focus-full .ring.big circle { stroke-width: 4.5; }
+.focus-layer.focus-full .ring.big .time { font-size: calc(var(--rs) * .2); font-weight: 600; }
+@media (min-width: 700px) { .focus-layer.focus-full .focus-card { padding-top: calc(28px + env(safe-area-inset-top)); } .focus-layer.focus-full .focus-close, .focus-layer.focus-full .focus-fullbtn { top: calc(26px + env(safe-area-inset-top)); } }
+@media (prefers-reduced-motion: reduce) { #app.page-enter > *, .focus-card.swap * { animation: none !important; } .seg-slide::before, .focus-layer { transition: none; } }

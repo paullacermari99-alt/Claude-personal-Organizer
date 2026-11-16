@@ -87,7 +87,7 @@ function endSheet() {
   dlg.style.transition = 'transform .25s cubic-bezier(.2,.9,.3,1)';
   if (dy > 120 || (dy > 30 && v > .6)) {
     dlg.style.transform = 'translateY(100%)';
-    setTimeout(() => { dlg.close(); dlg.style.transform = ''; dlg.style.transition = ''; }, 230);
+    setTimeout(() => { HTMLDialogElement.prototype.close.call(dlg); dlg.style.transform = ''; dlg.style.transition = ''; }, 230);
   } else {
     dlg.style.transform = '';
     setTimeout(() => { dlg.style.transition = ''; }, 260);

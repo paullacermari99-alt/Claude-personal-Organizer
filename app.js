@@ -64,11 +64,18 @@ function route() {
 function rerender() { const y = window.scrollY; route(); window.scrollTo(0, y); }
 /* En el móvil el cambio de pantalla es instantáneo, como las pestañas de una app: el fundido
    entre pantallas oscurecía un instante el fondo (parpadeo). En el ordenador, fundido suave. */
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 function navigate(fn) {
-  if (document.startViewTransition && !isPhone() && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (document.startViewTransition && !isPhone() && !reduceMotion()) {
     const vt = document.startViewTransition(fn);
     [vt.ready, vt.finished, vt.updateCallbackDone].forEach(pr => pr && pr.catch(() => {}));
-  } else fn();
+  } else { fn(); if (!reduceMotion()) pageEnter(); }
+}
+/* v23: en el móvil la pantalla nueva entra con un fundido corto (solo el contenido, el fondo no cambia: sin parpadeo) */
+function pageEnter() {
+  const app = $('#app');
+  app.classList.remove('page-enter'); void app.offsetWidth; app.classList.add('page-enter');
+  clearTimeout(pageEnter.t); pageEnter.t = setTimeout(() => app.classList.remove('page-enter'), 420);
 }
 /* Actualiza solo las zonas data-live (contadores, progreso…) sin repintar listas:
    así nada se mueve ni cambia de tamaño al marcar una tarea. */
@@ -1015,7 +1022,7 @@ function openModal(title, body, opts = {}) {
     ${body}
     ${opts.onDelete ? `<button type="button" class="btn wide danger" data-modal="delete">${opts.deleteLabel || 'Eliminar'}</button>` : ''}`;
   modalOpts = opts;
-  if (modal.open) modal.close();
+  closeModalNow();
   modal.showModal();
   modalForm.scrollTop = 0;
   /* Sin esto el navegador enfoca «Cancelar» y lo dibuja como seleccionado */
@@ -1057,6 +1064,19 @@ modalForm.addEventListener('change', e => {
   if (e.target.name === 'p' && e.target.checked && $$('input[name=p]:checked', modalForm).length > 3) { e.target.checked = false; toast('Como máximo 3 prioridades'); }
 });
 modal.addEventListener('click', e => { if (e.target === modal) modal.close(); });
+/* v23: la hoja se va deslizando hacia abajo (o se desvanece en el ordenador) en vez de desaparecer de golpe */
+const nativeClose = HTMLDialogElement.prototype.close;
+function closeModalNow() {
+  clearTimeout(modal._t); modal.classList.remove('is-closing');
+  if (modal.open) nativeClose.call(modal);
+}
+modal.close = function (v) {
+  if (!modal.open || modal.classList.contains('is-closing')) return;
+  if (reduceMotion()) return nativeClose.call(modal, v);
+  modal.classList.add('is-closing');
+  modal._t = setTimeout(() => { modal.classList.remove('is-closing'); if (modal.open) nativeClose.call(modal, v); }, 200);
+};
+modal.addEventListener('cancel', e => { e.preventDefault(); modal.close(); });
 
 function optionList(items, selected, label, emptyLabel) {
   return `<option value="">${emptyLabel}</option>` + items.map(i => `<option value="${i.id}" ${i.id === selected ? 'selected' : ''}>${esc(label(i))}</option>`).join('');
@@ -1550,17 +1570,56 @@ function openFocus(id) {
   focusTaskId = id;
   if (!t.startedAt) { t.startedAt = Date.now(); save(); }
   if (!SINGLE_MINS.includes(focusMins)) focusMins = SINGLE_MINS.includes(state.settings.focusMinutes) ? state.settings.focusMinutes : 25;
+  const layer = $('#focus');
+  clearTimeout(closeFocus.t); layer.classList.remove('is-closing');
+  const wasOpen = !layer.hidden;
+  if (!wasOpen) layer.innerHTML = '';
   renderFocus();
-  $('#focus').hidden = false;
+  layer.hidden = false;
   document.body.classList.add('focus-open');
 }
 function closeFocus() {
-  $('#focus').hidden = true;
-  $('#focus').classList.remove('focus-full');
+  const layer = $('#focus');
   try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch {}
   { const s = getSummary(); if (s && s.taskId === focusTaskId) setSummary(null); }
   document.body.classList.remove('focus-open');
-  updateTimerUI();
+  const done = () => { layer.hidden = true; layer.classList.remove('focus-full', 'is-closing'); updateTimerUI(); };
+  clearTimeout(closeFocus.t);
+  if (layer.hidden || reduceMotion()) return done();
+  layer.classList.add('is-closing');
+  closeFocus.t = setTimeout(done, 190);
+}
+/* v23: pantalla completa con fundido (sin salto) */
+function toggleFocusFull() {
+  const layer = $('#focus'), on = !layer.classList.contains('focus-full');
+  try { if (on) { if (!document.fullscreenElement && document.documentElement.requestFullscreen && !isPhone()) document.documentElement.requestFullscreen().catch(() => {}); } else if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch {}
+  const swap = () => { layer.classList.toggle('focus-full', on); renderFocus(true); };
+  const card = layer.querySelector('.focus-card');
+  if (!card || reduceMotion() || !card.animate) return swap();
+  if (toggleFocusFull.busy) return;
+  toggleFocusFull.busy = true;
+  const out = card.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `scale(${on ? .98 : 1.02})` }], { duration: 150, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' });
+  const go = () => {
+    toggleFocusFull.busy = false;
+    swap();
+    const c = layer.querySelector('.focus-card');
+    if (c) c.animate([{ opacity: 0, transform: `scale(${on ? 1.02 : .98})` }, { opacity: 1, transform: 'none' }], { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  };
+  out.finished.then(go, go);
+}
+/* v23: al cambiar algo dentro del enfoque la tarjeta no vuelve a «saltar»: crece o encoge suave
+   y el selector de modo se desliza */
+function morphFocus(card, prev) {
+  if (reduceMotion() || !card.animate) return;
+  const seg = card.querySelector('.focus-mode');
+  if (seg && prev.i != null) {
+    const to = seg.style.getPropertyValue('--i');
+    if (to !== prev.i) { seg.style.setProperty('--i', prev.i); void seg.offsetWidth; seg.style.setProperty('--i', to); }
+  }
+  if (prev.mode && prev.mode !== card.dataset.mode) card.classList.add('swap');
+  if ($('#focus').classList.contains('focus-full')) return;
+  const h = card.offsetHeight;
+  if (Math.abs(h - prev.h) > 2) card.animate([{ height: prev.h + 'px', overflow: 'hidden' }, { height: h + 'px', overflow: 'hidden' }], { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' });
 }
 const chips = (act, vals, cur, suffix = ' min') => `<div class="chips-row">${vals.map(v => `<button class="chip-btn ${v === cur ? 'on' : ''}" data-act="${act}" data-v="${v}">${v}${suffix}</button>`).join('')}</div>`;
 /* Resumen de la última sesión terminada (se enseña una vez al volver) */
@@ -1578,16 +1637,18 @@ function summaryHTML(s, t) {
     <div class="chips-row rate">${faces.map(([v, f, l]) => `<button class="chip-btn ${s.rating === v ? 'on' : ''}" data-act="focus-rate" data-v="${v}" aria-label="${l}" title="${l}">${f}</button>`).join('')}</div>
   </div>`;
 }
-function renderFocus() {
+function renderFocus(noMorph) {
   const t = task(focusTaskId);
   if (!t) { closeFocus(); return; }
+  const layer = $('#focus'), prevCard = layer.hidden ? null : layer.querySelector('.focus-card');
+  const prev = prevCard && { h: prevCard.offsetHeight, mode: prevCard.dataset.mode, i: prevCard.querySelector('.focus-mode') ? prevCard.querySelector('.focus-mode').style.getPropertyValue('--i') : null };
   const sum = getSummary(), showSum = sum && sum.taskId === t.id && !getTimer();
   const full = $('#focus').classList.contains('focus-full');
   const timer = getTimer(), mine = timer && timer.taskId === t.id, paused = mine && timer.pausedLeft != null;
   const other = timer && !mine, plan = focusPlan();
   const total = plan.rounds * plan.work + (plan.rounds - 1) * plan.brk;
   const setup = mine ? '' : `
-      <div class="segmented compact focus-mode" role="tablist">
+      <div class="segmented compact focus-mode seg-slide" role="tablist" style="--i:${plan.mode === 'long' ? 1 : 0}">
         <button role="tab" class="${plan.mode === 'single' ? 'on' : ''}" data-act="focus-mode" data-v="single">Sesión única</button>
         <button role="tab" class="${plan.mode === 'long' ? 'on' : ''}" data-act="focus-mode" data-v="long">Con descansos</button>
       </div>
@@ -1603,7 +1664,7 @@ function renderFocus() {
     : plan.mode === 'long' ? `${plan.rounds} rondas de ${plan.work} min con ${plan.brk} min de descanso: ${total >= 60 ? Math.floor(total / 60) + ' h ' + (total % 60 ? total % 60 + ' min' : '') : total + ' min'} en total.`
     : 'Una sola sesión, sin descansos. El temporizador es opcional.';
   const startMins = plan.mode === 'long' ? plan.work : focusMins;
-  $('#focus').innerHTML = `<div class="focus-card glass ${showSum ? 'is-summary' : ''}" role="dialog" aria-label="Enfoque">
+  layer.innerHTML = `<div class="focus-card glass ${showSum ? 'is-summary' : ''} ${mine ? 'is-running' : ''} ${prevCard ? 'no-pop' : ''}" data-mode="${mine ? 'run' : showSum ? 'sum' : plan.mode}" role="dialog" aria-label="Enfoque">
     <button class="icon-btn round focus-close" data-act="focus-close" aria-label="Cerrar">${I.close}</button>
     <button class="icon-btn round focus-fullbtn" data-act="focus-full" aria-label="${full ? 'Salir de pantalla completa' : 'Pantalla completa'}" title="${full ? 'Salir de pantalla completa' : 'Pantalla completa'}">${full ? I.shrink : I.expand}</button>
     <div class="eyebrow">${showSum ? 'Sesión terminada' : 'Enfoque'}</div>
@@ -1633,6 +1694,7 @@ function renderFocus() {
       <button class="btn primary" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar tarea'}</button>
     </div>
   </div>`;
+  if (prev && !noMorph) morphFocus(layer.querySelector('.focus-card'), prev);
   updateTimerUI();
 }
 /* Minutos de trabajo hechos en la fase actual (lo de rondas anteriores ya está apuntado) */
@@ -1989,7 +2051,7 @@ document.addEventListener('click', e => {
       toast(n ? `Tiempo reservado para ${n} prioridad${n === 1 ? '' : 'es'}` : 'Todas tus prioridades ya tienen tiempo reservado', n ? { action: 'Deshacer', onAction: () => { state.events = state.events.filter(x => !added.includes(x.id)); save(); rerender(); } } : {});
       return;
     }
-    case 'focus-full': $('#focus').classList.toggle('focus-full'); try { if ($('#focus').classList.contains('focus-full')) { if (!document.fullscreenElement && document.documentElement.requestFullscreen && !isPhone()) document.documentElement.requestFullscreen().catch(() => {}); } else if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch {} renderFocus(); return;
+    case 'focus-full': toggleFocusFull(); return;
     case 'focus-rate': { const s = getSummary(); if (s) { s.rating = Number(el.dataset.v); setSummary(s); const log = state.focusLog.filter(f => f.taskId === s.taskId && f.date === s.date); log.forEach(f => { f.rating = s.rating; }); save(); renderFocus(); } return; }
     case 'focus-again': setSummary(null); renderFocus(); return;
     case 'edit-project': projectModal(project(id)); return;
