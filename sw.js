@@ -1,6 +1,6 @@
 /* Service worker: permite abrir la app sin conexión.
    Sube CACHE cuando cambien los archivos para forzar la actualización. */
-const CACHE = 'organizador-v1';
+const CACHE = 'organizador-v2';
 const ASSETS = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
