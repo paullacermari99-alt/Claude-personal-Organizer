@@ -39,7 +39,10 @@ function openSelect(btn) {
   pop.className = 'sel-pop';
   pop.setAttribute('role', 'listbox');
   pop.innerHTML = [...sel.options].map((o, i) => `<div class="sel-opt ${i === sel.selectedIndex ? 'on' : ''} ${o.disabled ? 'off' : ''}" role="option" data-i="${i}" aria-selected="${i === sel.selectedIndex}">${esc(o.textContent)}</div>`).join('');
+  /* La lista va en la "capa superior" (popover): así no la recorta ni la desplaza el formulario,
+     que tiene desenfoque y desplazamiento propios. Dentro del formulario para que siga activa. */
   (btn.closest('dialog') || document.body).appendChild(pop);
+  if (pop.showPopover) { pop.popover = 'manual'; try { pop.showPopover(); } catch (_) { /* sin capa superior */ } }
   Object.assign(selUI, { pop, sel, btn, idx: sel.selectedIndex });
   btn.setAttribute('aria-expanded', 'true');
   btn.classList.add('open');
@@ -58,9 +61,17 @@ function placeSelect() {
   const w = Math.max(r.width, 180);
   pop.style.maxHeight = maxH + 'px';
   pop.style.width = w + 'px';
-  pop.style.left = Math.max(8, Math.min(r.left, vw - w - 8)) + 'px';
-  if (up) { pop.style.top = ''; pop.style.bottom = (vh - r.top + 6) + 'px'; }
-  else { pop.style.bottom = ''; pop.style.top = (r.bottom + 6) + 'px'; }
+  const left = Math.max(8, Math.min(r.left, vw - w - 8));
+  pop.style.bottom = '';
+  pop.style.left = left + 'px';
+  pop.style.top = '0px';
+  const h = pop.offsetHeight;
+  const top = up ? Math.max(8, r.top - 6 - h) : r.bottom + 6;
+  pop.style.top = top + 'px';
+  /* Si algún contenedor desplaza la referencia (navegadores sin popover), se compensa la diferencia */
+  const got = pop.getBoundingClientRect();
+  if (Math.abs(got.left - left) > 1) pop.style.left = (left + left - got.left) + 'px';
+  if (Math.abs(got.top - top) > 1) pop.style.top = (top + top - got.top) + 'px';
 }
 function highlight(i) {
   const { pop } = selUI;
@@ -89,6 +100,7 @@ function chooseSelect(i) {
 }
 function closeSelect() {
   if (!selUI.pop) return;
+  if (selUI.pop.hidePopover && selUI.pop.matches(':popover-open')) try { selUI.pop.hidePopover(); } catch (_) { /* ya cerrada */ }
   selUI.pop.remove();
   if (selUI.btn) { selUI.btn.setAttribute('aria-expanded', 'false'); selUI.btn.classList.remove('open'); }
   selUI.pop = null;

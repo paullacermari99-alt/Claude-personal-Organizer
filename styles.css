@@ -1025,6 +1025,7 @@ select.sel-native { display: none !important; }
   background: var(--solid, var(--glass-strong)); border: .5px solid var(--separator); border-radius: 14px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, .22); animation: fade .12s;
 }
+.sel-pop[popover] { inset: auto; margin: 0; color: var(--text); }
 .sel-opt { padding: 9px 12px 9px 34px; border-radius: 9px; font-size: 15px; color: var(--text); cursor: pointer; position: relative; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sel-opt.hi { background: var(--fill); }
 @media (hover: hover) { .sel-opt:hover { background: var(--fill); } }
@@ -1053,3 +1054,13 @@ body::before { opacity: .45; }
 .ev.ext { background: color-mix(in srgb, var(--c) 10%, var(--glass-strong)); border-left-style: dashed; }
 .wk-ev.ext { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent); }
 .block.ext::before { opacity: .5; }
+
+/* v14.1: en móvil el título de Hoy se ajusta para que la fecha se lea entera */
+@media (max-width: 480px) {
+  .page-today .page-head h1 { font-size: clamp(21px, 6.6vw, 30px); }
+  .page-today .ph-actions { gap: 6px; }
+  /* En el móvil «Hoy» del menú ya vuelve al día de hoy */
+  .page-today .ph-actions [data-n="0"] { display: none; }
+}
+.page-head .t-short { display: none; }
+@media (max-width: 370px) { .page-head .t-long { display: none; } .page-head .t-short { display: inline; } }

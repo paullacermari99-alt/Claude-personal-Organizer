@@ -81,6 +81,13 @@ function refreshLive() {
     el.innerHTML = fresh.innerHTML;
   });
 }
+/* «Hoy» en el menú siempre vuelve al día de hoy, aunque estuvieras mirando otro día */
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[data-nav="hoy"]');
+  if (!a || viewDate === todayStr()) return;
+  viewDate = todayStr();
+  if (location.hash.startsWith('#hoy')) { e.preventDefault(); navigate(() => route()); }
+});
 window.addEventListener('hashchange', () => { if (shortcutHash()) return; navigate(() => { route(); window.scrollTo(0, 0); }); });
 
 /* ---------- Piezas comunes ---------- */
@@ -337,7 +344,7 @@ function viewToday() {
   <div class="page page-today">
   ${pageHead({
     eyebrow: isToday ? `${weekday} · ${greeting}, Pau` : `${weekday} · ${relDay(d)}`,
-    title: esc(dayMonth),
+    title: `<span class="t-long">${esc(dayMonth)}</span><span class="t-short">${esc(dtf('es-ES', { day: 'numeric', month: 'short' }).format(parseYmd(d)).replace('.', ''))}</span>`,
     actions: `<button class="icon-btn round" data-act="day" data-n="-1" aria-label="Día anterior">${I.left}</button>
       ${isToday ? '' : `<button class="btn small" data-act="day" data-n="0">Hoy</button>`}
       <button class="icon-btn round" data-act="day" data-n="1" aria-label="Día siguiente">${I.right}</button>
