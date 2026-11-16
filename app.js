@@ -936,7 +936,7 @@ function viewSettings() {
       <div class="item"><span>Zona horaria</span><select data-set="timezone" class="tz">${tzs.map(z => `<option ${z === s.timezone ? 'selected' : ''}>${esc(z)}</option>`).join('')}</select></div>
       <div class="item"><span>Primer día de la semana</span>${sel('weekStart', [[1, 'Lunes'], [0, 'Domingo']], s.weekStart, true)}</div>
       <div class="item"><span>Tu jornada</span><div class="inline"><input type="time" data-set="dayStart" value="${esc(s.dayStart || '08:00')}" aria-label="Empieza"><span class="muted">a</span><input type="time" data-set="dayEnd" value="${esc(s.dayEnd || '21:00')}" aria-label="Termina"></div></div>
-      <div class="item"><span>Temporizador de enfoque</span>${sel('focusMinutes', [[5, '5 min'], [15, '15 min'], [25, '25 min']], s.focusMinutes, true)}</div>
+      <div class="item"><span>Temporizador de enfoque</span>${sel('focusMinutes', SINGLE_MINS.map(m => [m, m + ' min']), s.focusMinutes, true)}</div>
     </div>
   </div>
 
@@ -1153,6 +1153,7 @@ function taskModal(t0 = {}) {
     },
     onDelete: isNew ? null : () => {
       const removed = task(t.id), idx = state.tasks.indexOf(removed);
+      { const tm = getTimer(); if (tm && tm.taskId === t.id) cancelTimer(false); }
       state.tasks = state.tasks.filter(x => x.id !== t.id);
       const evs2 = state.events.filter(e => e.taskId === t.id);
       state.events = state.events.filter(e => e.taskId !== t.id);
@@ -1468,19 +1469,49 @@ function projectModal(p0 = {}) {
 }
 
 /* ---------- Enfoque ---------- */
-/* Temporizador: { taskId, minutes, endAt, pausedLeft } — pausedLeft (ms) solo mientras está en pausa. */
+/* Temporizador: { taskId, mode: 'single'|'long', work, brk, rounds, round, phase: 'work'|'break',
+   minutes (de la fase actual), endAt, pausedLeft } — pausedLeft (ms) solo mientras está en pausa.
+   Sesión larga: trabajo → descanso → trabajo… sin descanso tras la última ronda. */
+
+const SINGLE_MINS = [5, 15, 25, 45, 60];
+const LONG_OPTS = { work: [25, 45, 50], brk: [5, 10, 15], rounds: [2, 3, 4] };
+function focusPlan() {
+  const p = state.settings.focusPlan || {};
+  return {
+    mode: p.mode === 'long' ? 'long' : 'single',
+    work: LONG_OPTS.work.includes(p.work) ? p.work : 25,
+    brk: LONG_OPTS.brk.includes(p.brk) ? p.brk : 5,
+    rounds: LONG_OPTS.rounds.includes(p.rounds) ? p.rounds : 4,
+  };
+}
+function setFocusPlan(k, v) { state.settings.focusPlan = { ...focusPlan(), [k]: v }; save(true); }
 
 function getTimer() { try { return JSON.parse(localStorage.getItem(TIMER_KEY)) || null; } catch { return null; } }
 function setTimer(t) {
   try { t ? localStorage.setItem(TIMER_KEY, JSON.stringify(t)) : localStorage.removeItem(TIMER_KEY); } catch {}
-  /* El servidor avisa al terminar aunque la app esté cerrada: necesita saber cuándo acaba */
-  const end = t && t.pausedLeft == null ? { endAt: t.endAt, title: (task(t.taskId) || {}).title || '' } : null;
+  /* El servidor avisa de cada cambio (descanso, vuelta, fin) aunque la app esté cerrada */
+  const end = t && t.pausedLeft == null ? { endAt: timerSchedule(t).slice(-1)[0].at, title: (task(t.taskId) || {}).title || '', events: timerSchedule(t) } : null;
   if (JSON.stringify(state.focusEnd || null) !== JSON.stringify(end)) { state.focusEnd = end; save(); }
-  focusNote();
+  focusNote(true);
+}
+/* Próximos avisos de la sesión en marcha: cuándo y qué decir */
+function timerSchedule(tm) {
+  const name = (task(tm.taskId) || {}).title || 'Enfoque';
+  const out = [];
+  let at = tm.endAt, round = tm.round || 1, phase = tm.phase || 'work';
+  const long = tm.mode === 'long';
+  for (let i = 0; i < 20; i++) {
+    if (!long || (phase === 'work' && round >= tm.rounds)) { out.push({ at, title: 'Enfoque completado', body: `${name}. ${long ? `${tm.rounds} rondas hechas. ` : ''}Buen trabajo.` }); break; }
+    if (phase === 'work') { out.push({ at, title: `Descanso de ${tm.brk} min`, body: `Ronda ${round} de ${tm.rounds} hecha. Levántate un momento.` }); phase = 'break'; at += tm.brk * 60000; }
+    else { round++; out.push({ at, title: `Ronda ${round} de ${tm.rounds}`, body: `Vuelve a: ${name}` }); phase = 'work'; at += tm.work * 60000; }
+  }
+  return out;
 }
 const timerLeft = tm => tm.pausedLeft != null ? tm.pausedLeft : Math.max(0, tm.endAt - Date.now());
 const mmss = ms => `${pad(Math.floor(ms / 60000))}:${pad(Math.floor(ms / 1000) % 60)}`;
 const clockAt = ms => dtf('es-ES', { timeZone: state.settings.timezone || undefined, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ms));
+const sessionEnd = tm => timerSchedule(tm).slice(-1)[0].at;
+const phaseLabel = tm => tm.mode !== 'long' ? '' : tm.phase === 'break' ? `Descanso · ronda ${tm.round} de ${tm.rounds}` : `Ronda ${tm.round} de ${tm.rounds}`;
 const RING = 2 * Math.PI * 38;
 
 /* Aviso fijo con el tiempo que queda, visible fuera de la app (pantalla de bloqueo y bandeja).
@@ -1492,13 +1523,15 @@ function focusNote(force) {
   const tm = getTimer();
   if (!tm || document.visibilityState === 'visible' || !canNotify()) { closeFocusNote(); return; }
   const left = timerLeft(tm), paused = tm.pausedLeft != null, mins = Math.max(1, Math.ceil(left / 60000));
-  const key = paused ? 'p' + mins : mins;
+  const key = (paused ? 'p' : '') + tm.phase + tm.round + ':' + mins;
   if (!force && key === focusNoteMin) return;
   focusNoteMin = key;
-  const t = task(tm.taskId);
-  const title = paused ? `En pausa · quedan ${mmss(left)}` : `Enfoque · quedan ${mins} min`;
-  const body = `${t ? t.title : 'Enfoque'}\n${paused ? 'Vuelve a la app para seguir.' : 'Termina a las ' + clockAt(tm.endAt) + '.'}`;
-  const opts = { body, tag: 'focus-live', silent: true, renotify: false, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url: './#hoy' } };
+  const t = task(tm.taskId), brk = tm.phase === 'break';
+  const title = paused ? `En pausa · quedan ${mmss(left)}` : `${brk ? 'Descanso' : 'Enfoque'} · quedan ${mins} min`;
+  const lines = [t ? t.title : 'Enfoque'];
+  if (tm.mode === 'long') lines.push(phaseLabel(tm) + '.');
+  lines.push(paused ? 'Vuelve a la app para seguir.' : brk ? `Vuelves a las ${clockAt(tm.endAt)}.` : tm.mode === 'long' && tm.round < tm.rounds ? `Descanso a las ${clockAt(tm.endAt)}.` : `Termina a las ${clockAt(tm.endAt)}.`);
+  const opts = { body: lines.join('\n'), tag: 'focus-live', silent: true, renotify: false, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url: './#hoy' } };
   try {
     const r = swReg();
     if (r) r.then(reg => reg.showNotification(title, opts)).catch(() => {});
@@ -1523,7 +1556,7 @@ function openFocus(id) {
   if (!t) return;
   focusTaskId = id;
   if (!t.startedAt) { t.startedAt = Date.now(); save(); }
-  if (![5, 15, 25].includes(focusMins)) focusMins = [5, 15, 25].includes(state.settings.focusMinutes) ? state.settings.focusMinutes : 25;
+  if (!SINGLE_MINS.includes(focusMins)) focusMins = SINGLE_MINS.includes(state.settings.focusMinutes) ? state.settings.focusMinutes : 25;
   renderFocus();
   $('#focus').hidden = false;
   document.body.classList.add('focus-open');
@@ -1533,11 +1566,30 @@ function closeFocus() {
   document.body.classList.remove('focus-open');
   updateTimerUI();
 }
+const chips = (act, vals, cur, suffix = ' min') => `<div class="chips-row">${vals.map(v => `<button class="chip-btn ${v === cur ? 'on' : ''}" data-act="${act}" data-v="${v}">${v}${suffix}</button>`).join('')}</div>`;
 function renderFocus() {
   const t = task(focusTaskId);
   if (!t) { closeFocus(); return; }
   const timer = getTimer(), mine = timer && timer.taskId === t.id, paused = mine && timer.pausedLeft != null;
-  const other = timer && !mine;
+  const other = timer && !mine, plan = focusPlan();
+  const total = plan.rounds * plan.work + (plan.rounds - 1) * plan.brk;
+  const setup = mine ? '' : `
+      <div class="segmented compact focus-mode" role="tablist">
+        <button role="tab" class="${plan.mode === 'single' ? 'on' : ''}" data-act="focus-mode" data-v="single">Sesión única</button>
+        <button role="tab" class="${plan.mode === 'long' ? 'on' : ''}" data-act="focus-mode" data-v="long">Con descansos</button>
+      </div>
+      ${plan.mode === 'single' ? chips('focus-min', SINGLE_MINS, focusMins) : `
+      <div class="focus-plan">
+        <span>Trabajo</span>${chips('focus-plan-work', LONG_OPTS.work, plan.work)}
+        <span>Descanso</span>${chips('focus-plan-brk', LONG_OPTS.brk, plan.brk)}
+        <span>Rondas</span>${chips('focus-plan-rounds', LONG_OPTS.rounds, plan.rounds, '')}
+      </div>`}`;
+  const sub = paused ? 'En pausa.'
+    : mine ? (timer.mode === 'long' ? `${timer.phase === 'break' ? `Vuelves a las ${clockAt(timer.endAt)}` : timer.round < timer.rounds ? `Descanso a las ${clockAt(timer.endAt)}` : `Termina a las ${clockAt(timer.endAt)}`}. Puedes salir de la app: te avisaré.` : `Termina a las ${clockAt(timer.endAt)}. Puedes salir de la app: te avisaré.`)
+    : other ? 'Hay otro temporizador en marcha; si empiezas este, lo sustituye.'
+    : plan.mode === 'long' ? `${plan.rounds} rondas de ${plan.work} min con ${plan.brk} min de descanso: ${total >= 60 ? Math.floor(total / 60) + ' h ' + (total % 60 ? total % 60 + ' min' : '') : total + ' min'} en total.`
+    : 'Una sola sesión, sin descansos. El temporizador es opcional.';
+  const startMins = plan.mode === 'long' ? plan.work : focusMins;
   $('#focus').innerHTML = `<div class="focus-card glass" role="dialog" aria-label="Enfoque">
     <button class="icon-btn round focus-close" data-act="focus-close" aria-label="Cerrar">${I.close}</button>
     <div class="eyebrow">Enfoque</div>
@@ -1545,82 +1597,111 @@ function renderFocus() {
     <label class="field">¿Por dónde empiezas?<input type="text" data-input="first-step" data-id="${t.id}" value="${esc(t.firstStep)}" placeholder="Ej.: abrir el documento y escribir el título" enterkeyhint="done">
       <span class="hint">Una acción pequeña y concreta, de menos de 2 minutos. Así arrancar cuesta mucho menos.</span></label>
     ${t.subtasks.length ? `<div class="focus-subs">${t.subtasks.map(s => `<label><input type="checkbox" class="check sm" data-act="sub-toggle" data-id="${t.id}" data-sub="${s.id}" ${s.done ? 'checked' : ''}><span>${esc(s.title)}</span></label>`).join('')}</div>` : ''}
-    <div class="focus-timer ${paused ? 'is-paused' : ''}">
+    <div class="focus-timer ${paused ? 'is-paused' : ''} ${mine && timer.phase === 'break' ? 'is-break' : ''}">
+      ${mine && timer.mode === 'long' ? `<div class="focus-phase">${timer.phase === 'break' ? 'Descanso' : 'Trabajo'}<span>${timer.round}/${timer.rounds}</span></div>` : ''}
       <div class="ring big" aria-hidden="true">
         <svg viewBox="0 0 84 84"><circle class="track" cx="42" cy="42" r="38"/><circle class="bar" id="focus-ring" cx="42" cy="42" r="38" stroke-dasharray="${RING}" stroke-dashoffset="0"/></svg>
-        <div class="time" id="focus-time">${pad(focusMins)}:00</div>
+        <div class="time" id="focus-time">${pad(startMins)}:00</div>
       </div>
-      <div class="chips-row">${[5, 15, 25].map(m => `<button class="chip-btn ${m === (mine ? timer.minutes : focusMins) ? 'on' : ''}" data-act="focus-min" data-v="${m}" ${mine ? 'disabled' : ''}>${m} min</button>`).join('')}</div>
-      <p class="muted small" id="focus-sub">${paused ? 'En pausa.' : mine ? `Termina a las ${clockAt(timer.endAt)}. Puedes salir de la app: te avisaré.` : other ? 'Hay otro temporizador en marcha; si empiezas este, lo sustituye.' : 'El temporizador es opcional: también puedes empezar sin él.'}</p>
+      ${setup}
+      <p class="muted small" id="focus-sub">${sub}</p>
     </div>
     <div class="focus-actions">
       ${mine ? `<button class="btn" data-act="focus-reset">${I.reset}<span>Reiniciar</span></button>
         <button class="btn" data-act="${paused ? 'focus-resume' : 'focus-pause'}">${paused ? I.play + '<span>Seguir</span>' : I.pause + '<span>Pausar</span>'}</button>`
-      : `<button class="btn" data-act="focus-start">${I.play}<span>Empezar ${focusMins} min</span></button>`}
+      : `<button class="btn" data-act="focus-start">${I.play}<span>${plan.mode === 'long' ? 'Empezar' : `Empezar ${focusMins} min`}</span></button>`}
       <button class="btn primary" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar tarea'}</button>
     </div>
   </div>`;
+  updateTimerUI();
+}
+/* Minutos de trabajo hechos en la fase actual (lo de rondas anteriores ya está apuntado) */
+function workedNow(tm) { return tm.phase === 'break' ? 0 : Math.floor((tm.minutes * 60000 - timerLeft(tm)) / 60000); }
+function logFocus(minutes, taskId) { if (minutes >= 1) state.focusLog.push({ date: todayStr(), minutes, taskId: taskId || null }); }
+/* Para el contador sin terminar la sesión: al reiniciar, al borrar la tarea o al completarla */
+function cancelTimer(log) {
+  const tm = getTimer();
+  if (!tm) return;
+  if (log) logFocus(workedNow(tm), tm.taskId);
+  setTimer(null);
+  save();
   updateTimerUI();
 }
 function focusAction(act) {
   const tm = getTimer();
   if (act === 'start') {
     askNotify();
-    setTimer({ endAt: Date.now() + focusMins * 60000, minutes: focusMins, taskId: focusTaskId, pausedLeft: null });
-    toast(`A por ello: ${focusMins} minutos solo para esto.`);
+    const plan = focusPlan(), long = plan.mode === 'long', mins = long ? plan.work : focusMins;
+    setTimer({ taskId: focusTaskId, mode: plan.mode, work: long ? plan.work : mins, brk: plan.brk, rounds: long ? plan.rounds : 1, round: 1, phase: 'work', minutes: mins, endAt: Date.now() + mins * 60000, pausedLeft: null });
+    toast(long ? `A por ello: ronda 1 de ${plan.rounds}, ${mins} minutos.` : `A por ello: ${mins} minutos solo para esto.`);
   } else if (!tm) return;
   else if (act === 'pause') setTimer({ ...tm, pausedLeft: timerLeft(tm) });
   else if (act === 'resume') setTimer({ ...tm, endAt: Date.now() + tm.pausedLeft, pausedLeft: null });
   else if (act === 'reset') {
     /* Lo ya trabajado cuenta en Progreso */
-    const done = Math.floor((tm.minutes * 60000 - timerLeft(tm)) / 60000);
-    if (done >= 1) state.focusLog.push({ date: todayStr(), minutes: done, taskId: tm.taskId || null });
-    focusMins = tm.minutes;
-    setTimer(null);
-    save();
+    if (tm.mode !== 'long') focusMins = tm.minutes;
+    cancelTimer(true);
   }
   renderFocus();
 }
+/* La tarea del contador ya no existe o se ha completado: el contador se va con ella */
+function timerOrphan(tm) {
+  const t = tm.taskId && task(tm.taskId);
+  if (t && !t.done) return false;
+  cancelTimer(!!t);
+  if (!$('#focus').hidden) { if (t) renderFocus(); else closeFocus(); }
+  return true;
+}
 function updateTimerUI() {
-  const timer = getTimer();
+  let timer = getTimer();
   const pill = $('#focus-pill');
   const layerOpen = !$('#focus').hidden;
+  if (timer && timerOrphan(timer)) timer = null;
   if (!timer) {
     document.title = 'P Organizer';
     pill.hidden = true;
     const el = $('#focus-time');
-    if (el) { el.textContent = pad(focusMins || 25) + ':00'; $('#focus-ring').style.strokeDashoffset = 0; }
+    if (el) { el.textContent = pad(focusPlan().mode === 'long' ? focusPlan().work : focusMins || 25) + ':00'; $('#focus-ring').style.strokeDashoffset = 0; }
     closeFocusNote();
     return;
   }
   const left = timerLeft(timer), paused = timer.pausedLeft != null;
-  const txt = mmss(left);
-  document.title = `${paused ? '⏸ ' : ''}${txt} · P Organizer`;
+  if (!paused && left <= 0) { advanceTimer(timer); return; }
+  const txt = mmss(left), brk = timer.phase === 'break';
+  document.title = `${paused ? '⏸ ' : brk ? '☕ ' : ''}${txt} · P Organizer`;
   const t = timer.taskId && task(timer.taskId);
   pill.hidden = layerOpen;
   pill.classList.toggle('is-paused', paused);
-  pill.innerHTML = `${paused ? I.pause : I.play}<span class="one-line">${esc(t ? t.title : 'Enfoque')}</span><b>${txt}</b>`;
+  pill.innerHTML = `${paused ? I.pause : I.play}<span class="one-line">${brk ? 'Descanso' : esc(t ? t.title : 'Enfoque')}</span><b>${txt}</b>`;
   const el = $('#focus-time');
   if (el && timer.taskId === focusTaskId) {
     el.textContent = txt;
     $('#focus-ring').style.strokeDashoffset = RING * (1 - left / (timer.minutes * 60000));
   }
-  if (!paused && left <= 0) finishTimer(timer);
-  else if (document.visibilityState !== 'visible') focusNote();
+  if (document.visibilityState !== 'visible') focusNote();
 }
-function finishTimer(timer) {
-  setTimer(null);
-  document.title = 'P Organizer';
-  state.focusLog.push({ date: todayStr(), minutes: timer.minutes, taskId: timer.taskId || null });
+/* Pasa a la siguiente fase (o termina). Si la app estuvo cerrada, recupera todas las fases que pasaron. */
+function advanceTimer(tm) {
+  let n = { ...tm }, last = null;
+  while (n.pausedLeft == null && n.endAt <= Date.now()) {
+    if (n.phase === 'work') logFocus(n.minutes, n.taskId);
+    if (n.mode !== 'long' || (n.phase === 'work' && n.round >= n.rounds)) { last = 'end'; n = null; break; }
+    if (n.phase === 'work') { n = { ...n, phase: 'break', minutes: n.brk, endAt: n.endAt + n.brk * 60000 }; last = 'break'; }
+    else { n = { ...n, phase: 'work', round: n.round + 1, minutes: n.work, endAt: n.endAt + n.work * 60000 }; last = 'work'; }
+  }
+  setTimer(n);
   save();
   haptic([200, 100, 200]);
   beep();
-  const t = timer.taskId && task(timer.taskId);
-  const msg = `Enfoque completado${t ? ': ' + t.title : ''}. Descansa 5 min.`;
+  const t = tm.taskId && task(tm.taskId), name = t ? t.title : '';
+  const msg = last === 'end' ? `Enfoque completado${name ? ': ' + name : ''}.${tm.mode === 'long' ? ` ${tm.rounds} rondas hechas.` : ''} Buen trabajo.`
+    : last === 'break' ? `Ronda ${n.round} de ${n.rounds} hecha. Descanso de ${n.brk} min.`
+    : `Vuelta al trabajo: ronda ${n.round} de ${n.rounds}.`;
   toast(msg);
-  /* Con avisos push activos, el aviso de fin lo manda el servidor (llega aunque la app esté cerrada) */
-  if (document.visibilityState !== 'visible' && !pushActive()) notify('focus:' + timer.endAt, 'Enfoque completado', (t ? t.title + '. ' : '') + 'Descansa 5 min.', 'focus-live');
+  /* Con avisos push activos, los avisos de cambio los manda el servidor (llegan aunque la app esté cerrada) */
+  if (document.visibilityState !== 'visible' && !pushActive()) notify('focus:' + tm.endAt, last === 'end' ? 'Enfoque completado' : last === 'break' ? 'Descanso' : `Ronda ${n.round} de ${n.rounds}`, msg, 'focus-live');
   if (!$('#focus').hidden) renderFocus();
+  else updateTimerUI();
 }
 function beep() {
   try {
@@ -1679,6 +1760,7 @@ function toggleTask(id, checkbox, { silent = false } = {}) {
   if (!t) return;
   t.done = checkbox ? checkbox.checked : !t.done;
   t.doneAt = t.done ? Date.now() : null;
+  if (t.done) { const tm = getTimer(); if (tm && tm.taskId === id) cancelTimer(true); }
   const next = t.done ? spawnNextRepeat(t) : (unspawnRepeat(t), null);
   save();
   /* En el sitio: la fila no se mueve ni cambia de tamaño */
@@ -1717,6 +1799,10 @@ document.addEventListener('click', e => {
     case 'focus-open': openFocus(id); return;
     case 'focus-close': closeFocus(); return;
     case 'focus-min': focusMins = Number(el.dataset.v); renderFocus(); return;
+    case 'focus-mode': setFocusPlan('mode', el.dataset.v); renderFocus(); return;
+    case 'focus-plan-work': setFocusPlan('work', Number(el.dataset.v)); renderFocus(); return;
+    case 'focus-plan-brk': setFocusPlan('brk', Number(el.dataset.v)); renderFocus(); return;
+    case 'focus-plan-rounds': setFocusPlan('rounds', Number(el.dataset.v)); renderFocus(); return;
     case 'focus-start': focusAction('start'); return;
     case 'focus-pause': focusAction('pause'); return;
     case 'focus-resume': focusAction('resume'); return;
@@ -1724,8 +1810,8 @@ document.addEventListener('click', e => {
     case 'focus-pill': { const tm = getTimer(); if (tm && tm.taskId) openFocus(tm.taskId); return; }
     case 'focus-done': {
       const t = task(id);
+      const tm = getTimer(); if (tm && tm.taskId === id) cancelTimer(true);
       if (!t.done) toggleTask(id, null);
-      const tm = getTimer(); if (tm && tm.taskId === id) setTimer(null);
       closeFocus(); rerender(); return;
     }
     case 'sub-toggle': { const t = task(id), s = t && t.subtasks.find(x => x.id === el.dataset.sub); if (s) { s.done = el.checked; save(); } return; }
@@ -1948,7 +2034,7 @@ document.addEventListener('change', e => {
     if ('num' in el.dataset) v = Number(v);
     setPath(state.settings, path, v);
     if (path === 'weekStart') weekStart = null;
-    if (path === 'focusMinutes') focusMins = v;
+    if (path === 'focusMinutes') { focusMins = v; setFocusPlan('mode', 'single'); }
     save();
     if (path === 'reminders.enabled' && v && 'Notification' in window && Notification.permission !== 'granted') {
       Notification.requestPermission().then(p => {

@@ -1352,3 +1352,21 @@ label.field .hint { margin: 0; font-size: 12px; font-weight: 400; line-height: 1
 .focus-timer.is-paused .time { opacity: .55; }
 .focus-timer.is-paused .ring .bar { opacity: .5; }
 .focus-pill.is-paused svg { color: var(--muted); }
+
+/* v21: sesión única o larga con descansos */
+.focus-mode { width: 100%; }
+.focus-mode button { flex: 1; }
+.focus-plan { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; width: 100%; }
+.focus-plan > span { font-size: 13px; color: var(--muted); font-weight: 500; }
+.focus-plan .chips-row { flex-wrap: wrap; }
+.focus-timer .chips-row { flex-wrap: wrap; justify-content: center; }
+.focus-phase { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.focus-phase span { font-variant-numeric: tabular-nums; background: var(--fill); border-radius: 99px; padding: 2px 8px; color: var(--text); letter-spacing: 0; }
+.focus-timer.is-break .ring .bar { stroke: var(--green); }
+.focus-layer { overflow-y: auto; place-items: safe center; overscroll-behavior: contain; }
+@media (max-height: 820px) and (max-width: 600px) {
+  .focus-card { gap: 12px; padding: 18px 18px 18px; }
+  .focus-card .ring.big, .focus-card .ring.big svg { width: 116px; height: 116px; }
+  .focus-card .ring.big .time { font-size: 26px; }
+  .focus-plan { gap: 6px 10px; }
+}

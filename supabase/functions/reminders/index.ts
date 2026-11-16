@@ -87,7 +87,8 @@ function remindersFor(st: Any) {
   const out0: { key: string; title: string; body: string; tag?: string }[] = [];
   /* Fin del temporizador de Enfoque: avisa aunque la app esté cerrada (no depende de las horas de silencio) */
   const f = st.focusEnd;
-  if (f && f.endAt <= Date.now() && Date.now() - f.endAt < 10 * 60000) out0.push({ key: `focus:${f.endAt}`, title: 'Enfoque completado', body: (f.title ? f.title + '. ' : '') + 'Descansa 5 min.', tag: 'focus-live' });
+  const evs = f ? (Array.isArray(f.events) ? f.events : [{ at: f.endAt, title: 'Enfoque completado', body: (f.title ? f.title + '. ' : '') + 'Buen trabajo.' }]) : [];
+  for (const e of evs) if (e.at <= Date.now() && Date.now() - e.at < 10 * 60000) out0.push({ key: `focus:${e.at}`, title: e.title, body: e.body, tag: 'focus-live' });
   return [...out0, ...remindersBase(st)];
 }
 function remindersBase(st: Any) {
