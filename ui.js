@@ -68,8 +68,11 @@ function placeSelect() {
   const h = pop.offsetHeight;
   const top = up ? Math.max(8, r.top - 6 - h) : r.bottom + 6;
   pop.style.top = top + 'px';
-  /* Si algún contenedor desplaza la referencia (navegadores sin popover), se compensa la diferencia */
+  /* Si algún contenedor desplaza la referencia (navegadores sin popover), se compensa la diferencia.
+     Se mide sin la animación de entrada, que mueve la lista unos píxeles. */
+  pop.style.animation = 'none';
   const got = pop.getBoundingClientRect();
+  pop.style.animation = '';
   if (Math.abs(got.left - left) > 1) pop.style.left = (left + left - got.left) + 'px';
   if (Math.abs(got.top - top) > 1) pop.style.top = (top + top - got.top) + 'px';
 }

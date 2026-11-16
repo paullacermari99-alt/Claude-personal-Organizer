@@ -1,7 +1,7 @@
 /* Service worker: permite abrir la app sin conexión.
    Sube CACHE cuando cambien los archivos para forzar la actualización. */
-const CACHE = 'organizador-v15';
-const ASSETS = ['./', 'index.html', 'styles.css?v=15', 'config.js?v=15', 'core.js?v=15', 'smart.js?v=15', 'ui.js?v=15', 'extcal.js?v=15', 'sync.js?v=15', 'calendar.js?v=15', 'gestures.js?v=15', 'app.js?v=15', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
+const CACHE = 'organizador-v16';
+const ASSETS = ['./', 'index.html', 'styles.css?v=16', 'config.js?v=16', 'core.js?v=16', 'smart.js?v=16', 'ui.js?v=16', 'extcal.js?v=16', 'sync.js?v=16', 'onboarding.js?v=16', 'calendar.js?v=16', 'gestures.js?v=16', 'app.js?v=16', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

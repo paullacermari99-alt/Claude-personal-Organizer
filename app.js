@@ -78,7 +78,13 @@ function refreshLive() {
     if (!fresh || fresh.innerHTML === el.innerHTML) return;
     const a = document.activeElement;
     if (a && el.contains(a) && a.matches('input:not([type=checkbox]), textarea, select')) return;
+    const old = [...el.querySelectorAll('.progress > span')].map(s => s.style.width);
     el.innerHTML = fresh.innerHTML;
+    /* La barra crece desde donde estaba en vez de saltar */
+    const bars = el.querySelectorAll('.progress > span');
+    if (old.length && bars.length === old.length) {
+      bars.forEach((b, i) => { const to = b.style.width; b.style.transition = 'none'; b.style.width = old[i]; b.offsetWidth; b.style.transition = ''; b.style.width = to; });
+    }
   });
 }
 /* «Hoy» en el menú siempre vuelve al día de hoy, aunque estuvieras mirando otro día */
@@ -88,7 +94,10 @@ document.addEventListener('click', e => {
   viewDate = todayStr();
   if (location.hash.startsWith('#hoy')) { e.preventDefault(); navigate(() => route()); }
 });
-window.addEventListener('hashchange', () => { if (shortcutHash()) return; navigate(() => { route(); window.scrollTo(0, 0); }); });
+/* Al cambiar de pantalla, las tarjetas entran escalonadas (solo opacidad y transformaciones) */
+let enterTimer;
+function markEntering() { document.body.classList.add('entering'); clearTimeout(enterTimer); enterTimer = setTimeout(() => document.body.classList.remove('entering'), 700); }
+window.addEventListener('hashchange', () => { if (shortcutHash()) return; navigate(() => { route(); markEntering(); window.scrollTo(0, 0); }); });
 
 /* ---------- Piezas comunes ---------- */
 
@@ -973,6 +982,7 @@ function viewSettings() {
         <strong style="color:var(--text)">Accesos directos:</strong> en Android y en el ordenador, mantén pulsado (o clic derecho) el icono de la app para ir directo a «Nueva tarea», «Hoy», «Enfoque» o «Buscar». En iPhone Apple no lo permite a las apps web: usa la lupa de arriba a la derecha.<br>
         <strong style="color:var(--text)">Teclado:</strong> <b>N</b> nueva tarea · <b>/</b> o <b>Ctrl+K</b> buscar · <b>F</b> enfoque · <b>H</b> hoy · <b>S</b> semana.
       </div>
+      <div class="item"><span>Ver la introducción otra vez</span><button class="btn small" data-act="onboarding">Ver</button></div>
       ${deferredInstall ? `<div class="item"><span>Instalar en este dispositivo</span><button class="btn small primary" data-act="install">Instalar</button></div>` : ''}
     </div>
   </div>
@@ -1602,6 +1612,8 @@ function toggleTask(id, checkbox, { silent = false } = {}) {
   $$(`[data-task="${id}"]`).forEach(li => {
     li.classList.toggle('done', t.done);
     const c = $('.check', li); if (c) c.checked = t.done;
+    /* Pequeña animación al marcar (solo transformaciones: la fila no cambia de tamaño) */
+    if (t.done) { li.classList.remove('just-done'); void li.offsetWidth; li.classList.add('just-done'); setTimeout(() => li.classList.remove('just-done'), 700); }
   });
   refreshLive();
   haptic();
@@ -1762,6 +1774,7 @@ document.addEventListener('click', e => {
       break;
     }
     case 'sync-now': syncNow(true); return;
+    case 'onboarding': startOnboarding(); return;
     case 'sign-out': if (!confirm('¿Cerrar sesión? Tus datos se quedan en este dispositivo y en tu cuenta.')) return; signOut().then(() => { toast('Sesión cerrada'); rerender(); }); return;
     case 'push-toggle':
       (pushActive() ? unsubscribePush().then(() => toast('Avisos push desactivados'))
@@ -1942,6 +1955,9 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 /* ---------- Arranque ---------- */
 const cameFromLogin = captureAuthRedirect();
 state = loadState();
+/* Dispositivo nuevo: sin datos guardados todavía */
+const firstRun = !state;
+syncInfo.freshDevice = firstRun;
 if (!state) seedState();
 generateRoutines();
 save(true);
@@ -1949,6 +1965,9 @@ const pendingShortcut = ['nueva', 'enfoque', 'buscar'].includes(parseHash().name
 if (pendingShortcut) history.replaceState(null, '', location.pathname + '#hoy');
 route();
 if (pendingShortcut) setTimeout(() => runShortcut(pendingShortcut), 50);
+/* Bienvenida solo para quien es nuevo: sin datos, sin sesión y sin haberla visto */
+if (firstRun && !getSession() && !cameFromLogin && !onboardingSeen()) startOnboarding();
+else if (!onboardingSeen()) markOnboarded();
 setTimeout(checkReminders, 2000);
 refreshCalendars().then(changed => { if (changed && !modal.open) rerender(); }).catch(() => {});
 if (cameFromLogin) firstSync().then(rerender).catch(e => toast(e.message)); else syncNow();

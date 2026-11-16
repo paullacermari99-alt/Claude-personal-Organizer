@@ -57,10 +57,13 @@ async function signIn(email, password) {
   syncInfo.notice = '';
   await firstSync();
 }
+/* Los enlaces del email vuelven siempre a esta misma app (carpeta incluida), no a la raíz del dominio */
+const APP_URL = location.origin + location.pathname.replace(/[^/]*$/, '');
+const backHere = () => '?redirect_to=' + encodeURIComponent(APP_URL);
 /* Devuelve true si ya ha entrado; false si tiene que confirmar el email primero */
 async function signUp(email, password) {
   let d;
-  try { d = await sb('/auth/v1/signup', { method: 'POST', auth: false, body: { email, password } }); }
+  try { d = await sb('/auth/v1/signup' + backHere(), { method: 'POST', auth: false, body: { email, password } }); }
   catch (e) { throw authError(e); }
   const u = d && (d.user || d);
   if (u && Array.isArray(u.identities) && !u.identities.length) throw new Error('Ya tienes una cuenta con ese email. Pulsa «Entrar» o, si no recuerdas la contraseña, «¿Olvidaste la contraseña?»');
@@ -69,7 +72,7 @@ async function signUp(email, password) {
   return false;
 }
 async function sendPasswordReset(email) {
-  try { await sb('/auth/v1/recover', { method: 'POST', auth: false, body: { email } }); }
+  try { await sb('/auth/v1/recover' + backHere(), { method: 'POST', auth: false, body: { email } }); }
   catch (e) { throw authError(e); }
   syncInfo.notice = `Si hay una cuenta con <b>${esc(email)}</b>, te llegará un email con un enlace para poner una contraseña nueva.`;
 }
@@ -80,17 +83,21 @@ async function setNewPassword(password) {
 }
 /* Los enlaces del email (confirmar cuenta o cambiar contraseña) traen la sesión en la dirección */
 function captureAuthRedirect() {
-  const h = location.hash.slice(1);
+  /* Algunos enlaces traen el error en la parte ?…, no en #… */
+  const h = location.hash.slice(1) || location.search.slice(1);
   if (/error_description=/.test(h)) {
     const q = new URLSearchParams(h);
     syncInfo.notice = /expired|invalid/i.test(q.get('error_description') || '') ? 'El enlace del email ha caducado. Pide otro.' : esc(q.get('error_description'));
     history.replaceState(null, '', location.pathname + '#ajustes');
+    syncInfo.fromEmail = true;
     return false;
   }
   if (!/access_token=/.test(h)) return false;
   const q = new URLSearchParams(h);
   setSession(sessionFrom({ access_token: q.get('access_token'), refresh_token: q.get('refresh_token'), expires_in: q.get('expires_in') }));
   if (q.get('type') === 'recovery') syncInfo.needPassword = true;
+  if (q.get('type') === 'signup') syncInfo.notice = '¡Cuenta confirmada! Ya estás dentro.';
+  syncInfo.fromEmail = true;
   history.replaceState(null, '', location.pathname + '#ajustes');
   return true;
 }
@@ -149,6 +156,8 @@ async function firstSync() {
   await fetchUser();
   const remote = await pullRemote();
   if (remote && (remote.tasks || []).length) {
+    /* En un dispositivo nuevo solo hay datos de ejemplo: se usan directamente los de la cuenta */
+    if (syncInfo.freshDevice) { applyRemote(remote); syncInfo.freshDevice = false; syncInfo.status = 'ok'; syncInfo.lastSync = Date.now(); return; }
     const useCloud = confirm(`En tu cuenta ya hay datos (${remote.tasks.length} tareas, ${(remote.projects || []).length} proyectos).\n\nAceptar: usar los de la cuenta en este dispositivo.\nCancelar: subir los de este dispositivo y reemplazar los de la cuenta.`);
     if (useCloud) { applyRemote(remote); syncInfo.status = 'ok'; syncInfo.lastSync = Date.now(); return; }
   }
