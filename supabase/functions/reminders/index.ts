@@ -27,7 +27,7 @@ async function pickKey() {
   }
   throw new Error('Ninguna clave de servidor funciona: ' + errors.join(' | '));
 }
-webpush.setVapidDetails('https://paullacermari99-alt.github.io/Claude-personal-Organizer/', Deno.env.get('VAPID_PUBLIC_KEY')!, Deno.env.get('VAPID_PRIVATE_KEY')!);
+webpush.setVapidDetails('https://p-organizer.pages.dev/', Deno.env.get('VAPID_PUBLIC_KEY')!, Deno.env.get('VAPID_PRIVATE_KEY')!);
 
 const db = (path: string, init: RequestInit = {}) =>
   fetch(`${URL_}/rest/v1/${path}`, { ...init, headers: { ...authHeaders(KEY), 'Content-Type': 'application/json', ...(init.headers || {}) } });
@@ -84,6 +84,13 @@ function inQuiet(r: Any, hm: string) {
 const relDay = (today: string, d: string) => d === today ? 'hoy' : d === addDays(today, 1) ? 'mañana' : d;
 
 function remindersFor(st: Any) {
+  const out0: { key: string; title: string; body: string; tag?: string }[] = [];
+  /* Fin del temporizador de Enfoque: avisa aunque la app esté cerrada (no depende de las horas de silencio) */
+  const f = st.focusEnd;
+  if (f && f.endAt <= Date.now() && Date.now() - f.endAt < 10 * 60000) out0.push({ key: `focus:${f.endAt}`, title: 'Enfoque completado', body: (f.title ? f.title + '. ' : '') + 'Descansa 5 min.', tag: 'focus-live' });
+  return [...out0, ...remindersBase(st)];
+}
+function remindersBase(st: Any) {
   const r = st.settings?.reminders || {};
   if (!r.enabled) return [];
   const { date: today, hm } = nowIn(st.settings?.timezone || 'Europe/Madrid');
@@ -125,7 +132,7 @@ Deno.serve(async req => {
       await db('sent_reminders', { method: 'POST', headers: { Prefer: 'resolution=ignore-duplicates' }, body: JSON.stringify({ user_id: uid, key: n.key }) });
       for (const s of list) {
         try {
-          await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify({ title: n.title, body: n.body, tag: n.key }));
+          await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify({ title: n.title, body: n.body, tag: n.tag || n.key }));
           sent++;
         } catch (e: Any) {
           if (e.statusCode === 404 || e.statusCode === 410) await db(`push_subscriptions?endpoint=eq.${encodeURIComponent(s.endpoint)}`, { method: 'DELETE' });

@@ -19,6 +19,8 @@ const I = {
   right: svg('<path d="M9.5 5.5L16 12l-6.5 6.5"/>', 'stroke-width="2.2"'),
   down: svg('<path d="M6 9.5l6 6 6-6"/>', 'stroke-width="2.2"'),
   plus: svg('<path d="M12 5v14M5 12h14"/>', 'stroke-width="2.4"'),
+  pause: svg('<path d="M8 5.5v13M16 5.5v13"/>', 'stroke-width="3"'),
+  reset: svg('<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4v4h4"/>', 'stroke-width="2.2"'),
   play: svg('<path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/>'),
   clock: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
   cal: svg('<rect x="3.5" y="4.5" width="17" height="16" rx="3.5"/><path d="M3.5 9.5h17M8 2.8v3.4M16 2.8v3.4"/>'),

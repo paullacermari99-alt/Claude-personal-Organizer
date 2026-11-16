@@ -1342,3 +1342,13 @@ body.ob-open { overflow: hidden; }
 /* v18: en los pasos de solo mirar no se puede tocar nada (ni siquiera lo resaltado) */
 .tour-block { position: absolute; inset: 0; pointer-events: none; }
 .tour.look .tour-block { pointer-events: auto; }
+
+/* v20: Enfoque con pausa y reinicio */
+label.field .hint { margin: 0; font-size: 12px; font-weight: 400; line-height: 1.4; }
+.focus-actions .btn svg { width: 16px; height: 16px; }
+.focus-actions { flex-wrap: wrap; }
+.focus-actions .btn { min-width: 0; }
+@media (max-width: 600px) { .focus-actions:has(> .btn:nth-child(3)) .btn.primary { flex-basis: 100%; } }
+.focus-timer.is-paused .time { opacity: .55; }
+.focus-timer.is-paused .ring .bar { opacity: .5; }
+.focus-pill.is-paused svg { color: var(--muted); }

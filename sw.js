@@ -1,7 +1,7 @@
 /* Service worker: permite abrir la app sin conexión.
    Sube CACHE cuando cambien los archivos para forzar la actualización. */
-const CACHE = 'organizador-v19';
-const ASSETS = ['./', 'index.html', 'styles.css?v=19', 'config.js?v=19', 'core.js?v=19', 'smart.js?v=19', 'ui.js?v=19', 'extcal.js?v=19', 'sync.js?v=19', 'onboarding.js?v=19', 'tour.js?v=19', 'calendar.js?v=19', 'gestures.js?v=19', 'app.js?v=19', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
+const CACHE = 'organizador-v20';
+const ASSETS = ['./', 'index.html', 'styles.css?v=20', 'config.js?v=20', 'core.js?v=20', 'smart.js?v=20', 'ui.js?v=20', 'extcal.js?v=20', 'sync.js?v=20', 'onboarding.js?v=20', 'tour.js?v=20', 'calendar.js?v=20', 'gestures.js?v=20', 'app.js?v=20', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -37,7 +37,7 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', e => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { title: 'P Organizer', body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || 'P Organizer', { body: d.body || '', tag: d.tag, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png' }));
+  e.waitUntil(self.registration.showNotification(d.title || 'P Organizer', { body: d.body || '', tag: d.tag, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', renotify: !!d.tag, vibrate: d.tag === 'focus-live' ? [200, 100, 200] : undefined }));
 });
 self.addEventListener('notificationclick', e => {
   e.notification.close();

@@ -154,7 +154,7 @@ function taskItem(t, opts = {}) {
       <div class="body" data-act="edit-task" data-id="${t.id}">
         <div class="title">${esc(t.title)}</div>
         ${meta ? `<div class="meta">${meta}</div>` : ''}
-        ${opts.firstStep ? `<label class="step-line"><span>Primer paso</span><input type="text" class="step-input" data-input="first-step" data-id="${t.id}" value="${esc(t.firstStep)}" placeholder="Lo más pequeño que puedas hacer ya…" enterkeyhint="done"></label>` : ''}
+        ${opts.firstStep ? `<label class="step-line"><span>Para empezar</span><input type="text" class="step-input" data-input="first-step" data-id="${t.id}" value="${esc(t.firstStep)}" placeholder="Ej.: abrir el documento…" enterkeyhint="done"></label>` : ''}
       </div>
       ${opts.moveToday ? `<button class="btn small" data-act="move-today" data-id="${t.id}">A hoy</button>` : ''}
       <button class="icon-btn" data-act="focus-open" data-id="${t.id}" aria-label="Empezar ${esc(t.title)}" title="Empezar">${I.play}</button>
@@ -372,7 +372,7 @@ function viewToday() {
       <div class="section">
         <div class="section-head"><h2>Prioridades · ${prios.length}/3</h2><button class="btn small" data-act="pick-priorities">${prios.length ? 'Cambiar' : 'Elegir'}</button></div>
         ${prios.length ? `<ul class="tasks glass">${prios.map(t => taskItem(t, { firstStep: true, star: true, hideDue: d })).join('')}</ul>`
-          : emptyBox('¿Qué 3 cosas harían que hoy fuera un buen día? Elígelas y escribe el primer paso de cada una.')}
+          : emptyBox('¿Qué 3 cosas harían que hoy fuera un buen día? Elígelas y escribe por dónde empezarás cada una.')}
       </div>
 
       ${overdue.length ? collapsible('vencidas', 'Vencidas', overdue.length, taskList(overdue, { star: true, moveToday: true }),
@@ -1121,7 +1121,7 @@ function taskModal(t0 = {}) {
       <label class="field">Proyecto<select name="projectId">${optionList(state.projects.filter(p => !p.archived || p.id === t.projectId), t.projectId, projLabel, 'Ninguno')}</select></label>
       <label class="field">Objetivo<select name="goalId">${optionList(state.goals.filter(g => g.status !== 'cumplido' || g.id === t.goalId), t.goalId, goalLabel, 'Ninguno')}</select></label>
     </div>
-    <label class="field">Primer paso<input type="text" name="firstStep" value="${esc(t.firstStep)}" placeholder="Lo más pequeño para arrancar"></label>
+    <label class="field">¿Por dónde empiezas?<input type="text" name="firstStep" value="${esc(t.firstStep)}" placeholder="Ej.: abrir el documento y escribir el título"><span class="hint">Opcional. Una acción pequeña y concreta para arrancar sin pensarlo.</span></label>
     <div class="field">Subtareas
       <div class="subtasks">${t.subtasks.map(subRow).join('')}</div>
       <div class="sub-add"><input type="text" id="sub-new" placeholder="Añadir subtarea" data-enter="add-sub" aria-label="Nueva subtarea"><button type="button" class="icon-btn round" data-modal="add-sub" aria-label="Añadir subtarea">${I.plus}</button></div>
@@ -1468,10 +1468,55 @@ function projectModal(p0 = {}) {
 }
 
 /* ---------- Enfoque ---------- */
+/* Temporizador: { taskId, minutes, endAt, pausedLeft } — pausedLeft (ms) solo mientras está en pausa. */
 
 function getTimer() { try { return JSON.parse(localStorage.getItem(TIMER_KEY)) || null; } catch { return null; } }
-function setTimer(t) { try { t ? localStorage.setItem(TIMER_KEY, JSON.stringify(t)) : localStorage.removeItem(TIMER_KEY); } catch {} }
+function setTimer(t) {
+  try { t ? localStorage.setItem(TIMER_KEY, JSON.stringify(t)) : localStorage.removeItem(TIMER_KEY); } catch {}
+  /* El servidor avisa al terminar aunque la app esté cerrada: necesita saber cuándo acaba */
+  const end = t && t.pausedLeft == null ? { endAt: t.endAt, title: (task(t.taskId) || {}).title || '' } : null;
+  if (JSON.stringify(state.focusEnd || null) !== JSON.stringify(end)) { state.focusEnd = end; save(); }
+  focusNote();
+}
+const timerLeft = tm => tm.pausedLeft != null ? tm.pausedLeft : Math.max(0, tm.endAt - Date.now());
+const mmss = ms => `${pad(Math.floor(ms / 60000))}:${pad(Math.floor(ms / 1000) % 60)}`;
+const clockAt = ms => dtf('es-ES', { timeZone: state.settings.timezone || undefined, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ms));
 const RING = 2 * Math.PI * 38;
+
+/* Aviso fijo con el tiempo que queda, visible fuera de la app (pantalla de bloqueo y bandeja).
+   Se muestra al salir de la app y se quita al volver. */
+const canNotify = () => 'Notification' in window && Notification.permission === 'granted';
+function swReg() { return navigator.serviceWorker && navigator.serviceWorker.controller ? navigator.serviceWorker.ready : null; }
+let focusNoteMin = null, focusNoteObj = null;
+function focusNote(force) {
+  const tm = getTimer();
+  if (!tm || document.visibilityState === 'visible' || !canNotify()) { closeFocusNote(); return; }
+  const left = timerLeft(tm), paused = tm.pausedLeft != null, mins = Math.max(1, Math.ceil(left / 60000));
+  const key = paused ? 'p' + mins : mins;
+  if (!force && key === focusNoteMin) return;
+  focusNoteMin = key;
+  const t = task(tm.taskId);
+  const title = paused ? `En pausa · quedan ${mmss(left)}` : `Enfoque · quedan ${mins} min`;
+  const body = `${t ? t.title : 'Enfoque'}\n${paused ? 'Vuelve a la app para seguir.' : 'Termina a las ' + clockAt(tm.endAt) + '.'}`;
+  const opts = { body, tag: 'focus-live', silent: true, renotify: false, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url: './#hoy' } };
+  try {
+    const r = swReg();
+    if (r) r.then(reg => reg.showNotification(title, opts)).catch(() => {});
+    else { if (focusNoteObj) focusNoteObj.close(); focusNoteObj = new Notification(title, opts); }
+  } catch {}
+}
+function closeFocusNote() {
+  if (focusNoteMin === null) return;
+  focusNoteMin = null;
+  try {
+    if (focusNoteObj) { focusNoteObj.close(); focusNoteObj = null; }
+    const r = swReg();
+    if (r) r.then(reg => reg.getNotifications({ tag: 'focus-live' })).then(l => l.forEach(n => n.close())).catch(() => {});
+  } catch {}
+}
+function askNotify() {
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+}
 
 function openFocus(id) {
   const t = task(id);
@@ -1491,27 +1536,50 @@ function closeFocus() {
 function renderFocus() {
   const t = task(focusTaskId);
   if (!t) { closeFocus(); return; }
-  const timer = getTimer(), mine = timer && timer.taskId === t.id;
+  const timer = getTimer(), mine = timer && timer.taskId === t.id, paused = mine && timer.pausedLeft != null;
+  const other = timer && !mine;
   $('#focus').innerHTML = `<div class="focus-card glass" role="dialog" aria-label="Enfoque">
     <button class="icon-btn round focus-close" data-act="focus-close" aria-label="Cerrar">${I.close}</button>
     <div class="eyebrow">Enfoque</div>
     <h2 class="focus-title ${t.done ? 'done' : ''}">${esc(t.title)}</h2>
-    <label class="field">Primer paso<input type="text" data-input="first-step" data-id="${t.id}" value="${esc(t.firstStep)}" placeholder="¿Qué es lo primero que harás? (menos de 2 min)"></label>
+    <label class="field">¿Por dónde empiezas?<input type="text" data-input="first-step" data-id="${t.id}" value="${esc(t.firstStep)}" placeholder="Ej.: abrir el documento y escribir el título" enterkeyhint="done">
+      <span class="hint">Una acción pequeña y concreta, de menos de 2 minutos. Así arrancar cuesta mucho menos.</span></label>
     ${t.subtasks.length ? `<div class="focus-subs">${t.subtasks.map(s => `<label><input type="checkbox" class="check sm" data-act="sub-toggle" data-id="${t.id}" data-sub="${s.id}" ${s.done ? 'checked' : ''}><span>${esc(s.title)}</span></label>`).join('')}</div>` : ''}
-    <div class="focus-timer">
+    <div class="focus-timer ${paused ? 'is-paused' : ''}">
       <div class="ring big" aria-hidden="true">
         <svg viewBox="0 0 84 84"><circle class="track" cx="42" cy="42" r="38"/><circle class="bar" id="focus-ring" cx="42" cy="42" r="38" stroke-dasharray="${RING}" stroke-dashoffset="0"/></svg>
         <div class="time" id="focus-time">${pad(focusMins)}:00</div>
       </div>
       <div class="chips-row">${[5, 15, 25].map(m => `<button class="chip-btn ${m === (mine ? timer.minutes : focusMins) ? 'on' : ''}" data-act="focus-min" data-v="${m}" ${mine ? 'disabled' : ''}>${m} min</button>`).join('')}</div>
-      <p class="muted small">El temporizador es opcional: también puedes empezar sin él.</p>
+      <p class="muted small" id="focus-sub">${paused ? 'En pausa.' : mine ? `Termina a las ${clockAt(timer.endAt)}. Puedes salir de la app: te avisaré.` : other ? 'Hay otro temporizador en marcha; si empiezas este, lo sustituye.' : 'El temporizador es opcional: también puedes empezar sin él.'}</p>
     </div>
     <div class="focus-actions">
-      ${mine ? `<button class="btn" data-act="focus-stop">Parar</button>` : `<button class="btn" data-act="focus-start">${I.play}<span>Empezar ${focusMins} min</span></button>`}
+      ${mine ? `<button class="btn" data-act="focus-reset">${I.reset}<span>Reiniciar</span></button>
+        <button class="btn" data-act="${paused ? 'focus-resume' : 'focus-pause'}">${paused ? I.play + '<span>Seguir</span>' : I.pause + '<span>Pausar</span>'}</button>`
+      : `<button class="btn" data-act="focus-start">${I.play}<span>Empezar ${focusMins} min</span></button>`}
       <button class="btn primary" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar tarea'}</button>
     </div>
   </div>`;
   updateTimerUI();
+}
+function focusAction(act) {
+  const tm = getTimer();
+  if (act === 'start') {
+    askNotify();
+    setTimer({ endAt: Date.now() + focusMins * 60000, minutes: focusMins, taskId: focusTaskId, pausedLeft: null });
+    toast(`A por ello: ${focusMins} minutos solo para esto.`);
+  } else if (!tm) return;
+  else if (act === 'pause') setTimer({ ...tm, pausedLeft: timerLeft(tm) });
+  else if (act === 'resume') setTimer({ ...tm, endAt: Date.now() + tm.pausedLeft, pausedLeft: null });
+  else if (act === 'reset') {
+    /* Lo ya trabajado cuenta en Progreso */
+    const done = Math.floor((tm.minutes * 60000 - timerLeft(tm)) / 60000);
+    if (done >= 1) state.focusLog.push({ date: todayStr(), minutes: done, taskId: tm.taskId || null });
+    focusMins = tm.minutes;
+    setTimer(null);
+    save();
+  }
+  renderFocus();
 }
 function updateTimerUI() {
   const timer = getTimer();
@@ -1522,20 +1590,23 @@ function updateTimerUI() {
     pill.hidden = true;
     const el = $('#focus-time');
     if (el) { el.textContent = pad(focusMins || 25) + ':00'; $('#focus-ring').style.strokeDashoffset = 0; }
+    closeFocusNote();
     return;
   }
-  const left = Math.max(0, timer.endAt - Date.now());
-  const txt = `${pad(Math.floor(left / 60000))}:${pad(Math.floor(left / 1000) % 60)}`;
-  document.title = `${txt} · P Organizer`;
+  const left = timerLeft(timer), paused = timer.pausedLeft != null;
+  const txt = mmss(left);
+  document.title = `${paused ? '⏸ ' : ''}${txt} · P Organizer`;
   const t = timer.taskId && task(timer.taskId);
   pill.hidden = layerOpen;
-  pill.innerHTML = `${I.play}<span class="one-line">${esc(t ? t.title : 'Enfoque')}</span><b>${txt}</b>`;
+  pill.classList.toggle('is-paused', paused);
+  pill.innerHTML = `${paused ? I.pause : I.play}<span class="one-line">${esc(t ? t.title : 'Enfoque')}</span><b>${txt}</b>`;
   const el = $('#focus-time');
   if (el && timer.taskId === focusTaskId) {
     el.textContent = txt;
     $('#focus-ring').style.strokeDashoffset = RING * (1 - left / (timer.minutes * 60000));
   }
-  if (left <= 0) finishTimer(timer);
+  if (!paused && left <= 0) finishTimer(timer);
+  else if (document.visibilityState !== 'visible') focusNote();
 }
 function finishTimer(timer) {
   setTimer(null);
@@ -1547,7 +1618,8 @@ function finishTimer(timer) {
   const t = timer.taskId && task(timer.taskId);
   const msg = `Enfoque completado${t ? ': ' + t.title : ''}. Descansa 5 min.`;
   toast(msg);
-  if (document.hidden) notify('focus:' + timer.endAt, 'Enfoque completado', t ? t.title : '');
+  /* Con avisos push activos, el aviso de fin lo manda el servidor (llega aunque la app esté cerrada) */
+  if (document.visibilityState !== 'visible' && !pushActive()) notify('focus:' + timer.endAt, 'Enfoque completado', (t ? t.title + '. ' : '') + 'Descansa 5 min.', 'focus-live');
   if (!$('#focus').hidden) renderFocus();
 }
 function beep() {
@@ -1567,13 +1639,13 @@ function inQuiet(hm) {
   if (!a || !b || a === b) return false;
   return a < b ? hm >= a && hm < b : hm >= a || hm < b;
 }
-function notify(key, title, body) {
+function notify(key, title, body, tag) {
   if (state.notified[key]) return;
   state.notified[key] = Date.now();
   save(true);
-  const opts = { body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: key };
+  const opts = { body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: tag || key };
   try {
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts));
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts)).catch(e => console.warn('Notificación', e));
     else new Notification(title, opts);
   } catch (e) { console.warn('Notificación', e); }
 }
@@ -1645,8 +1717,10 @@ document.addEventListener('click', e => {
     case 'focus-open': openFocus(id); return;
     case 'focus-close': closeFocus(); return;
     case 'focus-min': focusMins = Number(el.dataset.v); renderFocus(); return;
-    case 'focus-start': setTimer({ endAt: Date.now() + focusMins * 60000, minutes: focusMins, taskId: focusTaskId }); toast(`A por ello: ${focusMins} minutos solo para esto.`); renderFocus(); return;
-    case 'focus-stop': setTimer(null); renderFocus(); updateTimerUI(); return;
+    case 'focus-start': focusAction('start'); return;
+    case 'focus-pause': focusAction('pause'); return;
+    case 'focus-resume': focusAction('resume'); return;
+    case 'focus-reset': focusAction('reset'); return;
     case 'focus-pill': { const tm = getTimer(); if (tm && tm.taskId) openFocus(tm.taskId); return; }
     case 'focus-done': {
       const t = task(id);
@@ -1928,7 +2002,8 @@ function onNewDayOrReturn() {
   return created || changed;
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { save(true); return; }
+  if (document.visibilityState === 'hidden') { save(true); focusNote(true); return; }
+  closeFocusNote();
   if (modal.open) return;
   const fresh = loadState();
   if (fresh) state = fresh;
