@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Mi Organizador</title>
+  <meta name="description" content="Planificador personal: tu día, tus proyectos y tus objetivos.">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Organizador">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="layout">
+    <nav class="nav" aria-label="Secciones">
+      <div class="brand">
+        <img src="icons/icon.svg" alt="" width="28" height="28">
+        <span>Organizador</span>
+      </div>
+      <a href="#hoy" data-nav="hoy"><span class="ico" aria-hidden="true">☀︎</span><span>Hoy</span></a>
+      <a href="#proyectos" data-nav="proyectos"><span class="ico" aria-hidden="true">▦</span><span>Proyectos</span></a>
+      <a href="#objetivos" data-nav="objetivos"><span class="ico" aria-hidden="true">◎</span><span>Objetivos</span></a>
+      <a href="#ajustes" data-nav="ajustes"><span class="ico" aria-hidden="true">⚙︎</span><span>Ajustes</span></a>
+    </nav>
+    <main id="app" tabindex="-1"></main>
+  </div>
+
+  <dialog id="modal">
+    <form method="dialog" id="modal-form"></form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
