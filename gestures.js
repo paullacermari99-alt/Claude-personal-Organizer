@@ -45,12 +45,13 @@ function endSwipe(commit) {
     row.style.transform = '';
     setTimeout(() => { li.classList.remove('swiping', 'swipe-right', 'swipe-left', 'swipe-pass'); row.style.transition = ''; }, 280);
     toggleTask(s.id, null);
-  } else if (commit && t && s.dx <= -SWIPE_DONE) {
+  } else if (commit && t && s.dx <= -SWIPE_DONE && !t.routineId && !t.done) {
     row.style.transform = 'translateX(-110%)';
-    const base = t.date && t.date >= todayStr() ? t.date : todayStr();
-    t.date = addDays(base, 1);
+    const prev = t.due;
+    const base = t.due && t.due >= todayStr() ? t.due : todayStr();
+    t.due = addDays(base, 1);
     save();
-    toast('Pasada a ' + relDay(t.date).toLowerCase());
+    toast('Plazo: ' + relDay(t.due).toLowerCase(), { action: 'Deshacer', onAction: () => { t.due = prev; save(); rerender(); } });
     /* La fila se recoge suavemente antes de repintar */
     li.style.height = li.offsetHeight + 'px';
     requestAnimationFrame(() => { li.classList.add('collapsing'); li.style.height = '0px'; });
