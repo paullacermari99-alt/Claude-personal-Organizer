@@ -19,6 +19,10 @@ const I = {
   right: svg('<path d="M9.5 5.5L16 12l-6.5 6.5"/>', 'stroke-width="2.2"'),
   down: svg('<path d="M6 9.5l6 6 6-6"/>', 'stroke-width="2.2"'),
   plus: svg('<path d="M12 5v14M5 12h14"/>', 'stroke-width="2.4"'),
+  expand: svg('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>', 'stroke-width="2.2"'),
+  shrink: svg('<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>', 'stroke-width="2.2"'),
+  trash: svg('<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>'),
+  template: svg('<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><path d="M3.5 9.5h17M9.5 9.5v11"/>'),
   pause: svg('<path d="M8 5.5v13M16 5.5v13"/>', 'stroke-width="3"'),
   reset: svg('<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4v4h4"/>', 'stroke-width="2.2"'),
   play: svg('<path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/>'),
@@ -118,7 +122,7 @@ function defaultSettings() {
   try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch {}
   return {
     timezone: tz, weekStart: 1, focusMinutes: 25, dayStart: '08:00', dayEnd: '21:00', calendars: [],
-    reminders: { enabled: false, blocks: 10, deadlines: 'day-before', deadlineTime: '09:00', dailySummary: '', quietFrom: '22:00', quietTo: '08:00' },
+    reminders: { enabled: false, blocks: 10, deadlines: 'day-before', deadlineTime: '09:00', dailySummary: '', morning: '', quietFrom: '22:00', quietTo: '08:00' },
     ui: { collapsed: {}, projectsView: 'cards', projectsSort: 'manual', projectsArchived: false, tasksTab: 'bandeja', weekMode: '7', goalsHorizon: 'todos', goalsStatus: 'activos', goalsProject: '', lastReview: null },
   };
 }

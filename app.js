@@ -376,7 +376,7 @@ function viewToday() {
       </div>
 
       ${overdue.length ? collapsible('vencidas', 'Vencidas', overdue.length, taskList(overdue, { star: true, moveToday: true }),
-        `<button class="btn small ghost" data-act="move-all-today">Todas a hoy</button>`) : ''}
+        `<button class="btn small ghost" data-act="bulk-resched">${I.resched}<span>Reprogramar</span></button>`) : ''}
 
       ${routines.length ? collapsible('diarias', 'Diarias pendientes', totalPend, routines.map(r => routineGroup(r)).join(''),
         `<a class="btn small ghost" href="#diarias">Ver diarias</a>`) : ''}
@@ -440,8 +440,9 @@ function taskResults() {
   }
   if (tab === 'proximas' || tab === 'vencidas') {
     const groups = new Map();
+    const bulk = tab === 'vencidas' ? `<div class="bulk-bar"><span class="muted small">${list.length} con el plazo pasado</span><button class="btn small" data-act="bulk-resched">${I.resched}<span>Reprogramar todas</span></button></div>` : '';
     list.forEach(t => { if (!groups.has(t.due)) groups.set(t.due, []); groups.get(t.due).push(t); });
-    return [...groups].map(([d, ts]) => `<div class="day-group"><h3 class="group-title">${esc(relDay(d))} <span class="muted">· ${esc(fmtShortDate(d))}</span></h3>${taskList(ts, { hideDue: d })}</div>`).join('');
+    return bulk + [...groups].map(([d, ts]) => `<div class="day-group"><h3 class="group-title">${esc(relDay(d))} <span class="muted">· ${esc(fmtShortDate(d))}</span></h3>${taskList(ts, { hideDue: d })}</div>`).join('');
   }
   return taskList(list, {});
 }
@@ -495,15 +496,17 @@ function viewReview() {
   return `
   <div class="page page-mid page-review">
   ${pageHead({ eyebrow: backLink('#semana', 'Semana'), title: 'Revisión semanal' })}
-  <p class="hint intro">Semana del ${esc(fmtShortDate(ws))} al ${esc(fmtShortDate(we))}. Tres pasos, unos 10 minutos.</p>
+  <p class="hint intro">Plan para la semana del ${esc(fmtShortDate(ws))} al ${esc(fmtShortDate(we))}. Cuatro pasos, unos 10 minutos.</p>
+
+  ${reviewLookback(ws)}
 
   <div class="section step">
-    <div class="step-head"><span class="step-num">1</span><div><h3>Revisa lo pendiente</h3><p class="muted small">Vencidas y sin fecha: complétalas, reprográmalas o bórralas.</p></div></div>
+    <div class="step-head"><span class="step-num">2</span><div class="grow"><h3>Revisa lo pendiente</h3><p class="muted small">Vencidas y sin fecha: complétalas, reprográmalas o bórralas.</p></div>${pending.some(t => t.due) ? `<button class="btn small" data-act="bulk-resched">${I.resched}<span>Reprogramar atrasadas</span></button>` : ''}</div>
     ${pending.length ? taskList(pending, {}) : emptyBox('Nada pendiente. 🎉')}
   </div>
 
   <div class="section step">
-    <div class="step-head"><span class="step-num">2</span><div><h3>Elige tus prioridades</h3><p class="muted small">Lo que de verdad quieres sacar esta semana (hasta 5).</p></div></div>
+    <div class="step-head"><span class="step-num">3</span><div class="grow"><h3>Elige tus prioridades</h3><p class="muted small">Lo que de verdad quieres sacar esta semana (hasta 5).</p></div><button class="btn small" data-act="propose-plan">${I.star}<span>Proponme un plan</span></button></div>
     <div class="pick-chips">
       ${prios.map(t => `<button class="pick-chip on" data-act="week-prio" data-id="${t.id}" style="--c:${colorOfTask(t)}">★ ${esc(t.title)}</button>`).join('')}
       ${cands.map(t => `<button class="pick-chip" data-act="week-prio" data-id="${t.id}" style="--c:${colorOfTask(t)}">${esc(t.title)}${t.due ? ` <span class="muted">· ${esc(relDay(t.due))}</span>` : ''}</button>`).join('')}
@@ -512,7 +515,7 @@ function viewReview() {
   </div>
 
   <div class="section step">
-    <div class="step-head"><span class="step-num">3</span><div><h3>Dales tiempo en el calendario</h3><p class="muted small">Reservar un hueco no cambia el plazo de la tarea.</p></div></div>
+    <div class="step-head"><span class="step-num">4</span><div class="grow"><h3>Dales tiempo en el calendario</h3><p class="muted small">Reservar un hueco no cambia el plazo de la tarea.</p></div>${prios.length ? `<button class="btn small" data-act="reserve-all">${I.clock}<span>Reservar todas</span></button>` : ''}</div>
     ${prios.length ? `<div class="settings-group glass">${prios.map(t => {
       const evs = state.events.filter(e => e.taskId === t.id && !e.recurrence && e.date >= ws && e.date <= we).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
       return `<div class="item">
@@ -520,7 +523,7 @@ function viewReview() {
         <button class="btn small" data-act="auto-reserve" data-id="${t.id}" data-from="${from}" data-to="${we}">Reservar</button>
         <button class="btn small ghost" data-act="reserve-task" data-id="${t.id}">Elegir hora</button>
       </div>`;
-    }).join('')}</div>` : emptyBox('Elige primero alguna prioridad en el paso 2.')}
+    }).join('')}</div>` : emptyBox('Elige primero alguna prioridad en el paso 3.')}
   </div>
   <div class="review-foot">
     <a class="btn" href="#semana">${I.cal}<span>Ver la semana</span></a>
@@ -658,6 +661,7 @@ function viewProjects() {
       <button role="tab" class="${ui.projectsView !== 'list' ? 'on' : ''}" data-act="set-ui" data-k="projectsView" data-v="cards" aria-label="Tarjetas">${I.grid}</button>
       <button role="tab" class="${ui.projectsView === 'list' ? 'on' : ''}" data-act="set-ui" data-k="projectsView" data-v="list" aria-label="Lista">${I.list}</button>
     </div>
+    <button class="btn" data-act="templates" data-kind="project" title="Plantillas de proyecto">${I.template}<span>Plantillas</span></button>
     <button class="btn primary" data-act="new-project">${I.plus}<span>Nuevo</span></button>` })}
   <div class="toolbar">
     <div class="segmented compact" role="tablist">
@@ -703,7 +707,7 @@ function viewProject(id, sub) {
   }
   return `
   <div class="page">
-  ${pageHead({ eyebrow: backLink('#proyectos', 'Proyectos'), title: `${esc(p.icon || '')} ${esc(p.name)}`, dot: p.color, actions: `${favBtn(p)}<button class="btn" data-act="edit-project" data-id="${p.id}">Editar</button>` })}
+  ${pageHead({ eyebrow: backLink('#proyectos', 'Proyectos'), title: `${esc(p.icon || '')} ${esc(p.name)}`, dot: p.color, actions: `${favBtn(p)}<button class="btn" data-act="templates" data-kind="project" data-id="${p.id}" title="Guardar como plantilla">${I.template}<span>Plantilla</span></button><button class="btn" data-act="edit-project" data-id="${p.id}">Editar</button>` })}
   <div class="segmented" role="tablist">${[['resumen', 'Resumen'], ['objetivos', 'Objetivos'], ['tareas', 'Tareas']].map(([v, l]) => `<button role="tab" class="${tab === v ? 'on' : ''}" data-act="proj-tab" data-id="${p.id}" data-v="${v}">${l}</button>`).join('')}</div>
   ${body}
   </div>`;
@@ -924,6 +928,7 @@ function viewSettings() {
       <label class="item"><span>Activar recordatorios</span><input type="checkbox" class="switch" data-set="reminders.enabled" ${r.enabled && perm === 'granted' ? 'checked' : ''} ${perm === 'unsupported' ? 'disabled' : ''}></label>
       <div class="item"><span>Antes de un bloque</span>${sel('reminders.blocks', [[0, 'No avisar'], [5, '5 min antes'], [10, '10 min antes'], [15, '15 min antes'], [30, '30 min antes']], r.blocks, true)}</div>
       <div class="item"><span>Plazos</span><div class="inline">${sel('reminders.deadlines', [['off', 'No avisar'], ['day-before', 'El día antes'], ['same-day', 'El mismo día']], r.deadlines)}<input type="time" data-set="reminders.deadlineTime" value="${esc(r.deadlineTime)}" aria-label="Hora del aviso de plazos"></div></div>
+      <div class="item"><span>Resumen de la mañana<span class="muted small item-sub">Tus prioridades, bloques y diarias del día</span></span>${sel('reminders.morning', [['', 'No'], ['06:30', 'A las 6:30'], ['07:00', 'A las 7:00'], ['07:30', 'A las 7:30'], ['08:00', 'A las 8:00'], ['08:30', 'A las 8:30'], ['09:00', 'A las 9:00'], ['10:00', 'A las 10:00']], r.morning || '')}</div>
       <div class="item"><span>Resumen de diarias</span>${sel('reminders.dailySummary', [['', 'No'], ['08:00', 'A las 8:00'], ['09:00', 'A las 9:00'], ['13:00', 'A las 13:00'], ['18:00', 'A las 18:00'], ['20:00', 'A las 20:00'], ['21:00', 'A las 21:00']], r.dailySummary)}</div>
       <div class="item"><span>Horas de silencio</span><div class="inline"><input type="time" data-set="reminders.quietFrom" value="${esc(r.quietFrom)}" aria-label="Desde"><span class="muted">a</span><input type="time" data-set="reminders.quietTo" value="${esc(r.quietTo)}" aria-label="Hasta"></div></div>
     </div>
@@ -962,6 +967,8 @@ function viewSettings() {
   <div class="section">
     <div class="section-head"><h2>Tus datos</h2></div>
     <div class="settings-group glass">
+      <div class="item"><span>Papelera <span class="muted small">· ${(state.trash || []).length} elemento${(state.trash || []).length === 1 ? '' : 's'}, se guardan 10 días</span></span><button class="btn small" data-act="trash-open">Abrir</button></div>
+      <div class="item"><span>Plantillas de proyecto <span class="muted small">· ${(state.templates || []).filter(t => t.kind === 'project').length}</span></span><button class="btn small" data-act="templates" data-kind="project">Ver</button></div>
       <div class="item"><span>Exportar copia de seguridad</span><button class="btn small" data-act="export">Exportar</button></div>
       <div class="item"><span>Importar copia</span><label class="btn small">Importar<input type="file" accept="application/json,.json" data-act="import" hidden></label></div>
       <div class="item"><span style="color:var(--red)">Borrar todo</span><button class="btn small danger" data-act="reset">Borrar</button></div>
@@ -1151,15 +1158,7 @@ function taskModal(t0 = {}) {
       else blocksOfTask(obj.id).forEach(e => { if (e.title === oldTitle) e.title = title; });
       saved = obj;
     },
-    onDelete: isNew ? null : () => {
-      const removed = task(t.id), idx = state.tasks.indexOf(removed);
-      { const tm = getTimer(); if (tm && tm.taskId === t.id) cancelTimer(false); }
-      state.tasks = state.tasks.filter(x => x.id !== t.id);
-      const evs2 = state.events.filter(e => e.taskId === t.id);
-      state.events = state.events.filter(e => e.taskId !== t.id);
-      Object.values(state.dayPlans).concat(Object.values(state.weekPlans)).forEach(p => { p.priorities = (p.priorities || []).filter(x => x !== t.id); });
-      toast('Tarea eliminada', { action: 'Deshacer', onAction: () => { state.tasks.splice(idx, 0, removed); state.events.push(...evs2); save(); rerender(); } });
-    },
+    onDelete: isNew ? null : () => { deleteWithUndo('task', t.id); },
     actions: {
       'add-sub': () => {
         const inp = $('#sub-new', modalForm), v = inp.value.trim();
@@ -1428,13 +1427,9 @@ function goalModal(g0 = {}) {
       if (isNew) { state.goals.push(obj); setTimeout(() => { location.hash = '#objetivo/' + obj.id; }); }
     },
     onDelete: isNew ? null : () => {
-      if (!confirm('¿Eliminar el objetivo? Sus tareas se conservan sin objetivo.')) return false;
-      state.goals = state.goals.filter(x => x.id !== g.id);
-      state.tasks.forEach(t => { if (t.goalId === g.id) t.goalId = null; });
-      state.events.forEach(e => { if (e.goalId === g.id) e.goalId = null; });
-      state.routines.forEach(r => { if (r.goalId === g.id) r.goalId = null; });
+      /* Va a la papelera: se recupera con sus vínculos durante 10 días */
+      deleteWithUndo('goal', g.id);
       location.hash = '#objetivos';
-      toast('Objetivo eliminado');
     },
   });
   modalForm.dataset.pm = g.progressMode === 'manual' ? 'manual' : 'auto';
@@ -1459,11 +1454,9 @@ function projectModal(p0 = {}) {
       if (isNew) { state.projects.push(obj); setTimeout(() => { location.hash = '#proyecto/' + obj.id; }); }
     },
     onDelete: isNew ? null : () => {
-      if (!confirm('¿Eliminar el proyecto? Sus objetivos y tareas se conservan sin proyecto. (Si solo quieres ocultarlo, mejor archívalo.)')) return false;
-      state.projects = state.projects.filter(x => x.id !== p.id);
-      [state.tasks, state.events, state.goals, state.routines].forEach(list => list.forEach(x => { if (x.projectId === p.id) x.projectId = null; }));
+      /* Va a la papelera; sus objetivos y tareas se quedan, sin proyecto, hasta que lo recuperes */
+      deleteWithUndo('project', p.id);
       location.hash = '#proyectos';
-      toast('Proyecto eliminado');
     },
   });
 }
@@ -1563,13 +1556,33 @@ function openFocus(id) {
 }
 function closeFocus() {
   $('#focus').hidden = true;
+  $('#focus').classList.remove('focus-full');
+  try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch {}
+  { const s = getSummary(); if (s && s.taskId === focusTaskId) setSummary(null); }
   document.body.classList.remove('focus-open');
   updateTimerUI();
 }
 const chips = (act, vals, cur, suffix = ' min') => `<div class="chips-row">${vals.map(v => `<button class="chip-btn ${v === cur ? 'on' : ''}" data-act="${act}" data-v="${v}">${v}${suffix}</button>`).join('')}</div>`;
+/* Resumen de la última sesión terminada (se enseña una vez al volver) */
+const SUMMARY_KEY = 'organizador.focusSummary';
+function getSummary() { try { return JSON.parse(localStorage.getItem(SUMMARY_KEY)) || null; } catch { return null; } }
+function setSummary(s) { try { s ? localStorage.setItem(SUMMARY_KEY, JSON.stringify(s)) : localStorage.removeItem(SUMMARY_KEY); } catch {} }
+function summaryHTML(s, t) {
+  const faces = [[1, '😣', 'Mal'], [2, '😐', 'Regular'], [3, '🙂', 'Bien'], [4, '🤩', 'Genial']];
+  const ds = (s.distractions || []).map(task).filter(Boolean);
+  return `<div class="focus-summary">
+    <div class="sum-big">${s.minutes} min</div>
+    <div class="muted">de enfoque${s.rounds > 1 ? ` · ${s.rounds} rondas` : ''}${t.subtasks.length ? ` · ${t.subtasks.filter(x => x.done).length}/${t.subtasks.length} pasos` : ''}</div>
+    ${ds.length ? `<div class="sum-dis"><div class="small muted">Apuntaste para después:</div><ul class="plain small">${ds.map(x => `<li>${esc(x.title)}</li>`).join('')}</ul></div>` : ''}
+    <div class="small muted">¿Cómo ha ido?</div>
+    <div class="chips-row rate">${faces.map(([v, f, l]) => `<button class="chip-btn ${s.rating === v ? 'on' : ''}" data-act="focus-rate" data-v="${v}" aria-label="${l}" title="${l}">${f}</button>`).join('')}</div>
+  </div>`;
+}
 function renderFocus() {
   const t = task(focusTaskId);
   if (!t) { closeFocus(); return; }
+  const sum = getSummary(), showSum = sum && sum.taskId === t.id && !getTimer();
+  const full = $('#focus').classList.contains('focus-full');
   const timer = getTimer(), mine = timer && timer.taskId === t.id, paused = mine && timer.pausedLeft != null;
   const other = timer && !mine, plan = focusPlan();
   const total = plan.rounds * plan.work + (plan.rounds - 1) * plan.brk;
@@ -1590,14 +1603,16 @@ function renderFocus() {
     : plan.mode === 'long' ? `${plan.rounds} rondas de ${plan.work} min con ${plan.brk} min de descanso: ${total >= 60 ? Math.floor(total / 60) + ' h ' + (total % 60 ? total % 60 + ' min' : '') : total + ' min'} en total.`
     : 'Una sola sesión, sin descansos. El temporizador es opcional.';
   const startMins = plan.mode === 'long' ? plan.work : focusMins;
-  $('#focus').innerHTML = `<div class="focus-card glass" role="dialog" aria-label="Enfoque">
+  $('#focus').innerHTML = `<div class="focus-card glass ${showSum ? 'is-summary' : ''}" role="dialog" aria-label="Enfoque">
     <button class="icon-btn round focus-close" data-act="focus-close" aria-label="Cerrar">${I.close}</button>
-    <div class="eyebrow">Enfoque</div>
+    <button class="icon-btn round focus-fullbtn" data-act="focus-full" aria-label="${full ? 'Salir de pantalla completa' : 'Pantalla completa'}" title="${full ? 'Salir de pantalla completa' : 'Pantalla completa'}">${full ? I.shrink : I.expand}</button>
+    <div class="eyebrow">${showSum ? 'Sesión terminada' : 'Enfoque'}</div>
     <h2 class="focus-title ${t.done ? 'done' : ''}">${esc(t.title)}</h2>
-    <label class="field">¿Por dónde empiezas?<input type="text" data-input="first-step" data-id="${t.id}" value="${esc(t.firstStep)}" placeholder="Ej.: abrir el documento y escribir el título" enterkeyhint="done">
+    ${showSum ? summaryHTML(sum, t) : ''}
+    <label class="field focus-extra">¿Por dónde empiezas?<input type="text" data-input="first-step" data-id="${t.id}" value="${esc(t.firstStep)}" placeholder="Ej.: abrir el documento y escribir el título" enterkeyhint="done">
       <span class="hint">Una acción pequeña y concreta, de menos de 2 minutos. Así arrancar cuesta mucho menos.</span></label>
-    ${t.subtasks.length ? `<div class="focus-subs">${t.subtasks.map(s => `<label><input type="checkbox" class="check sm" data-act="sub-toggle" data-id="${t.id}" data-sub="${s.id}" ${s.done ? 'checked' : ''}><span>${esc(s.title)}</span></label>`).join('')}</div>` : ''}
-    <div class="focus-timer ${paused ? 'is-paused' : ''} ${mine && timer.phase === 'break' ? 'is-break' : ''}">
+    ${t.subtasks.length ? `<div class="focus-subs focus-extra">${t.subtasks.map(s => `<label><input type="checkbox" class="check sm" data-act="sub-toggle" data-id="${t.id}" data-sub="${s.id}" ${s.done ? 'checked' : ''}><span>${esc(s.title)}</span></label>`).join('')}</div>` : ''}
+    <div class="focus-timer ${paused ? 'is-paused' : ''} ${mine && timer.phase === 'break' ? 'is-break' : ''} ${showSum ? 'is-hidden' : ''}">
       ${mine && timer.mode === 'long' ? `<div class="focus-phase">${timer.phase === 'break' ? 'Descanso' : 'Trabajo'}<span>${timer.round}/${timer.rounds}</span></div>` : ''}
       <div class="ring big" aria-hidden="true">
         <svg viewBox="0 0 84 84"><circle class="track" cx="42" cy="42" r="38"/><circle class="bar" id="focus-ring" cx="42" cy="42" r="38" stroke-dasharray="${RING}" stroke-dashoffset="0"/></svg>
@@ -1606,9 +1621,14 @@ function renderFocus() {
       ${setup}
       <p class="muted small" id="focus-sub">${sub}</p>
     </div>
+    ${mine ? `<form class="focus-dis" data-act="focus-distraction">
+      <input type="text" name="title" placeholder="¿Te viene algo a la cabeza? Apúntalo y sigue" autocomplete="off" enterkeyhint="done" aria-label="Apuntar distracción">
+      <button class="icon-btn round" type="submit" aria-label="Apuntar">${I.plus}</button>
+    </form>${(timer.distractions || []).length ? `<p class="muted small dis-count">${timer.distractions.length} apuntada${timer.distractions.length === 1 ? '' : 's'} en la bandeja para después</p>` : ''}` : ''}
     <div class="focus-actions">
       ${mine ? `<button class="btn" data-act="focus-reset">${I.reset}<span>Reiniciar</span></button>
         <button class="btn" data-act="${paused ? 'focus-resume' : 'focus-pause'}">${paused ? I.play + '<span>Seguir</span>' : I.pause + '<span>Pausar</span>'}</button>`
+      : showSum ? `<button class="btn" data-act="focus-again">${I.repeat}<span>Otra sesión</span></button>`
       : `<button class="btn" data-act="focus-start">${I.play}<span>${plan.mode === 'long' ? 'Empezar' : `Empezar ${focusMins} min`}</span></button>`}
       <button class="btn primary" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar tarea'}</button>
     </div>
@@ -1631,6 +1651,7 @@ function focusAction(act) {
   const tm = getTimer();
   if (act === 'start') {
     askNotify();
+    setSummary(null);
     const plan = focusPlan(), long = plan.mode === 'long', mins = long ? plan.work : focusMins;
     setTimer({ taskId: focusTaskId, mode: plan.mode, work: long ? plan.work : mins, brk: plan.brk, rounds: long ? plan.rounds : 1, round: 1, phase: 'work', minutes: mins, endAt: Date.now() + mins * 60000, pausedLeft: null });
     toast(long ? `A por ello: ronda 1 de ${plan.rounds}, ${mins} minutos.` : `A por ello: ${mins} minutos solo para esto.`);
@@ -1689,6 +1710,10 @@ function advanceTimer(tm) {
     if (n.phase === 'work') { n = { ...n, phase: 'break', minutes: n.brk, endAt: n.endAt + n.brk * 60000 }; last = 'break'; }
     else { n = { ...n, phase: 'work', round: n.round + 1, minutes: n.work, endAt: n.endAt + n.work * 60000 }; last = 'work'; }
   }
+  if (last === 'end') {
+    const total = tm.mode === 'long' ? tm.rounds * tm.work : tm.minutes;
+    setSummary({ taskId: tm.taskId, minutes: total, rounds: tm.mode === 'long' ? tm.rounds : 1, distractions: tm.distractions || [], date: todayStr(), at: Date.now(), rating: null });
+  }
   setTimer(n);
   save();
   haptic([200, 100, 200]);
@@ -1700,8 +1725,25 @@ function advanceTimer(tm) {
   toast(msg);
   /* Con avisos push activos, los avisos de cambio los manda el servidor (llegan aunque la app esté cerrada) */
   if (document.visibilityState !== 'visible' && !pushActive()) notify('focus:' + tm.endAt, last === 'end' ? 'Enfoque completado' : last === 'break' ? 'Descanso' : `Ronda ${n.round} de ${n.rounds}`, msg, 'focus-live');
-  if (!$('#focus').hidden) renderFocus();
+  if (last === 'end' && tm.taskId && task(tm.taskId) && $('#focus').hidden && document.visibilityState === 'visible') openFocus(tm.taskId);
+  else if (!$('#focus').hidden) renderFocus();
   else updateTimerUI();
+}
+/* Apuntar una distracción: queda como tarea en la bandeja, sin salir del enfoque */
+function addDistraction(form) {
+  const inp = form.querySelector('input'), v = inp.value.trim(), tm = getTimer();
+  if (!v || !tm) return;
+  const cur = task(tm.taskId);
+  const t = newTask({ title: v, notes: cur ? `Apuntado durante el enfoque en «${cur.title}»` : '' });
+  state.tasks.push(t);
+  setTimer({ ...tm, distractions: [...(tm.distractions || []), t.id] });
+  save();
+  inp.value = '';
+  toast('Apuntado en la bandeja. ¡Sigue!');
+  const c = $('.dis-count');
+  const n = getTimer().distractions.length, txt = `${n} apuntada${n === 1 ? '' : 's'} en la bandeja para después`;
+  if (c) c.textContent = txt; else form.insertAdjacentHTML('afterend', `<p class="muted small dis-count">${txt}</p>`);
+  inp.focus();
 }
 function beep() {
   try {
@@ -1737,6 +1779,10 @@ function checkReminders() {
   /* Limpia avisos antiguos */
   const old = Date.now() - 4 * 86400000;
   Object.keys(state.notified).forEach(k => { if (state.notified[k] < old) delete state.notified[k]; });
+  if (r.morning && now >= r.morning && toMin(now) - toMin(r.morning) < 180) {
+    const m = morningSummary(today);
+    notify(`morning:${today}`, m.title, m.body);
+  }
   if (inQuiet(now)) return;
   if (r.blocks) eventsOn(today).forEach(e => {
     const diff = toMin(e.start) - toMin(now);
@@ -1917,7 +1963,35 @@ document.addEventListener('click', e => {
       save(); navigate(() => route()); return;
     }
     case 'tasks-tab': state.settings.ui.tasksTab = el.dataset.v; save(); navigate(() => route()); return;
-    case 'new-project': projectModal({}); return;
+    case 'new-project': {
+      const tpls = (state.templates || []).filter(t => t.kind === 'project');
+      if (!tpls.length) { projectModal({}); return; }
+      actionSheet('Nuevo proyecto', [['Proyecto vacío', I.plus, () => projectModal({})], ...tpls.map(t => [`Desde «${esc(t.name)}»`, I.template, () => useProjectTemplate(t)])]);
+      return;
+    }
+    case 'templates': templatesSheet(el.dataset.kind, { ws: el.dataset.ws || startOfWeek(todayStr()), projectId: id || null }); return;
+    case 'trash-open': trashSheet(); return;
+    case 'bulk-resched': bulkReschedSheet(); return;
+    case 'propose-plan': proposeWeekPlan(reviewWeekStart()); return;
+    case 'review-why': {
+      const wp = state.weekPlans[el.dataset.ws] = state.weekPlans[el.dataset.ws] || { priorities: [] };
+      wp.reasons = wp.reasons || {};
+      wp.reasons[id] = wp.reasons[id] === el.dataset.v ? undefined : el.dataset.v;
+      break;
+    }
+    case 'review-trash': deleteWithUndo('task', id); rerender(); return;
+    case 'reserve-all': {
+      const ws = reviewWeekStart(), we = addDays(ws, 6), from = todayStr() > ws ? todayStr() : ws;
+      const ids = ((state.weekPlans[ws] || {}).priorities || []).filter(x => task(x) && !state.events.some(e => e.taskId === x && !e.recurrence && e.date >= ws && e.date <= we));
+      let n = 0;
+      const added = ids.map(x => { const t = task(x), s = findSlot(t.estimate || 60, from, we); n++; return scheduleTask(t, s.date, s.start, s.end).id; });
+      save(); rerender();
+      toast(n ? `Tiempo reservado para ${n} prioridad${n === 1 ? '' : 'es'}` : 'Todas tus prioridades ya tienen tiempo reservado', n ? { action: 'Deshacer', onAction: () => { state.events = state.events.filter(x => !added.includes(x.id)); save(); rerender(); } } : {});
+      return;
+    }
+    case 'focus-full': $('#focus').classList.toggle('focus-full'); try { if ($('#focus').classList.contains('focus-full')) { if (!document.fullscreenElement && document.documentElement.requestFullscreen && !isPhone()) document.documentElement.requestFullscreen().catch(() => {}); } else if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch {} renderFocus(); return;
+    case 'focus-rate': { const s = getSummary(); if (s) { s.rating = Number(el.dataset.v); setSummary(s); const log = state.focusLog.filter(f => f.taskId === s.taskId && f.date === s.date); log.forEach(f => { f.rating = s.rating; }); save(); renderFocus(); } return; }
+    case 'focus-again': setSummary(null); renderFocus(); return;
     case 'edit-project': projectModal(project(id)); return;
     case 'project-fav': e.preventDefault(); { const p = project(id); p.favorite = !p.favorite; haptic(); } break;
     case 'proj-tab': location.hash = `#proyecto/${id}/${el.dataset.v}`; return;
@@ -1973,6 +2047,7 @@ document.addEventListener('keydown', e => {
 
 document.addEventListener('submit', e => {
   const f = e.target;
+  if (f.dataset.act === 'focus-distraction') { e.preventDefault(); addDistraction(f); return; }
   if (f.dataset.act === 'login' || f.dataset.act === 'new-password') {
     e.preventDefault();
     const btns = [...f.querySelectorAll('button')]; btns.forEach(x => { x.disabled = true; });
@@ -2021,6 +2096,7 @@ document.addEventListener('input', e => {
     }
   }
   if (k === 'first-step') { const t = task(el.dataset.id); if (t) { t.firstStep = el.value; save(); } }
+  if (k === 'week-note') { const wp = state.weekPlans[el.dataset.ws] = state.weekPlans[el.dataset.ws] || { priorities: [] }; wp.note = el.value; clearTimeout(el._t); el._t = setTimeout(() => save(), 600); }
   if (k === 'task-search') { taskQuery = el.value; $('#task-results').innerHTML = taskResults(); }
   if (k === 'goal-progress') { const g = goal(el.dataset.id); g.progress = Number(el.value); const c = el.closest('.info-card'); if (c) { $('.progress > span', c).style.width = el.value + '%'; $('.stat-row .count', c).textContent = el.value + '%'; } }
 });
@@ -2090,6 +2166,7 @@ function onNewDayOrReturn() {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { save(true); focusNote(true); return; }
   closeFocusNote();
+  { const s = getSummary(); if (s && !getTimer() && $('#focus').hidden && task(s.taskId) && Date.now() - s.at < 3 * 3600000) setTimeout(() => openFocus(s.taskId), 300); }
   if (modal.open) return;
   const fresh = loadState();
   if (fresh) state = fresh;
@@ -2127,6 +2204,7 @@ if (wasReset) { state = resetForNewEpoch(state); setTimer(null); resetTours(); }
 syncInfo.freshDevice = firstRun;
 if (!state) { let demo = false; try { demo = localStorage.getItem('organizador.demo') === '1'; } catch { /* sin almacenamiento */ } if (demo) seedDemo(); else seedState(); }
 generateRoutines();
+purgeTrash();
 save(true);
 const pendingShortcut = ['nueva', 'enfoque', 'buscar'].includes(parseHash().name) ? parseHash().name : null;
 if (pendingShortcut) history.replaceState(null, '', location.pathname + '#hoy');

@@ -95,8 +95,22 @@ function remindersBase(st: Any) {
   const r = st.settings?.reminders || {};
   if (!r.enabled) return [];
   const { date: today, hm } = nowIn(st.settings?.timezone || 'Europe/Madrid');
-  if (inQuiet(r, hm)) return [];
   const out: { key: string; title: string; body: string }[] = [];
+  /* Resumen de la mañana: prioridades, bloques y diarias del día (hasta 3 h después de la hora elegida) */
+  if (r.morning && hm >= r.morning && toMin(hm) - toMin(r.morning) < 180) {
+    const tasks = st.tasks || [];
+    const byId = new Map(tasks.map((t: Any) => [t.id, t]));
+    const prios = ((st.dayPlans?.[today]?.priorities) || []).map((id: string) => byId.get(id)).filter((t: Any) => t && !t.done);
+    const evs = eventsOn(st, today).sort((a: Any, b: Any) => a.start.localeCompare(b.start));
+    const diarias = pendingRoutines(st, today);
+    const more = tasks.filter((t: Any) => !t.done && !t.routineId && t.due === today && !prios.includes(t)).length;
+    const lines: string[] = [prios.length ? `Prioridades: ${prios.map((t: Any) => t.title).join(' · ')}` : 'Aún no has elegido tus 3 prioridades. Toca para planificar el día.'];
+    if (evs.length) lines.push(`${evs.length} bloque${evs.length === 1 ? '' : 's'}: ${evs.slice(0, 3).map((e: Any) => `${e.start} ${e.title}`).join(', ')}${evs.length > 3 ? '…' : ''}`);
+    const rest = [more ? `${more} tarea${more === 1 ? '' : 's'} más para hoy` : '', diarias ? `${diarias} diaria${diarias === 1 ? '' : 's'} pendiente${diarias === 1 ? '' : 's'}` : ''].filter(Boolean);
+    if (rest.length) lines.push(rest.join(' · '));
+    out.push({ key: `morning:${today}`, title: 'Tu día', body: lines.join('\n') });
+  }
+  if (inQuiet(r, hm)) return out;
   if (r.blocks) for (const e of eventsOn(st, today)) {
     const diff = toMin(e.start) - toMin(hm);
     if (diff >= 0 && diff <= r.blocks) out.push({ key: `ev:${e.id}:${today}`, title: e.title, body: `Empieza a las ${e.start}` });

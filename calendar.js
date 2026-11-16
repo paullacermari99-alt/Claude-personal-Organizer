@@ -54,6 +54,7 @@ function viewWeek() {
     </div>
     <div class="toolbar-right">
       <button class="btn small" data-act="copy-week" data-ws="${weekStart}" title="Copiar los bloques de la semana anterior">${I.copy}<span>Copiar semana anterior</span></button>
+      <button class="btn small" data-act="templates" data-kind="week" data-ws="${weekStart}" title="Plantillas de semana">${I.template}<span>Plantillas</span></button>
       <a class="btn small ${reviewed ? '' : 'attention'}" href="#revision">${I.review}<span>Revisión${reviewed ? ' ✓' : ''}</span></a>
       <button class="btn small" data-act="new-event">${I.plus}<span>Evento</span></button>
     </div>
@@ -239,6 +240,7 @@ function viewWeekPhone() {
       <button role="tab" class="${mode === '1' ? 'on' : ''}" data-act="pweek-mode" data-v="1">Día</button>
     </div>
     <button class="icon-btn round" data-act="copy-week" data-ws="${weekStart}" aria-label="Copiar la semana anterior" title="Copiar la semana anterior">${I.copy}</button>
+    <button class="icon-btn round" data-act="templates" data-kind="week" data-ws="${weekStart}" aria-label="Plantillas de semana" title="Plantillas de semana">${I.template}</button>
     <a class="icon-btn round ${reviewed ? '' : 'attention'}" href="#revision" aria-label="Revisión semanal" title="Revisión semanal">${I.review}</a>
   </div>
   <div class="ptray glass ${trayOpen ? 'open' : ''}">
