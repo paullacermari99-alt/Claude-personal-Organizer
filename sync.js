@@ -62,6 +62,8 @@ async function signUp(email, password) {
   let d;
   try { d = await sb('/auth/v1/signup', { method: 'POST', auth: false, body: { email, password } }); }
   catch (e) { throw authError(e); }
+  const u = d && (d.user || d);
+  if (u && Array.isArray(u.identities) && !u.identities.length) throw new Error('Ya tienes una cuenta con ese email. Pulsa «Entrar» o, si no recuerdas la contraseña, «¿Olvidaste la contraseña?»');
   if (d && d.access_token) { setSession(sessionFrom(d)); syncInfo.notice = ''; await firstSync(); return true; }
   syncInfo.notice = `Te he enviado un email a <b>${esc(email)}</b>. Abre el enlace para confirmar tu cuenta y vuelve aquí.`;
   return false;
