@@ -62,8 +62,10 @@ function route() {
   afterRenderCalendar(keep);
 }
 function rerender() { const y = window.scrollY; route(); window.scrollTo(0, y); }
+/* En el móvil el cambio de pantalla es instantáneo, como las pestañas de una app: el fundido
+   entre pantallas oscurecía un instante el fondo (parpadeo). En el ordenador, fundido suave. */
 function navigate(fn) {
-  if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (document.startViewTransition && !isPhone() && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const vt = document.startViewTransition(fn);
     [vt.ready, vt.finished, vt.updateCallbackDone].forEach(pr => pr && pr.catch(() => {}));
   } else fn();
@@ -94,10 +96,7 @@ document.addEventListener('click', e => {
   viewDate = todayStr();
   if (location.hash.startsWith('#hoy')) { e.preventDefault(); navigate(() => route()); }
 });
-/* Al cambiar de pantalla, las tarjetas entran escalonadas (solo opacidad y transformaciones) */
-let enterTimer;
-function markEntering() { document.body.classList.add('entering'); clearTimeout(enterTimer); enterTimer = setTimeout(() => document.body.classList.remove('entering'), 700); }
-window.addEventListener('hashchange', () => { if (shortcutHash()) return; navigate(() => { route(); markEntering(); window.scrollTo(0, 0); }); });
+window.addEventListener('hashchange', () => { if (shortcutHash()) return; navigate(() => { route(); window.scrollTo(0, 0); }); maybeScreenTour(); });
 
 /* ---------- Piezas comunes ---------- */
 
@@ -984,6 +983,7 @@ function viewSettings() {
       </div>
       <div class="item"><span>Ver la introducción otra vez</span><button class="btn small" data-act="onboarding">Ver</button></div>
       <div class="item"><span>Repetir el tutorial de primeros pasos</span><button class="btn small" data-act="tour">Empezar</button></div>
+      <div class="item"><span>Volver a ver la explicación de cada pantalla</span><button class="btn small" data-act="tour-screens">Activar</button></div>
       ${deferredInstall ? `<div class="item"><span>Instalar en este dispositivo</span><button class="btn small primary" data-act="install">Instalar</button></div>` : ''}
     </div>
   </div>
@@ -1777,6 +1777,7 @@ document.addEventListener('click', e => {
     case 'sync-now': syncNow(true); return;
     case 'onboarding': startOnboarding(); return;
     case 'tour': startTour(); return;
+    case 'tour-screens': resetTours(); setFlag(TOUR_KEY); toast('Verás de nuevo la explicación al entrar en cada pantalla'); return;
     case 'sign-out': if (!confirm('¿Cerrar sesión? Tus datos se quedan en este dispositivo y en tu cuenta.')) return; signOut().then(() => { toast('Sesión cerrada'); rerender(); }); return;
     case 'push-toggle':
       (pushActive() ? unsubscribePush().then(() => toast('Avisos push desactivados'))
@@ -1961,7 +1962,7 @@ state = loadState();
 const firstRun = !state;
 /* Nueva versión: todos empiezan de cero (ajustes y cuenta se conservan) */
 const wasReset = isOldEpoch(state);
-if (wasReset) { state = resetForNewEpoch(state); setTimer(null); try { localStorage.removeItem(TOUR_KEY); } catch { /* sin almacenamiento */ } }
+if (wasReset) { state = resetForNewEpoch(state); setTimer(null); resetTours(); }
 syncInfo.freshDevice = firstRun;
 if (!state) { let demo = false; try { demo = localStorage.getItem('organizador.demo') === '1'; } catch { /* sin almacenamiento */ } if (demo) seedDemo(); else seedState(); }
 generateRoutines();
@@ -1975,7 +1976,8 @@ if (firstRun && !getSession() && !cameFromLogin && !onboardingSeen()) startOnboa
 else {
   if (!onboardingSeen()) markOnboarded();
   /* Tutorial de los primeros pasos: una vez, para nuevos y tras empezar de cero */
-  if (!tourSeen() && !pendingShortcut) setTimeout(startTour, 700);
+  if (!tourSeen() && !pendingShortcut) setTimeout(() => startTour(), 700);
+  else if (!pendingShortcut) maybeScreenTour();
 }
 if (wasReset) { save(); toast('Nueva versión: empiezas con la app vacía. Tus ajustes y tu cuenta siguen igual.'); }
 setTimeout(checkReminders, 2000);

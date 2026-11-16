@@ -544,8 +544,8 @@ body.dragging { -webkit-user-select: none; user-select: none; }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; animation-timing-function: cubic-bezier(.2,.8,.2,1); }
 ::view-transition-old(root) { animation-name: vt-out; }
 ::view-transition-new(root) { animation-name: vt-in; }
-@keyframes vt-out { to { opacity: 0; transform: translateY(-6px); } }
-@keyframes vt-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes vt-out { to { opacity: 0; } }
+@keyframes vt-in { from { opacity: 0; } }
 
 /* Elementos táctiles: respuesta inmediata al pulsar */
 .item-card, .block, .chip, .ev { -webkit-tap-highlight-color: transparent; }
@@ -1285,12 +1285,6 @@ body.ob-open { overflow: hidden; }
 }
 
 /* ---------- v16: animaciones de la app (solo opacidad y transformaciones: nada mueve el diseño) ---------- */
-@keyframes enter-up { from { opacity: 0; transform: translateY(10px); } }
-.entering .page > :not(.page-head) { animation: enter-up .42s cubic-bezier(.2,.8,.2,1) both; }
-.entering .page > :nth-child(3) { animation-delay: .04s; }
-.entering .page > :nth-child(4) { animation-delay: .08s; }
-.entering .page > :nth-child(5) { animation-delay: .12s; }
-.entering .page > :nth-child(n+6) { animation-delay: .16s; }
 /* Marcar una tarea: el círculo rebota y sale una onda */
 .just-done .check { animation: chk-pop .45s cubic-bezier(.3,1.6,.5,1); }
 @keyframes chk-pop { 0% { transform: scale(.7); } 60% { transform: scale(1.15); } 100% { transform: none; } }
@@ -1344,3 +1338,7 @@ body.ob-open { overflow: hidden; }
 .tour-next[hidden] { display: none; }
 .tour-actions .btn.primary { background: var(--action-bg); color: var(--on-action); }
 @media (prefers-reduced-motion: reduce) { .tour-ring::after { display: none; } }
+
+/* v18: en los pasos de solo mirar no se puede tocar nada (ni siquiera lo resaltado) */
+.tour-block { position: absolute; inset: 0; pointer-events: none; }
+.tour.look .tour-block { pointer-events: auto; }

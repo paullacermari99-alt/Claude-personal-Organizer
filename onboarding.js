@@ -288,5 +288,5 @@ function finishOnboarding() {
   document.body.classList.remove('ob-open');
   const done = () => el.remove();
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) done(); else setTimeout(done, 400);
-  if (typeof startTour === 'function' && !tourSeen()) setTimeout(startTour, 500);
+  if (typeof startTour === 'function' && !tourSeen()) setTimeout(() => startTour(), 500);
 }
