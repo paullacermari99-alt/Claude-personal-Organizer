@@ -249,8 +249,8 @@ function viewToday() {
   const now = nowHHMM();
   const h = Number(now.slice(0, 2));
   const greeting = h < 6 ? 'Buenas noches' : h < 13 ? 'Buenos días' : h < 20 ? 'Buenas tardes' : 'Buenas noches';
-  const weekday = cap(parseYmd(d).toLocaleDateString('es-ES', { weekday: 'long' }));
-  const dayMonth = parseYmd(d).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
+  const weekday = cap(dtf('es-ES', { weekday: 'long' }).format(parseYmd(d)));
+  const dayMonth = dtf('es-ES', { day: 'numeric', month: 'long' }).format(parseYmd(d));
 
   return `
   <div class="page page-today">

@@ -1,7 +1,7 @@
 /* Service worker: permite abrir la app sin conexión.
    Sube CACHE cuando cambien los archivos para forzar la actualización. */
-const CACHE = 'organizador-v11';
-const ASSETS = ['./', 'index.html', 'styles.css?v=11', 'config.js?v=11', 'core.js?v=11', 'sync.js?v=11', 'calendar.js?v=11', 'gestures.js?v=11', 'app.js?v=11', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
+const CACHE = 'organizador-v12';
+const ASSETS = ['./', 'index.html', 'styles.css?v=12', 'config.js?v=12', 'core.js?v=12', 'sync.js?v=12', 'calendar.js?v=12', 'gestures.js?v=12', 'app.js?v=12', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -9,16 +9,28 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
-/* Red primero, sin usar la caché HTTP (así siempre llega la última versión); caché propia si no hay conexión */
+/* Archivos con ?v= (no cambian nunca: cada versión lleva otro número): de la caché al instante.
+   La página y el resto: red primero (así llegan las versiones nuevas), pero si la red tarda
+   más de 3 s se abre desde la caché para no dejarte esperando. */
+const fromNet = req => fetch(req, { cache: 'no-cache' }).then(res => {
+  if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
+  return res;
+});
+const fromCache = req => caches.match(req, { ignoreSearch: !new URL(req.url).search.includes('v=') }).then(r => r || (req.mode === 'navigate' ? caches.match('index.html') : undefined));
 self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
-  e.respondWith(
-    fetch(e.request, { cache: 'no-cache' }).then(res => {
-      const copy = res.clone();
-      caches.open(CACHE).then(c => c.put(e.request, copy));
-      return res;
-    }).catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match('index.html')))
-  );
+  const req = e.request, url = new URL(req.url);
+  if (req.method !== 'GET' || url.origin !== location.origin) return;
+  if (url.search.includes('v=')) {
+    e.respondWith(caches.match(req).then(r => r || fromNet(req)));
+    return;
+  }
+  e.respondWith(new Promise(resolve => {
+    let done = false;
+    const finish = r => { if (!done && r) { done = true; resolve(r); } };
+    const timer = setTimeout(() => fromCache(req).then(finish), 3000);
+    fromNet(req).then(r => { clearTimeout(timer); finish(r); })
+      .catch(() => fromCache(req).then(r => { finish(r); if (!done) resolve(Response.error()); }));
+  }));
 });
 
 /* Avisos push (recordatorios con la app cerrada) */

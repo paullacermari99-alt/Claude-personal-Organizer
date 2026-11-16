@@ -24,8 +24,8 @@ function viewWeek() {
   const shown = mode === '1' ? [viewDate] : days;
   const today = todayStr();
   const first = parseYmd(days[0]), last = parseYmd(days[6]);
-  const range = `${first.getDate()} ${first.toLocaleDateString('es-ES', { month: 'short' })} – ${last.getDate()} ${last.toLocaleDateString('es-ES', { month: 'short' })}`;
-  const title = mode === '1' ? cap(parseYmd(viewDate).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })) : cap(first.toLocaleDateString('es-ES', { month: 'long' }));
+  const range = `${first.getDate()} ${dtf('es-ES', { month: 'short' }).format(first)} – ${last.getDate()} ${dtf('es-ES', { month: 'short' }).format(last)}`;
+  const title = mode === '1' ? cap(dtf('es-ES', { weekday: 'long', day: 'numeric' }).format(parseYmd(viewDate))) : cap(dtf('es-ES', { month: 'long' }).format(first));
   const isCurrent = mode === '1' ? viewDate === today : days.includes(today);
   const reviewed = state.settings.ui.lastReview === startOfWeek(today);
 
@@ -202,10 +202,10 @@ function viewWeekPhone() {
   const mode = phoneMode(), days = phoneDays(), today = todayStr();
   weekStart = startOfWeek(days[0]);
   const first = parseYmd(days[0]), last = parseYmd(days[days.length - 1]);
-  const mon = d => d.toLocaleDateString('es-ES', { month: 'short' }).replace('.', '');
+  const mon = d => dtf('es-ES', { month: 'short' }).format(d).replace('.', '');
   const range = days.length > 1 ? `${first.getDate()} ${mon(first)} – ${last.getDate()} ${mon(last)}` : fmtShortDate(days[0]);
-  const title = mode === '1' ? cap(first.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' }))
-    : first.getMonth() === last.getMonth() ? cap(first.toLocaleDateString('es-ES', { month: 'long' })) : `${cap(mon(first))} – ${mon(last)}`;
+  const title = mode === '1' ? cap(dtf('es-ES', { weekday: 'long', day: 'numeric' }).format(first))
+    : first.getMonth() === last.getMonth() ? cap(dtf('es-ES', { month: 'long' }).format(first)) : `${cap(mon(first))} – ${mon(last)}`;
   const reviewed = state.settings.ui.lastReview === startOfWeek(today);
   const wkDays = weekDays(weekStart);
   const open = state.tasks.filter(t => !t.done && !isRoutineTask(t));

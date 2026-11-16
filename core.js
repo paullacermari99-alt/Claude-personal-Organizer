@@ -52,16 +52,31 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 /* ---------- Fechas (respetando la zona horaria elegida) ---------- */
 
+/* Crear un Intl.DateTimeFormat es caro (sobre todo en móvil): se crean una vez y se reutilizan,
+   y la hora actual se recalcula como mucho una vez por segundo. */
+const fmtCache = new Map();
+function dtf(locale, opts) {
+  const k = locale + JSON.stringify(opts);
+  let f = fmtCache.get(k);
+  if (!f) { f = new Intl.DateTimeFormat(locale, opts); fmtCache.set(k, f); }
+  return f;
+}
+let nowCache = { key: '', val: null };
 function tzNow() {
-  const tz = state && state.settings && state.settings.timezone;
+  const tz = (state && state.settings && state.settings.timezone) || '';
+  const key = tz + '|' + Math.floor(Date.now() / 1000);
+  if (nowCache.key === key) return nowCache.val;
+  let val;
   try {
-    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz || undefined, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+    const parts = dtf('en-CA', { timeZone: tz || undefined, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
     const g = t => parts.find(p => p.type === t).value;
-    return { date: `${g('year')}-${g('month')}-${g('day')}`, hm: `${g('hour')}:${g('minute')}` };
+    val = { date: `${g('year')}-${g('month')}-${g('day')}`, hm: `${g('hour')}:${g('minute')}` };
   } catch {
     const d = new Date();
-    return { date: ymd(d), hm: pad(d.getHours()) + ':' + pad(d.getMinutes()) };
+    val = { date: ymd(d), hm: pad(d.getHours()) + ':' + pad(d.getMinutes()) };
   }
+  nowCache = { key, val };
+  return val;
 }
 function ymd(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
 function parseYmd(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
@@ -72,15 +87,15 @@ function daysBetween(a, b) { return Math.round((parseYmd(b) - parseYmd(a)) / 864
 function daysUntil(s) { return daysBetween(todayStr(), s); }
 function toMin(hhmm) { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; }
 const fmtHM = m => pad(Math.floor(m / 60)) + ':' + pad(m % 60);
-function fmtShortDate(s) { return parseYmd(s).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }); }
-function fmtLongDate(s) { return cap(parseYmd(s).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })); }
+function fmtShortDate(s) { return dtf('es-ES', { day: 'numeric', month: 'short' }).format(parseYmd(s)); }
+function fmtLongDate(s) { return cap(dtf('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).format(parseYmd(s))); }
 function dow(s) { return parseYmd(s).getDay(); }
 function relDay(s) {
   const n = daysUntil(s);
   if (n === 0) return 'Hoy';
   if (n === 1) return 'Mañana';
   if (n === -1) return 'Ayer';
-  if (n > 1 && n < 7) return cap(parseYmd(s).toLocaleDateString('es-ES', { weekday: 'long' }));
+  if (n > 1 && n < 7) return cap(dtf('es-ES', { weekday: 'long' }).format(parseYmd(s)));
   return fmtShortDate(s);
 }
 function startOfWeek(s) {
@@ -344,7 +359,7 @@ function routineStats(r) {
 /* Fecha (en la zona horaria elegida) de una marca de tiempo */
 function dateOfTs(ts) {
   try {
-    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: state.settings.timezone || undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ts));
+    const parts = dtf('en-CA', { timeZone: state.settings.timezone || undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ts));
     const g = t => parts.find(p => p.type === t).value;
     return `${g('year')}-${g('month')}-${g('day')}`;
   } catch { return ymd(new Date(ts)); }
