@@ -352,7 +352,7 @@ function viewToday() {
   return `
   <div class="page page-today">
   ${pageHead({
-    eyebrow: isToday ? `${weekday} · ${greeting}, Pau` : `${weekday} · ${relDay(d)}`,
+    eyebrow: isToday ? `${weekday} · ${greeting}` : `${weekday} · ${relDay(d)}`,
     title: `<span class="t-long">${esc(dayMonth)}</span><span class="t-short">${esc(dtf('es-ES', { day: 'numeric', month: 'short' }).format(parseYmd(d)).replace('.', ''))}</span>`,
     actions: `<button class="icon-btn round" data-act="day" data-n="-1" aria-label="Día anterior">${I.left}</button>
       ${isToday ? '' : `<button class="btn small" data-act="day" data-n="0">Hoy</button>`}
@@ -983,6 +983,7 @@ function viewSettings() {
         <strong style="color:var(--text)">Teclado:</strong> <b>N</b> nueva tarea · <b>/</b> o <b>Ctrl+K</b> buscar · <b>F</b> enfoque · <b>H</b> hoy · <b>S</b> semana.
       </div>
       <div class="item"><span>Ver la introducción otra vez</span><button class="btn small" data-act="onboarding">Ver</button></div>
+      <div class="item"><span>Repetir el tutorial de primeros pasos</span><button class="btn small" data-act="tour">Empezar</button></div>
       ${deferredInstall ? `<div class="item"><span>Instalar en este dispositivo</span><button class="btn small primary" data-act="install">Instalar</button></div>` : ''}
     </div>
   </div>
@@ -1775,6 +1776,7 @@ document.addEventListener('click', e => {
     }
     case 'sync-now': syncNow(true); return;
     case 'onboarding': startOnboarding(); return;
+    case 'tour': startTour(); return;
     case 'sign-out': if (!confirm('¿Cerrar sesión? Tus datos se quedan en este dispositivo y en tu cuenta.')) return; signOut().then(() => { toast('Sesión cerrada'); rerender(); }); return;
     case 'push-toggle':
       (pushActive() ? unsubscribePush().then(() => toast('Avisos push desactivados'))
@@ -1784,7 +1786,7 @@ document.addEventListener('click', e => {
     case 'export': exportData(); return;
     case 'reset':
       if (!confirm('¿Seguro? Se borrarán todas tus tareas, proyectos y objetivos de este dispositivo.')) return;
-      state = emptyState(); state.tags = defaultTags(); setTimer(null); toast('Todo borrado'); break;
+      seedState(); setTimer(null); toast('Todo borrado'); break;
     case 'install': if (deferredInstall) { deferredInstall.prompt(); deferredInstall = null; } return;
     default: return;
   }
@@ -1957,8 +1959,11 @@ const cameFromLogin = captureAuthRedirect();
 state = loadState();
 /* Dispositivo nuevo: sin datos guardados todavía */
 const firstRun = !state;
+/* Nueva versión: todos empiezan de cero (ajustes y cuenta se conservan) */
+const wasReset = isOldEpoch(state);
+if (wasReset) { state = resetForNewEpoch(state); setTimer(null); try { localStorage.removeItem(TOUR_KEY); } catch { /* sin almacenamiento */ } }
 syncInfo.freshDevice = firstRun;
-if (!state) seedState();
+if (!state) { let demo = false; try { demo = localStorage.getItem('organizador.demo') === '1'; } catch { /* sin almacenamiento */ } if (demo) seedDemo(); else seedState(); }
 generateRoutines();
 save(true);
 const pendingShortcut = ['nueva', 'enfoque', 'buscar'].includes(parseHash().name) ? parseHash().name : null;
@@ -1967,7 +1972,12 @@ route();
 if (pendingShortcut) setTimeout(() => runShortcut(pendingShortcut), 50);
 /* Bienvenida solo para quien es nuevo: sin datos, sin sesión y sin haberla visto */
 if (firstRun && !getSession() && !cameFromLogin && !onboardingSeen()) startOnboarding();
-else if (!onboardingSeen()) markOnboarded();
+else {
+  if (!onboardingSeen()) markOnboarded();
+  /* Tutorial de los primeros pasos: una vez, para nuevos y tras empezar de cero */
+  if (!tourSeen() && !pendingShortcut) setTimeout(startTour, 700);
+}
+if (wasReset) { save(); toast('Nueva versión: empiezas con la app vacía. Tus ajustes y tu cuenta siguen igual.'); }
 setTimeout(checkReminders, 2000);
 refreshCalendars().then(changed => { if (changed && !modal.open) rerender(); }).catch(() => {});
 if (cameFromLogin) firstSync().then(rerender).catch(e => toast(e.message)); else syncNow();

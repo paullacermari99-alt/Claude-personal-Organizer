@@ -139,7 +139,8 @@ async function syncNow(manual) {
   syncInfo.status = 'syncing';
   try {
     await fetchUser();
-    const remote = await pullRemote();
+    let remote = await pullRemote();
+    if (isOldEpoch(remote)) remote = null;
     const local = state.updatedAt || 0, rem = (remote && remote.updatedAt) || 0;
     if (remote && rem > local) applyRemote(remote);
     else if (!remote || local > rem) await pushRemote();
@@ -154,7 +155,8 @@ async function syncNow(manual) {
 /* Al entrar por primera vez en un dispositivo: elegir qué datos se quedan */
 async function firstSync() {
   await fetchUser();
-  const remote = await pullRemote();
+  let remote = await pullRemote();
+  if (isOldEpoch(remote)) remote = null;
   if (remote && (remote.tasks || []).length) {
     /* En un dispositivo nuevo solo hay datos de ejemplo: se usan directamente los de la cuenta */
     if (syncInfo.freshDevice) { applyRemote(remote); syncInfo.freshDevice = false; syncInfo.status = 'ok'; syncInfo.lastSync = Date.now(); return; }

@@ -1325,3 +1325,22 @@ body.ob-open { overflow: hidden; }
 @media (max-height: 700px) { .ob-logo { width: 56px; height: 56px; border-radius: 14px; } .ob-login-box { gap: 6px; } .ob-form { gap: 8px; } .ob-form input { min-height: 46px; } }
 
 @media (min-width: 1100px) { .ob-stage { max-width: 460px; height: 440px; } .ob-stage > * { zoom: 1.15; } .ob-copy { max-width: 440px; } }
+
+/* ---------- v17: tutorial guiado (oscurece y deja un hueco sobre lo que hay que tocar) ---------- */
+.tour { position: fixed; inset: 0; z-index: 2500; margin: 0; padding: 0; border: 0; background: none; width: auto; height: auto; max-width: none; max-height: none; overflow: visible; pointer-events: none; color: var(--text); animation: fade .3s; }
+.tour.out { opacity: 0; transition: opacity .25s; }
+.tour-shade { position: absolute; inset: 0; background: rgba(0, 0, 0, .62); pointer-events: auto; transition: clip-path .35s cubic-bezier(.2,.8,.2,1); }
+.tour-ring { position: absolute; border-radius: 14px; box-shadow: 0 0 0 2px #fff, 0 0 0 6px rgba(255,255,255,.25); pointer-events: none; transition: left .35s cubic-bezier(.2,.8,.2,1), top .35s cubic-bezier(.2,.8,.2,1), width .35s cubic-bezier(.2,.8,.2,1), height .35s cubic-bezier(.2,.8,.2,1), opacity .2s; }
+.tour-ring::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; box-shadow: 0 0 0 2px #fff; animation: tour-pulse 1.6s ease-out infinite; }
+@keyframes tour-pulse { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(1.12); } }
+.tour-tip { position: absolute; pointer-events: auto; padding: 16px 16px 12px; border-radius: 18px; background: var(--solid, var(--glass-strong)); border: .5px solid var(--glass-border); box-shadow: 0 18px 50px rgba(0,0,0,.35); transition: left .35s cubic-bezier(.2,.8,.2,1), top .35s cubic-bezier(.2,.8,.2,1); }
+.tour-tip.in { animation: tour-in .4s cubic-bezier(.2,.8,.2,1); }
+@keyframes tour-in { from { opacity: 0; transform: translateY(8px) scale(.97); } }
+.tour-count { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+.tour-title { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+.tour-text { font-size: 15px; line-height: 1.4; color: var(--muted); }
+.tour-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.tour-skip { border: 0; background: none; color: var(--muted); font: inherit; font-size: 14px; padding: 6px 0; cursor: pointer; }
+.tour-next[hidden] { display: none; }
+.tour-actions .btn.primary { background: var(--action-bg); color: var(--on-action); }
+@media (prefers-reduced-motion: reduce) { .tour-ring::after { display: none; } }

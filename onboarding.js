@@ -115,6 +115,8 @@ function obLoginSlide() {
 
 function startOnboarding() {
   if (ob.el) return;
+  /* Si el tutorial estaba en marcha, se aparta y vuelve al terminar la bienvenida */
+  if (typeof tour !== 'undefined' && tour.on) endTour(false, true);
   const n = OB_SLIDES.length;
   const el = document.createElement('div');
   el.id = 'onboarding';
@@ -286,4 +288,5 @@ function finishOnboarding() {
   document.body.classList.remove('ob-open');
   const done = () => el.remove();
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) done(); else setTimeout(done, 400);
+  if (typeof startTour === 'function' && !tourSeen()) setTimeout(startTour, 500);
 }

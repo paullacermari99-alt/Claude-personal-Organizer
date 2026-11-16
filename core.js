@@ -120,8 +120,10 @@ function defaultSettings() {
     ui: { collapsed: {}, projectsView: 'cards', projectsSort: 'manual', projectsArchived: false, tasksTab: 'bandeja', weekMode: '7', goalsHorizon: 'todos', goalsStatus: 'activos', goalsProject: '', lastReview: null },
   };
 }
+/* Sube este número para empezar de cero en todos los dispositivos (se conservan los ajustes y la cuenta) */
+const DATA_EPOCH = 2;
 function emptyState() {
-  return { version: 2, tasks: [], events: [], routines: [], goals: [], projects: [], tags: [], dayPlans: {}, weekPlans: {}, journal: {}, focusLog: [], notified: {}, settings: defaultSettings() };
+  return { version: 2, epoch: DATA_EPOCH, tasks: [], events: [], routines: [], goals: [], projects: [], tags: [], dayPlans: {}, weekPlans: {}, journal: {}, focusLog: [], notified: {}, settings: defaultSettings() };
 }
 function horizonFor(due) {
   if (!due) return 'medio';
@@ -142,6 +144,8 @@ function newTask(extra = {}) {
 /* Convierte datos de versiones anteriores sin perder nada */
 function migrate(s) {
   const base = emptyState();
+  /* Sin época = datos anteriores a la versión que empezó de cero */
+  const epoch = s.epoch || 1;
   if (!s.version || s.version < 2) {
     const tasks = (s.tasks || []).map(t => newTask({
       id: t.id, title: t.title || '', done: !!t.done, doneAt: t.doneAt || null, createdAt: t.createdAt || Date.now(),
@@ -169,6 +173,7 @@ function migrate(s) {
   }
   s = { ...base, ...s, settings: { ...base.settings, ...s.settings, reminders: { ...base.settings.reminders, ...(s.settings || {}).reminders }, ui: { ...base.settings.ui, ...(s.settings || {}).ui } } };
   s.version = 2;
+  s.epoch = epoch;
   return s;
 }
 
@@ -188,32 +193,19 @@ function save(quiet) {
 
 /* ---------- Datos de ejemplo (solo la primera vez) ---------- */
 
+/* Usuario nuevo: empieza vacío, solo con las etiquetas básicas */
 function seedState() {
   state = emptyState();
-  const s = state, t = todayStr(), now = Date.now();
-  s.tags = defaultTags();
-  const [tagEst, tagTrab, tagPers] = s.tags;
-  const p1 = { id: uid(), name: 'Organizador web', color: COLORS[0], icon: '💻', archived: false, favorite: true, order: 0, defaultView: 'resumen', notes: 'Mi app para planificar el día.', createdAt: now };
-  const p2 = { id: uid(), name: 'Salud', color: COLORS[1], icon: '🏋️', archived: false, favorite: false, order: 1, defaultView: 'objetivos', notes: '', createdAt: now };
-  s.projects.push(p1, p2);
-  const g1 = { id: uid(), title: 'Ponerme en forma', horizon: 'corto', due: addDays(t, 75), description: 'Tener energía para todo lo demás.', success: 'Correr 5 km sin parar.', projectId: p2.id, status: 'activo', achievedAt: null, progressMode: 'auto', progress: 0, color: COLORS[1], createdAt: now };
-  const g2 = { id: uid(), title: 'Lanzar mi organizador', horizon: 'corto', due: addDays(t, 30), description: 'Dejar de procrastinar y tener claro qué hacer cada día.', success: 'Lo uso cada día durante 2 semanas.', projectId: p1.id, status: 'activo', achievedAt: null, progressMode: 'auto', progress: 0, color: COLORS[0], createdAt: now };
-  s.goals.push(g1, g2);
-  let i = 0;
-  const mk = (title, extra = {}) => newTask({ title, createdAt: now + i++, ...extra });
-  const a = mk('Planificar el día (5 min)', { due: t, tags: [tagPers.id], estimate: 5, firstStep: 'Abrir la app y elegir 3 prioridades' });
-  const b = mk('Definir los objetivos del trimestre', { due: addDays(t, 2), goalId: g2.id, tags: [tagTrab.id], priority: 'high', estimate: 45, firstStep: 'Abrir un documento y escribir el título' });
-  const c = mk('Repasar apuntes', { due: t, tags: [tagEst.id], estimate: 30 });
-  s.tasks.push(a, b, c, mk('Elegir dónde publicar la app', { projectId: p1.id }), mk('Comprar zapatillas de correr', { goalId: g1.id }));
-  s.dayPlans[t] = { priorities: [a.id, b.id] };
-  s.events.push(
-    { id: uid(), title: 'Trabajo profundo', date: t, start: '09:00', end: '10:30', taskId: null, color: null, tagId: tagTrab.id, projectId: null, goalId: null, recurrence: null, exceptions: [] },
-    { id: uid(), title: 'Gimnasio', date: t, start: '19:00', end: '20:00', taskId: null, color: null, tagId: null, projectId: p2.id, goalId: null, recurrence: { days: [1, 3, 5], until: null }, exceptions: [] },
-  );
-  s.routines.push({ id: uid(), title: 'Beber 2 L de agua', days: [], startDate: t, pauses: [], skipped: [], tagId: tagPers.id, projectId: null, goalId: null, createdAt: now });
-  generateRoutines();
-  save();
-  return s;
+  state.tags = defaultTags();
+}
+/* Datos de una versión anterior a DATA_EPOCH: se vacían, pero se conservan ajustes y etiquetas */
+const isOldEpoch = s => !!s && (s.epoch || 1) < DATA_EPOCH;
+function resetForNewEpoch(old) {
+  const fresh = emptyState();
+  fresh.settings = old.settings || fresh.settings;
+  fresh.tags = (old.tags && old.tags.length) ? old.tags : defaultTags();
+  fresh.updatedAt = Date.now();
+  return fresh;
 }
 
 /* ---------- Búsquedas y cálculos ---------- */
@@ -393,3 +385,31 @@ function pendingOfRoutine(rid) {
 }
 
 let state = null; /* se inicializa en app.js */
+/* Datos de demostración: solo para las pruebas automáticas (localStorage organizador.demo = 1) */
+function seedDemo() {
+  state = emptyState();
+  const s = state, t = todayStr(), now = Date.now();
+  s.tags = defaultTags();
+  const [tagEst, tagTrab, tagPers] = s.tags;
+  const p1 = { id: uid(), name: 'Organizador web', color: COLORS[0], icon: '💻', archived: false, favorite: true, order: 0, defaultView: 'resumen', notes: 'Mi app para planificar el día.', createdAt: now };
+  const p2 = { id: uid(), name: 'Salud', color: COLORS[1], icon: '🏋️', archived: false, favorite: false, order: 1, defaultView: 'objetivos', notes: '', createdAt: now };
+  s.projects.push(p1, p2);
+  const g1 = { id: uid(), title: 'Ponerme en forma', horizon: 'corto', due: addDays(t, 75), description: 'Tener energía para todo lo demás.', success: 'Correr 5 km sin parar.', projectId: p2.id, status: 'activo', achievedAt: null, progressMode: 'auto', progress: 0, color: COLORS[1], createdAt: now };
+  const g2 = { id: uid(), title: 'Lanzar mi organizador', horizon: 'corto', due: addDays(t, 30), description: 'Dejar de procrastinar y tener claro qué hacer cada día.', success: 'Lo uso cada día durante 2 semanas.', projectId: p1.id, status: 'activo', achievedAt: null, progressMode: 'auto', progress: 0, color: COLORS[0], createdAt: now };
+  s.goals.push(g1, g2);
+  let i = 0;
+  const mk = (title, extra = {}) => newTask({ title, createdAt: now + i++, ...extra });
+  const a = mk('Planificar el día (5 min)', { due: t, tags: [tagPers.id], estimate: 5, firstStep: 'Abrir la app y elegir 3 prioridades' });
+  const b = mk('Definir los objetivos del trimestre', { due: addDays(t, 2), goalId: g2.id, tags: [tagTrab.id], priority: 'high', estimate: 45, firstStep: 'Abrir un documento y escribir el título' });
+  const c = mk('Repasar apuntes', { due: t, tags: [tagEst.id], estimate: 30 });
+  s.tasks.push(a, b, c, mk('Elegir dónde publicar la app', { projectId: p1.id }), mk('Comprar zapatillas de correr', { goalId: g1.id }));
+  s.dayPlans[t] = { priorities: [a.id, b.id] };
+  s.events.push(
+    { id: uid(), title: 'Trabajo profundo', date: t, start: '09:00', end: '10:30', taskId: null, color: null, tagId: tagTrab.id, projectId: null, goalId: null, recurrence: null, exceptions: [] },
+    { id: uid(), title: 'Gimnasio', date: t, start: '19:00', end: '20:00', taskId: null, color: null, tagId: null, projectId: p2.id, goalId: null, recurrence: { days: [1, 3, 5], until: null }, exceptions: [] },
+  );
+  s.routines.push({ id: uid(), title: 'Beber 2 L de agua', days: [], startDate: t, pauses: [], skipped: [], tagId: tagPers.id, projectId: null, goalId: null, createdAt: now });
+  generateRoutines();
+  save();
+  return s;
+}
