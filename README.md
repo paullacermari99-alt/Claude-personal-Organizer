@@ -18,12 +18,11 @@ Es una web instalable (PWA): sin servidor, sin dependencias y funciona sin conex
 
 Los datos se guardan en el navegador de cada dispositivo. Para pasarlos de uno a otro, usa Exportar/Importar en Ajustes.
 
-## Publicarla gratis con GitHub Pages
+## Dónde está publicada
 
-1. En GitHub: **Settings → Pages**.
-2. En *Source* elige **Deploy from a branch**, rama `main`, carpeta `/ (root)` y guarda.
-3. En un par de minutos estará en `https://<tu-usuario>.github.io/Claude-personal-Organizer/`.
-4. Ábrela en el móvil e instálala: iPhone (Safari → Compartir → «Añadir a pantalla de inicio»), Android (Chrome → ⋮ → «Instalar aplicación»).
+La app está en **https://p-organizer.pages.dev/** (Cloudflare Pages, gratis). Cada cambio en la rama `main` se publica solo en un par de minutos. La dirección antigua de GitHub Pages redirige a la nueva.
+
+Ábrela en el móvil e instálala: iPhone (Safari → Compartir → «Añadir a pantalla de inicio»), Android (Chrome → ⋮ → «Instalar aplicación»).
 
 ## Probar en local
 
