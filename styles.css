@@ -884,3 +884,34 @@ body.focus-open { overflow: hidden; }
 .cal-scroll.phone.mode-3 .ev-time { display: block; }
 .cal-scroll.phone .cal-hour span { font-size: 10px; right: 4px; }
 .phone-week > .hint { padding-right: 64px; }
+
+/* ---------- v7: progreso, planificar el día, dibujar bloques ---------- */
+.cal-col { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.ev.preview.drawing { border-style: solid; background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.day-prog { display: flex; align-items: center; gap: 10px; }
+.day-prog .stat-row { flex: 1; }
+.plan-card { display: flex; align-items: center; gap: 10px; border-radius: var(--radius); padding: 12px 8px 12px 16px; margin-bottom: 20px; box-shadow: inset 4px 0 0 var(--accent), var(--glass-shadow); }
+.plan-card .title { font-weight: 600; }
+.plan-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.plan-summary div { background: var(--fill); border-radius: 12px; padding: 10px; text-align: center; display: flex; flex-direction: column; }
+.plan-summary b { font-size: 20px; }
+.plan-summary span { font-size: 12px; color: var(--muted); }
+.free-slots { display: flex; flex-wrap: wrap; gap: 6px; }
+.streak { color: var(--orange); font-weight: 700; }
+.streak.big { font-size: 18px; flex: none; }
+.stat-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: 12px; margin-bottom: 28px; }
+@media (max-width: 520px) { .stat-tiles { grid-template-columns: 1fr 1fr; } }
+.tile { border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
+.tile b { font-size: 26px; letter-spacing: -.02em; }
+.tile span { font-size: 13px; color: var(--muted); }
+.tile small { font-size: 12px; font-weight: 600; }
+.tile small.up { color: var(--green); }
+.tile small.down { color: var(--orange); }
+.bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; height: 170px; align-items: end; }
+.bar-col { display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; }
+.bar-track { flex: 1; width: 100%; max-width: 34px; display: flex; align-items: flex-end; border-radius: 8px; background: var(--fill); overflow: hidden; }
+.bar { width: 100%; background: var(--accent); border-radius: 8px 8px 0 0; min-height: 0; transition: height .4s; }
+.bar-col.today .bar { background: var(--orange); }
+.bar-val { font-size: 12px; font-weight: 600; min-height: 16px; font-variant-numeric: tabular-nums; }
+.bar-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.bar-col.today .bar-label { color: var(--orange); }

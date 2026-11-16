@@ -403,6 +403,13 @@ let pending = null, drag = null, lastPt = { x: 0, y: 0 };
 
 document.addEventListener('pointerdown', e => {
   if ((e.pointerType === 'mouse' && e.button !== 0) || drag) return;
+  /* Hueco vacío: arrastrar dibuja un bloque nuevo (en táctil, tras mantener pulsado) */
+  if (e.target.classList && e.target.classList.contains('cal-col')) {
+    lastPt = { x: e.clientX, y: e.clientY };
+    const p = pending = { kind: 'create', el: e.target, x0: e.clientX, y0: e.clientY, type: e.pointerType };
+    if (e.pointerType !== 'mouse') p.timer = setTimeout(() => { if (pending === p) { startDrag(p); haptic(12); } }, 300);
+    return;
+  }
   const handle = e.target.closest('[data-drag]');
   if (!handle) return;
   const kind = handle.dataset.drag;
@@ -444,6 +451,18 @@ function startDrag(p) {
   const rect = p.el.getBoundingClientRect();
   drag = { ...p, rect, grabY: p.y0 - rect.top, target: null };
   document.body.classList.add('dragging');
+  if (p.kind === 'create') {
+    const sc = p.el.closest('.cal-scroll');
+    drag.sc = sc; drag.col = p.el;
+    drag.m0 = clamp(Math.floor((p.y0 - p.el.getBoundingClientRect().top) / hourHeight(sc) * 60 / SNAP) * SNAP, 0, 24 * 60 - SNAP);
+    const pv = document.createElement('div');
+    pv.className = 'ev preview drawing';
+    pv.style.cssText = '--c:var(--accent);left:2px;width:calc(100% - 4px)';
+    p.el.appendChild(pv);
+    drag.preview = pv;
+    moveDrag(); autoScrollLoop();
+    return;
+  }
   if (p.kind === 'resize') {
     const ev = eventById(p.id);
     drag.ev = ev; drag.s = toMin(ev.start);
@@ -476,6 +495,15 @@ function clearPreview() {
 
 function moveDrag() {
   const { x, y } = lastPt;
+  if (drag.kind === 'create') {
+    const m = clamp(Math.round((y - drag.col.getBoundingClientRect().top) / hourHeight(drag.sc) * 60 / SNAP) * SNAP, 0, 24 * 60);
+    const a = Math.min(drag.m0, m), b = Math.min(Math.max(drag.m0 + SNAP, m >= drag.m0 ? m : drag.m0 + SNAP), 24 * 60 - 1);
+    drag.a = a; drag.b = b;
+    drag.preview.style.top = `calc(var(--hour-h) * ${a / 60})`;
+    drag.preview.style.height = `calc(var(--hour-h) * ${(b - a) / 60} - 2px)`;
+    drag.preview.innerHTML = `<div class="ev-time">${fmtHM(a)}–${fmtHM(b)}</div>`;
+    return;
+  }
   if (drag.kind === 'resize') {
     const sc = drag.el.closest('.cal-scroll'), col = drag.el.closest('.cal-col');
     const m = (y - col.getBoundingClientRect().top) / hourHeight(sc) * 60;
@@ -535,6 +563,7 @@ function endDrag(commit) {
   if (d.preview) d.preview.remove();
   $$('.drop-over').forEach(el => el.classList.remove('drop-over'));
   d.el.classList.remove('drag-source', 'resizing');
+  if (d.kind === 'create') { if (commit && d.a !== undefined) eventModal({ date: d.col.dataset.date, start: fmtHM(d.a), end: fmtHM(d.b) }); return; }
   if (!commit) { rerender(); return; }
   let msg = '', moved = null;
   if (d.kind === 'resize') {

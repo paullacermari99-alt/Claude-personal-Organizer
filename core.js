@@ -34,6 +34,7 @@ const I = {
   close: svg('<path d="M6 6l12 12M18 6L6 18"/>', 'stroke-width="2.2"'),
   warn: svg('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>'),
   review: svg('<path d="M9 11l2.5 2.5L16 9"/><rect x="3.5" y="3.5" width="17" height="17" rx="4"/>'),
+  chart: svg('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
   daily: svg('<path d="M4 12a8 8 0 0113.7-5.6M20 12a8 8 0 01-13.7 5.6"/><path d="M18 3v4h-4M6 21v-4h4"/>'),
 };
 
@@ -311,6 +312,49 @@ function generateRoutines() {
     }
   }
   return created;
+}
+/* Racha: días programados seguidos cumplidos (hoy cuenta si ya está hecha) */
+function routineStats(r) {
+  const today = todayStr();
+  const byDate = new Map(state.tasks.filter(t => t.routineId === r.id).map(t => [t.routineDate, t]));
+  const skip = new Set(r.skipped || []);
+  let streak = 0, d = today;
+  const t0 = byDate.get(today);
+  if (!(t0 && t0.done)) d = addDays(today, -1);
+  for (; d >= r.startDate; d = addDays(d, -1)) {
+    if (!routineDueOn(r, d) || skip.has(d)) continue;
+    const t = byDate.get(d);
+    if (t && t.done) streak++; else break;
+  }
+  let best = 0, run = 0, due30 = 0, done30 = 0;
+  const from30 = addDays(today, -29);
+  for (let x = r.startDate; x <= today; x = addDays(x, 1)) {
+    if (!routineDueOn(r, x) || skip.has(x)) continue;
+    const t = byDate.get(x), ok = !!(t && t.done);
+    run = ok ? run + 1 : (x === today ? run : 0);
+    best = Math.max(best, run);
+    if (x >= from30 && x < today) { due30++; if (ok) done30++; }
+    if (x === today && ok) { due30++; done30++; }
+  }
+  return { streak, best: Math.max(best, streak), rate: due30 ? Math.round(done30 / due30 * 100) : null };
+}
+/* Fecha (en la zona horaria elegida) de una marca de tiempo */
+function dateOfTs(ts) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: state.settings.timezone || undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ts));
+    const g = t => parts.find(p => p.type === t).value;
+    return `${g('year')}-${g('month')}-${g('day')}`;
+  } catch { return ymd(new Date(ts)); }
+}
+/* Huecos libres de un día (de 8:00 a 21:00, desde ahora si es hoy) */
+function freeIntervals(d, minLen = 30) {
+  const busy = eventsOn(d).map(e => [toMin(e.start), toMin(e.end)]).sort((a, b) => a[0] - b[0]);
+  let cur = 8 * 60;
+  if (d === todayStr()) cur = Math.max(cur, Math.ceil(toMin(nowHHMM()) / 15) * 15);
+  const out = [], end = 21 * 60;
+  for (const [s, e] of busy) { if (s > cur && Math.min(s, end) - cur >= minLen) out.push([cur, Math.min(s, end)]); cur = Math.max(cur, e); }
+  if (end - cur >= minLen) out.push([cur, end]);
+  return out;
 }
 function isPaused(r) { return (r.pauses || []).some(p => !p.to); }
 function pendingOfRoutine(rid) {

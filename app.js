@@ -50,6 +50,7 @@ function renderView() {
     case 'objetivos': return viewGoals();
     case 'objetivo': return viewGoal(id);
     case 'ajustes': return viewSettings();
+    case 'progreso': return viewStats();
     default: return viewToday();
   }
 }
@@ -187,7 +188,7 @@ function routineGroup(r, opts = {}) {
         <button class="rt-count ${pend.length ? '' : 'zero'}" data-act="rt-expand" data-id="${r.id}" aria-expanded="${open}" aria-label="${pend.length} pendientes; ver lista">${pend.length || '✓'}</button>
         <div class="rt-body" data-act="${opts.manage ? 'edit-routine' : 'rt-expand'}" data-id="${r.id}">
           <div class="title">${esc(r.title)}</div>
-          <div class="meta small muted">${scheduleLabel(r)}${isPaused(r) ? ' · <b class="paused">En pausa</b>' : ''} · ${pend.length ? `${pend.length === 1 ? '1 pendiente' : pend.length + ' pendientes'} desde ${esc(relDay(pend[0].routineDate).toLowerCase())}` : 'al día'}</div>
+          <div class="meta small muted">${(st => st.streak ? `<b class="streak">🔥 ${st.streak}</b> · ` : '')(routineStats(r))}${scheduleLabel(r)}${isPaused(r) ? ' · <b class="paused">En pausa</b>' : ''} · ${pend.length ? `${pend.length === 1 ? '1 pendiente' : pend.length + ' pendientes'} desde ${esc(relDay(pend[0].routineDate).toLowerCase())}` : 'al día'}</div>
         </div>
         ${pend.length ? `<button class="btn small" data-act="rt-one" data-id="${r.id}">Completar una</button>` : ''}
         ${pend.length ? `<button class="icon-btn rt-chev ${open ? 'open' : ''}" data-act="rt-expand" data-id="${r.id}" aria-label="Desplegar">${I.down}</button>` : ''}
@@ -200,7 +201,7 @@ function routineGroup(r, opts = {}) {
     ${opts.manage ? `<div class="rt-actions">
       <button class="btn small" data-act="rt-pause" data-id="${r.id}">${isPaused(r) ? 'Reanudar' : 'Pausar'}</button>
       <button class="btn small" data-act="edit-routine" data-id="${r.id}">Editar</button>
-      <span class="muted small">Desde ${esc(fmtShortDate(r.startDate))}</span>
+      <span class="muted small">${(st => `Mejor racha ${st.best}${st.rate !== null ? ` · ${st.rate}% en 30 días` : ''}`)(routineStats(r))}</span>
     </div>` : ''}
   </div>`;
 }
@@ -264,7 +265,12 @@ function viewToday() {
 
   <div class="today-grid">
     <div class="col-main">
-      <div class="section">${statRow('day-progress', prog.pct, prog.total ? `${prog.done} de ${prog.total}` : 'Sin tareas')}</div>
+      ${isToday && !(state.dayPlans[d] && state.dayPlans[d].planned) ? `<div class="plan-card glass">
+        <div class="grow"><div class="title">Planifica tu día en 1 minuto</div><div class="small muted">Elige 3 prioridades y reserva hueco para ellas.</div></div>
+        <button class="btn primary small" data-act="plan-day">Empezar</button>
+        <button class="icon-btn" data-act="plan-skip" aria-label="Ahora no">${I.close}</button>
+      </div>` : ''}
+      <div class="section day-prog">${statRow('day-progress', prog.pct, prog.total ? `${prog.done} de ${prog.total}` : 'Sin tareas')}<a class="btn small ghost" href="#progreso">${I.chart}<span>Progreso</span></a></div>
 
       <div class="section">
         <div class="section-head"><h2>Prioridades · ${prios.length}/3</h2><button class="btn small" data-act="pick-priorities">${prios.length ? 'Cambiar' : 'Elegir'}</button></div>
@@ -970,6 +976,87 @@ function pickPriorities(d) {
   });
 }
 
+/* Planificar el día en 1 minuto: prioridades + huecos */
+function planDaySheet() {
+  const d = todayStr(), cur = dayPriorities(d);
+  const rank = t => cur.includes(t.id) ? 0 : t.due && t.due < d ? 1 : t.due === d ? 1 : PRI_ORDER[t.priority] >= 2 ? 2 : t.due && daysBetween(d, t.due) <= 3 ? 2 : t.due && daysBetween(d, t.due) <= 7 ? 3 : 4;
+  const cands = state.tasks.filter(t => !isRoutineTask(t) && !t.done).sort((a, b) => rank(a) - rank(b) || sortByDue(a, b)).slice(0, 30);
+  const pre = cur.length ? cur : cands.slice(0, 3).map(t => t.id);
+  const free = freeIntervals(d);
+  const evs = eventsOn(d);
+  const pend = state.routines.reduce((a, r) => a + pendingOfRoutine(r.id).length, 0);
+  openModal('Planificar hoy', `
+    <div class="plan-summary">
+      <div><b>${evs.length}</b><span>bloques</span></div>
+      <div><b>${free.reduce((a, [s, e]) => a + e - s, 0) >= 60 ? Math.floor(free.reduce((a, [s, e]) => a + e - s, 0) / 60) + ' h' : free.reduce((a, [s, e]) => a + e - s, 0) + ' min'}</b><span>libres</span></div>
+      <div><b>${pend}</b><span>diarias</span></div>
+    </div>
+    <div class="field">Huecos libres<div class="free-slots">${free.length ? free.map(([s, e]) => `<span class="tag">${fmtHM(s)}–${fmtHM(e)}</span>`).join('') : '<span class="muted">No queda tiempo libre hoy</span>'}</div></div>
+    <div class="field">Elige hasta 3 prioridades
+      ${cands.length ? `<div class="pick-list glass">${cands.map(t => `<label class="pick"><input type="checkbox" class="check" name="p" value="${t.id}" ${pre.includes(t.id) ? 'checked' : ''}><span class="grow">${esc(t.title)}${t.estimate ? ` <span class="muted small">· ${durLabel(t.estimate)}</span>` : ''}</span>${t.due ? `<span class="tag ${t.due < d ? 'warn' : ''}">${esc(relDay(t.due))}</span>` : ''}</label>`).join('')}</div>` : emptyBox('No tienes tareas abiertas. Apunta alguna primero.')}
+    </div>
+    <label class="field toggle-row">Reservarles hueco hoy<input type="checkbox" class="switch" name="reserve" value="1" checked></label>`, {
+    saveLabel: 'Listo',
+    onSave: (data, fd) => {
+      const ids = fd.getAll('p');
+      if (ids.length > 3) { toast('Como máximo 3'); return false; }
+      let booked = 0;
+      if (data.reserve) ids.forEach(id => {
+        const t = task(id);
+        if (eventsOn(d).some(e => e.taskId === id)) return;
+        const slot = nextFreeSlot(d, t.estimate || 60);
+        if (slot) { scheduleTask(t, d, slot.start, slot.end); booked++; }
+      });
+      state.dayPlans[d] = { ...(state.dayPlans[d] || {}), priorities: ids, planned: true };
+      toast(`Día planificado: ${ids.length} prioridad${ids.length === 1 ? '' : 'es'}${booked ? `, ${booked} con hueco reservado` : ''}`);
+    },
+  });
+}
+
+/* ---------- Vista: Progreso ---------- */
+
+function bars(rows, unit) {
+  const max = Math.max(1, ...rows.map(r => r.v));
+  return `<div class="bars">${rows.map(r => `<div class="bar-col ${r.today ? 'today' : ''}" title="${esc(r.label)}: ${r.v} ${unit}">
+    <span class="bar-val">${r.v || ''}</span>
+    <div class="bar-track"><div class="bar" style="height:${Math.round(r.v / max * 100)}%"></div></div>
+    <span class="bar-label">${esc(r.short)}</span>
+  </div>`).join('')}</div>`;
+}
+function viewStats() {
+  const today = todayStr(), days = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
+  const doneBy = new Map();
+  state.tasks.filter(t => t.done && t.doneAt).forEach(t => { const k = dateOfTs(t.doneAt); doneBy.set(k, (doneBy.get(k) || 0) + 1); });
+  const focusBy = new Map();
+  state.focusLog.forEach(f => focusBy.set(f.date, (focusBy.get(f.date) || 0) + f.minutes));
+  const row = (map, d) => ({ v: map.get(d) || 0, label: fmtLongDate(d), short: DOW_LETTER[dow(d)], today: d === today });
+  const ws = startOfWeek(today), wDays = weekDays(ws).filter(d => d <= today);
+  const sum = (map, list) => list.reduce((a, d) => a + (map.get(d) || 0), 0);
+  const prevW = weekDays(addDays(ws, -7));
+  const tasksW = sum(doneBy, wDays), tasksPrev = sum(doneBy, prevW.slice(0, wDays.length));
+  const focusW = sum(focusBy, wDays);
+  const goalsDone = state.goals.filter(g => g.status === 'cumplido').length;
+  const rstats = state.routines.map(r => ({ r, ...routineStats(r) })).sort((a, b) => b.streak - a.streak);
+  const bestStreak = Math.max(0, ...rstats.map(x => x.streak));
+  const diff = tasksW - tasksPrev;
+  return `
+  <div class="page page-mid">
+  ${pageHead({ eyebrow: backLink('#hoy', 'Hoy'), title: 'Progreso' })}
+  <div class="stat-tiles">
+    <div class="tile glass"><b>${tasksW}</b><span>tareas hechas esta semana</span><small class="${diff >= 0 ? 'up' : 'down'}">${diff >= 0 ? '+' : ''}${diff} vs. la anterior</small></div>
+    <div class="tile glass"><b>${focusW >= 60 ? (focusW / 60).toFixed(1).replace('.0', '') + ' h' : focusW + ' min'}</b><span>de enfoque esta semana</span></div>
+    <div class="tile glass"><b>🔥 ${bestStreak}</b><span>mejor racha activa</span></div>
+    <div class="tile glass"><b>${goalsDone}</b><span>objetivo${goalsDone === 1 ? '' : 's'} conseguido${goalsDone === 1 ? '' : 's'}</span></div>
+  </div>
+  <div class="section"><div class="section-head"><h2>Tareas hechas · últimos 7 días</h2></div><div class="card glass">${bars(days.map(d => row(doneBy, d)), 'tareas')}</div></div>
+  <div class="section"><div class="section-head"><h2>Minutos de enfoque · últimos 7 días</h2></div><div class="card glass">${bars(days.map(d => row(focusBy, d)), 'min')}</div></div>
+  <div class="section"><div class="section-head"><h2>Rachas de diarias</h2><a class="btn small ghost" href="#diarias">Diarias</a></div>
+    ${rstats.length ? `<div class="settings-group glass">${rstats.map(x => `<div class="item"><div class="grow"><div>${esc(x.r.title)}</div><div class="small muted">Mejor racha ${x.best}${x.rate !== null ? ` · ${x.rate}% cumplido en 30 días` : ''}${isPaused(x.r) ? ' · en pausa' : ''}</div></div><b class="streak big">🔥 ${x.streak}</b></div>`).join('')}</div>`
+      : emptyBox('Crea una diaria para empezar una racha.')}
+  </div>
+  </div>`;
+}
+
 /* Diaria */
 function routineModal(r0 = {}) {
   const isNew = !r0.id;
@@ -1259,6 +1346,8 @@ document.addEventListener('click', e => {
       haptic(); break;
     }
     case 'pick-priorities': pickPriorities(viewDate); return;
+    case 'plan-day': planDaySheet(); return;
+    case 'plan-skip': state.dayPlans[todayStr()] = { ...(state.dayPlans[todayStr()] || {}), planned: 'skip' }; break;
     case 'move-today': { const t = task(id); const prev = t.due; t.due = todayStr(); save(); rerender(); toast('Plazo: hoy', { action: 'Deshacer', onAction: () => { t.due = prev; save(); rerender(); } }); return; }
     case 'move-all-today': {
       const moved = state.tasks.filter(t => !t.done && !isRoutineTask(t) && t.due && t.due < todayStr()).map(t => [t, t.due]);
