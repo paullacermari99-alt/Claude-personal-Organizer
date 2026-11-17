@@ -190,8 +190,22 @@ function taskMeta(t, opts = {}) {
   return out.join('');
 }
 
+/* v38: en Hoy, cada tarea enseña solo lo útil en una línea: de qué es (color), cuánto dura, cuándo tiene hueco y si es urgente */
+function taskMetaLite(t, opts = {}) {
+  const out = [];
+  if (t.due && opts.hideDue !== t.due) out.push(dueTag(t));
+  const tg = (t.tags || []).map(tag).filter(Boolean)[0], p = projectOfTask(t), g = t.goalId && goal(t.goalId);
+  const ctx = p ? { color: p.color, name: `${p.icon ? p.icon + ' ' : ''}${p.name}` } : g ? { color: g.color, name: g.title } : tg ? { color: tg.color, name: tg.name } : null;
+  if (ctx) out.push(`<span class="tag dot" style="--c:${ctx.color}">${esc(ctx.name)}</span>`);
+  if (t.priority === 'high') out.push(`<span class="tag pri-high">Alta</span>`);
+  if (t.estimate) out.push(`<span class="tag">${I.clock}${durLabel(t.estimate)}</span>`);
+  const ev = blocksOfTask(t.id).filter(e => !e.recurrence && e.date >= todayStr()).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))[0];
+  if (ev) out.push(`<span class="tag tag-block" title="Tiempo reservado">${I.cal}${ev.date === opts.hideDue ? '' : esc(relDay(ev.date)) + ' '}${esc(ev.start)}</span>`);
+  if (t.subtasks && t.subtasks.length) out.push(`<span class="tag">${I.list}${t.subtasks.filter(s => s.done).length}/${t.subtasks.length}</span>`);
+  return out.join('');
+}
 function taskItem(t, opts = {}) {
-  const meta = taskMeta(t, opts);
+  const meta = opts.lite ? taskMetaLite(t, opts) : taskMeta(t, opts);
   const isPrio = opts.star && dayPriorities(viewDate).includes(t.id);
   return `<li class="task ${t.done ? 'done' : ''} ${opts.firstStep ? 'prio' : ''}" data-task="${t.id}" data-drag="task" data-id="${t.id}">
     <div class="swipe-act done-act" aria-hidden="true">✓ Hecha</div>
@@ -201,7 +215,7 @@ function taskItem(t, opts = {}) {
       <div class="body" data-act="edit-task" data-id="${t.id}">
         <div class="title">${esc(t.title)}</div>
         ${meta ? `<div class="meta">${meta}</div>` : ''}
-        ${opts.firstStep ? `<label class="step-line"><span>Para empezar</span><input type="text" class="step-input" data-input="first-step" data-id="${t.id}" value="${esc(t.firstStep)}" placeholder="Ej.: abrir el documento…" enterkeyhint="done"></label>` : ''}
+        ${opts.firstStep ? `<label class="step-line">${opts.lite ? `<span class="step-ic" aria-hidden="true">→</span><span class="sr-only">Primer paso</span>` : '<span>Para empezar</span>'}<input type="text" class="step-input" data-input="first-step" data-id="${t.id}" value="${esc(t.firstStep)}" placeholder="${opts.lite ? 'Primer paso (ej.: abrir el documento)' : 'Ej.: abrir el documento…'}" enterkeyhint="done"></label>` : ''}
       </div>
       ${opts.moveToday ? `<button class="btn small" data-act="move-today" data-id="${t.id}">A hoy</button>` : ''}
       <button class="icon-btn" data-act="focus-open" data-id="${t.id}" aria-label="Empezar ${esc(t.title)}" title="Empezar">${I.play}</button>
@@ -254,7 +268,7 @@ function routineGroup(r, opts = {}) {
           <div class="title">${esc(r.title)}</div>
           <div class="meta small muted">${(st => st.streak ? `<b class="streak">🔥 ${st.streak}</b> · ` : '')(routineStats(r))}${scheduleLabel(r)}${isPaused(r) ? ' · <b class="paused">En pausa</b>' : ''} · ${pend.length ? `${pend.length === 1 ? '1 pendiente' : pend.length + ' pendientes'} desde ${esc(relDay(pend[0].routineDate).toLowerCase())}` : 'al día'}</div>
         </div>
-        ${pend.length ? `<button class="btn small" data-act="rt-one" data-id="${r.id}">Completar una</button>` : ''}
+        ${pend.length ? `<button class="btn small" data-act="rt-one" data-id="${r.id}" aria-label="Marcar una como hecha">✓ Hecha</button>` : ''}
         ${pend.length ? `<button class="icon-btn rt-chev ${open ? 'open' : ''}" data-act="rt-expand" data-id="${r.id}" aria-label="Desplegar">${I.down}</button>` : ''}
       </div>
       ${open ? `<ul class="rt-list">${pend.map(t => `<li class="rt-item" data-task="${t.id}">
@@ -294,6 +308,7 @@ function blockItem(e, isToday, now) {
 }
 function refreshNow() {
   if (viewDate !== todayStr()) return;
+  if ($('[data-live="day-hero"]') && !modal.open) refreshLive();
   const now = nowHHMM();
   $$('.block[data-start]').forEach(el => {
     const isNow = el.dataset.start <= now && now < el.dataset.end;
@@ -376,6 +391,30 @@ function journalCard(d) {
   </div>`;
 }
 
+/* v38: resumen del día arriba del todo: cuánto llevas, si te cabe y qué toca ahora */
+function dayHero(d, tasks, agenda, isToday, now) {
+  const prog = progressOf(tasks), f = dayFit(d, tasks);
+  const left = prog.total - prog.done;
+  const C = 2 * Math.PI * 25, off = C * (1 - (prog.total ? prog.done / prog.total : 0));
+  const title = !prog.total ? (isToday ? 'Aún no tienes tareas para hoy' : 'Nada apuntado este día')
+    : !left ? '¡Todo hecho! 🎉' : `${left === 1 ? 'Te queda 1 tarea' : `Te quedan ${left} tareas`}`;
+  const lines = [];
+  if (f) lines.push(`<div class="dh-line fit-${f.level}"><i class="dh-dot"></i><span>${f.level === 'ok' ? `Te cabe todo · te sobran ${durLabel(f.free - f.need)}` : f.level === 'tight' ? 'Te cabe, pero vas justo' : `No te cabe: faltan ${durLabel(f.need - f.free)}`}</span>${f.level === 'over' ? `<button class="btn small" data-act="fit-adjust" data-date="${d}">Ajustar</button>` : ''}</div>`);
+  const timed = agenda.filter(e => !e.allDay);
+  if (isToday) {
+    const cur = timed.find(e => e.start <= now && now < e.end), next = timed.find(e => e.start > now);
+    if (cur) lines.push(`<div class="dh-line now">${I.clock}<span><b>Ahora:</b> ${esc(cur.title)} · hasta las ${esc(cur.end)}</span></div>`);
+    else if (next) lines.push(`<div class="dh-line">${I.clock}<span>A las ${esc(next.start)}: ${esc(next.title)}</span></div>`);
+  } else if (timed.length) lines.push(`<div class="dh-line">${I.clock}<span>${timed.length === 1 ? '1 bloque' : timed.length + ' bloques'} · el primero a las ${esc(timed[0].start)}</span></div>`);
+  return `<div class="dh-main" data-live="day-hero">
+    <a class="dh-ring" href="#progreso" aria-label="${prog.done} de ${prog.total} hechas. Ver progreso">
+      <svg viewBox="0 0 60 60" aria-hidden="true"><circle class="track" cx="30" cy="30" r="25"/><circle class="bar" cx="30" cy="30" r="25" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/></svg>
+      <span class="dh-n"><b>${prog.done}</b><small>de ${prog.total}</small></span>
+    </a>
+    <div class="dh-text"><div class="dh-title">${title}</div>${lines.join('')}</div>
+  </div>`;
+}
+
 function viewToday() {
   const d = viewDate, today = todayStr(), isToday = d === today;
   const prios = dayPriorities(d).map(task);
@@ -408,34 +447,32 @@ function viewToday() {
 
   <div class="today-grid">
     <div class="col-main">
-      ${isToday && !(state.dayPlans[d] && state.dayPlans[d].planned) ? `<div class="plan-card glass">
-        <div class="grow"><div class="title">Planifica tu día en 1 minuto</div><div class="small muted">Elige 3 prioridades y reserva hueco para ellas.</div></div>
-        <button class="btn primary small" data-act="plan-day">Empezar</button>
-        <button class="icon-btn" data-act="plan-skip" aria-label="Ahora no">${I.close}</button>
-      </div>` : ''}
-      <div class="section day-prog">${statRow('day-progress', prog.pct, prog.total ? `${prog.done} de ${prog.total}` : 'Sin tareas')}<a class="btn small ghost" href="#progreso">${I.chart}<span>Progreso</span></a></div>
-      ${fitCard(d, [...prios, ...dayTasks])}
+      <div class="day-hero glass">
+        ${dayHero(d, [...prios, ...dayTasks], agenda, isToday, now)}
+        ${isToday && !(state.dayPlans[d] && state.dayPlans[d].planned) ? `<div class="dh-plan">
+          <button class="btn primary" data-act="plan-day">Planificar mi día · 1 min</button>
+          <button class="btn ghost" data-act="plan-skip">Ahora no</button>
+        </div>` : ''}
+      </div>
 
       <div class="section">
         <div class="section-head"><h2>Prioridades · ${prios.length}/3</h2><button class="btn small" data-act="pick-priorities">${prios.length ? 'Cambiar' : 'Elegir'}</button></div>
-        ${prios.length ? `<ul class="tasks glass">${prios.map(t => taskItem(t, { firstStep: true, star: true, hideDue: d })).join('')}</ul>`
+        ${prios.length ? `<ul class="tasks glass prio-list">${prios.map(t => taskItem(t, { firstStep: true, lite: true, noResched: true, hideDue: d })).join('')}</ul>`
           : emptyBox('¿Qué 3 cosas harían que hoy fuera un buen día? Elígelas y escribe por dónde empezarás cada una.')}
       </div>
 
       ${overdue.length ? collapsible('vencidas', 'Vencidas', overdue.length, taskList(overdue, { star: true, moveToday: true }),
         `<button class="btn small ghost" data-act="bulk-resched">${I.resched}<span>Reprogramar</span></button>`) : ''}
 
-      ${routines.length ? collapsible('diarias', 'Diarias pendientes', totalPend, routines.map(r => routineGroup(r)).join(''),
-        `<a class="btn small ghost" href="#diarias">Ver diarias</a>`) : ''}
-
-      ${habitsTodaySection(d)}
-
       <div class="section">
-        <div class="section-head"><h2>Tareas</h2>${isToday && !routines.length ? `<a class="btn small ghost" href="#diarias">${I.daily}<span>Diarias</span></a>` : ''}</div>
-        ${taskList(dayTasks, { star: true, hideDue: d })}
+        <div class="section-head"><h2>${prios.length ? 'También hoy' : 'Tareas'}</h2>${isToday && !routines.length ? `<a class="btn small ghost" href="#diarias">${I.daily}<span>Diarias</span></a>` : ''}</div>
+        ${taskList(dayTasks, { star: true, lite: true, noResched: true, hideDue: d })}
         ${quickAdd({ due: d }, 'Nueva tarea para ' + relDay(d).toLowerCase())}
         <p class="hint touch-only">Desliza a la derecha para completar o a la izquierda para pasar a mañana.</p>
       </div>
+      ${routines.length ? collapsible('diarias', 'Diarias pendientes', totalPend, routines.map(r => routineGroup(r)).join(''),
+        `<a class="btn small ghost" href="#diarias">Ver diarias</a>`) : ''}
+      ${habitsTodaySection(d)}
       ${journalCard(d)}
     </div>
 

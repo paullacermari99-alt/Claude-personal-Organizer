@@ -75,9 +75,8 @@ const TOUR_STEPS = [
 /* Repaso breve de cada pantalla (solo mirar: todo lo demás queda bloqueado) */
 const SCREEN_TOURS = {
   hoy: [
-    { target: () => firstVisible('.page .plan-card') || sectionBy('prioridades'), title: 'Tu día en un vistazo', text: 'Cada mañana, «Planifica tu día» te ayuda a elegir 3 prioridades y a darles hora en un minuto.' },
+    { target: () => firstVisible('.page .day-hero') || sectionBy('prioridades'), title: 'Tu día en un vistazo', text: 'Cuántas tareas llevas, si te da tiempo y qué toca ahora. «Planificar mi día» te ayuda a elegir 3 prioridades en un minuto.' },
     { target: () => sectionBy('prioridades'), title: 'Prioridades', text: 'Las 3 cosas que de verdad importan hoy. Con «Elegir» las cambias cuando quieras.' },
-    { target: () => firstVisible('.page .fit') || firstVisible('.page .day-prog'), title: '¿Me cabe hoy?', text: 'Suma lo que tienes y te dice si te da tiempo. Si no, «Ajustar» te propone qué mover.' },
     { target: () => sectionBy('horario') || firstVisible('.page [data-act="day"]'), title: 'Tu horario', text: 'Los bloques de tiempo del día. Con las flechas de arriba miras otros días.' },
   ],
   semana: [
