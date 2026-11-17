@@ -12,15 +12,14 @@ const PRO_FREE_TEMPLATES = 1, PRO_FREE_HABITS = 3;
 const PRO_SCREENS = { progreso: 'stats', revision: 'stats', 'ajustes/calendarios': 'calendars' };
 const PRO_GAP = 3 * 60 * 1000;
 
-/* Lo que incluye Pro: [id, icono, nombre, detalle]. Corto para que la tienda se entienda de un vistazo y quepa sin scroll */
-const PRO_IC = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+/* Lo que incluye Pro: [id, icono, nombre, una línea]. Corto para que la tienda quepa entera sin scroll */
 const PRO_FEATURES = [
-  ['assistant', PRO_IC('<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>'), 'Asistente IA', 'Próximamente'],
-  ['stats', PRO_IC('<path d="M4 20V11M10 20V5M16 20v-6M21 20H3"/>'), 'Estadísticas', 'Meses, rachas y energía'],
-  ['styles', PRO_IC('<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 000 17z" fill="currentColor"/>'), '3 estilos más', 'Sereno, Vivo, Compacto'],
-  ['voice', PRO_IC('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21"/>'), 'Hablar con la app', 'Crea y pregunta con la voz'],
-  ['calendars', PRO_IC('<rect x="3.5" y="4.5" width="17" height="16" rx="3.5"/><path d="M3.5 9.5h17M8 2.8v3.4M16 2.8v3.4"/>'), 'Google Calendar', 'Tus citas junto a tu plan'],
-  ['unlimited', PRO_IC('<path d="M7.5 8.5c-2 0-3.5 1.6-3.5 3.5s1.5 3.5 3.5 3.5c3 0 6-7 9-7 2 0 3.5 1.6 3.5 3.5s-1.5 3.5-3.5 3.5c-3 0-6-7-9-7z"/>'), 'Sin límites', 'Hábitos y plantillas'],
+  ['assistant', '✨', 'Asistente IA', 'Planifica tu día y parte las tareas grandes', 'Pronto'],
+  ['stats', '📊', 'Estadísticas', 'Tus meses: enfoque, rachas, ánimo y energía'],
+  ['styles', '🎨', '3 estilos más', 'Sereno, Vivo y Compacto, además de Cristal'],
+  ['voice', '🎙️', 'Hablar con la app', 'Crea tareas y pregunta «¿qué tengo hoy?»'],
+  ['calendars', '📅', 'Google Calendar', 'Tus citas de otros calendarios en tu plan'],
+  ['unlimited', '🔥', 'Sin límites', 'Hábitos y plantillas propias ilimitados'],
 ];
 const PRO_FOCUS = { templates: 'unlimited', habits: 'unlimited' };
 
@@ -70,9 +69,15 @@ function proEnsureDialog() {
       const c = proDlg.querySelector('.pro-sub'); if (c) c.textContent = proSubText();
     }
     else if (a === 'buy') {
-      proLS(PRO_DEMO_KEY, '1'); proApply(); proClose(true);
-      if (typeof toast === 'function') toast('Pro desbloqueado en modo prueba. No se ha cobrado nada.');
-      if (typeof rerender === 'function') rerender();
+      if (proDlg.classList.contains('won')) return;
+      /* Pequeña celebración en el botón antes de cerrar */
+      b.textContent = '¡Pro activado!'; proDlg.classList.add('won');
+      proLS(PRO_DEMO_KEY, '1'); proApply();
+      setTimeout(() => {
+        proDlg.classList.remove('won'); proClose(true);
+        if (typeof toast === 'function') toast('Pro desbloqueado en modo prueba. No se ha cobrado nada.');
+        if (typeof rerender === 'function') rerender();
+      }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 750);
     }
     else if (a === 'free') { proLS(PRO_DEMO_KEY, null); proApply(); proClose(true); if (typeof rerender === 'function') rerender(); }
   });
@@ -82,6 +87,7 @@ const proSubText = () => `Después ${proPlan === 'year' ? PRO_PRICE.year + '/añ
 function proStoreHTML(focus) {
   const has = proUnlocked(); focus = PRO_FOCUS[focus] || focus;
   return `<div class="pro-wrap">
+    <div class="pro-fx" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <div class="pro-top">
       <span class="pro-chip">${PRO_STAR}PRO</span>
       <button type="button" class="pro-x ${has ? 'ready' : ''}" data-pro="close" aria-label="${has ? 'Cerrar' : `Podrás cerrar en ${PRO_WAIT} segundos`}" ${has ? '' : 'aria-disabled="true"'}>
@@ -92,17 +98,20 @@ function proStoreHTML(focus) {
     </div>
     <div class="pro-body" tabindex="-1" autofocus>
       <div class="pro-hero">
-        <h2>Boldup <b>Pro</b></h2>
-        <p>${has ? 'Tienes Pro activado (simulado, sin cobros).' : 'Haz más, sin límites y sin procrastinar.'}</p>
+        <span class="pro-badge"><i class="pb-glow"></i>${PRO_STAR}<i class="pb-shine"></i></span>
+        <div class="pro-ht">
+          <h2>Boldup <b>Pro</b></h2>
+          <p>${has ? 'Tienes Pro activado (simulado, sin cobros).' : 'Deja de procrastinar y sé tu mejor versión.'}</p>
+        </div>
       </div>
-      <ul class="pro-grid">${PRO_FEATURES.map(([id, ic, t, d]) => `<li class="${id === focus ? 'hit' : ''}"><span class="pg-ic">${ic}</span><b>${t}</b><span>${d}</span></li>`).join('')}</ul>
+      <ul class="pro-grid">${PRO_FEATURES.map(([id, ic, t, d, soon], i) => `<li class="${id === focus ? 'hit' : ''}" style="--i:${i}"><span class="pg-ic">${ic}</span><b>${t}${soon ? ` <em>${soon}</em>` : ''}</b><span class="pg-d">${d}</span></li>`).join('')}</ul>
       ${has ? `<div class="pro-actions"><button type="button" class="btn wide pro-free" data-pro="free">Volver a la versión gratis</button></div>` : `
       <div class="pro-actions">
         <div class="pro-plans" role="radiogroup" aria-label="Plan">
           <button type="button" role="radio" class="pro-plan ${proPlan === 'year' ? 'on' : ''}" aria-checked="${proPlan === 'year'}" data-pro="plan" data-v="year"><span class="pp-tag">−${PRO_PRICE.save}</span><span class="pp-name">Anual</span><span class="pp-price">${PRO_PRICE.yearMonth}<small>/mes</small></span></button>
           <button type="button" role="radio" class="pro-plan ${proPlan === 'month' ? 'on' : ''}" aria-checked="${proPlan === 'month'}" data-pro="plan" data-v="month"><span class="pp-name">Mensual</span><span class="pp-price">${PRO_PRICE.month}<small>/mes</small></span></button>
         </div>
-        <button type="button" class="btn wide pro-cta" data-pro="buy">Probar ${PRO_PRICE.trial} días gratis</button>
+        <button type="button" class="btn wide pro-cta" data-pro="buy"><span>Probar ${PRO_PRICE.trial} días gratis</span></button>
         <p class="pro-sub">${proSubText()}</p>
         <p class="pro-note">Vista de prueba: no se cobra nada</p>
       </div>`}
