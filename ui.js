@@ -116,7 +116,8 @@ document.addEventListener('click', e => {
   if (btn) { e.preventDefault(); e.stopPropagation(); if (selUI.pop && selUI.btn === btn) closeSelect(); else openSelect(btn); }
 }, true);
 document.addEventListener('pointerdown', e => {
-  if (selUI.pop && !selUI.pop.contains(e.target) && !e.target.closest('.sel-btn')) closeSelect();
+  /* Tocar fuera solo cierra la lista: ese toque no pulsa lo que hay debajo (v42) */
+  if (selUI.pop && !selUI.pop.contains(e.target) && !e.target.closest('.sel-btn')) { closeSelect(); if (typeof eatNextClick === 'function') eatNextClick(); }
 }, true);
 document.addEventListener('keydown', e => {
   const btn = e.target.closest && e.target.closest('.sel-btn');

@@ -1208,6 +1208,7 @@ function openModal(title, body, opts = {}) {
   delete modalForm.dataset.tagsTouched; delete modalForm.dataset.colorTouched; modalForm._autoTag = null;
   closeModalNow();
   modal.showModal();
+  markOpened(modal);
   modalForm.scrollTop = 0;
   /* Sin esto el navegador enfoca «Cancelar» y lo dibuja como seleccionado */
   modalForm.focus({ preventScroll: true });
@@ -1266,7 +1267,8 @@ modalForm.addEventListener('change', e => {
   if (e.target.name === 'progressMode') modalForm.dataset.pm = e.target.value;
   if (e.target.name === 'p' && e.target.checked && $$('input[name=p]:checked', modalForm).length > 3) { e.target.checked = false; toast('Como máximo 3 prioridades'); }
 });
-modal.addEventListener('click', e => { if (e.target === modal) modal.close(); });
+/* Tocar fuera cierra la hoja, solo si el toque empezó fuera y no es el mismo toque que la abrió */
+modal.addEventListener('click', e => { if (backdropTap(e, modal)) modal.close(); else if (e.target === modal) e.preventDefault(); });
 /* v23: la hoja se va deslizando hacia abajo (o se desvanece en el ordenador) en vez de desaparecer de golpe */
 const nativeClose = HTMLDialogElement.prototype.close;
 function closeModalNow() {
@@ -1814,6 +1816,7 @@ function openFocus(id) {
   const wasOpen = !layer.hidden;
   if (!wasOpen) layer.innerHTML = '';
   renderFocus();
+  if (!wasOpen) markOpened(layer);
   layer.hidden = false;
   document.body.classList.add('focus-open');
 }
@@ -2510,7 +2513,7 @@ setInterval(() => {
   checkReminders();
 }, 30000);
 $('#focus-pill').addEventListener('click', () => { const tm = getTimer(); if (tm && tm.taskId) openFocus(tm.taskId); });
-$('#focus').addEventListener('click', e => { if (e.target.id === 'focus') closeFocus(); });
+$('#focus').addEventListener('click', e => { if (backdropTap(e, $('#focus'))) closeFocus(); });
 
 /* ---------- PWA ---------- */
 

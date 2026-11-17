@@ -334,49 +334,64 @@ function slideTo(n) {
   setTimeout(() => a.classList.remove('in-right', 'in-left'), 300);
 }
 
-/* Deslizar a los lados: cambia de semana, de 3 días o de día */
+/* Deslizar a los lados: cambia de semana, de 3 días o de día.
+   v42: con eventos táctiles y decidiendo en el primer movimiento (si no, el iPhone empieza a desplazar
+   la página y el gesto se queda a medias). gestures.js llama a pswipeMove desde su touchmove. */
 let pswipe = null;
-document.addEventListener('pointerdown', e => {
-  if (e.pointerType === 'mouse' || drag || !isPhone()) return;
+document.addEventListener('touchstart', e => {
+  pswipe = null;
+  if (e.touches.length !== 1 || drag || !isPhone()) return;
   const area = e.target.closest('.swipe-area');
-  if (!area || e.target.closest('input, .ev-resize')) return;
-  pswipe = { area, x0: e.clientX, y0: e.clientY, dx: 0, axis: null };
-});
-document.addEventListener('pointermove', e => {
-  if (!pswipe) return;
-  if (drag) { pswipe.area.style.transform = ''; pswipe = null; return; }
-  const dx = e.clientX - pswipe.x0, dy = e.clientY - pswipe.y0;
-  if (!pswipe.axis) {
-    if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
-    pswipe.axis = Math.abs(dx) > Math.abs(dy) * 1.3 ? 'x' : 'y';
-    if (pswipe.axis === 'y') { pswipe = null; return; }
+  if (!area || e.target.closest('input, textarea, .ev-resize, li.task .task-row')) return;
+  const t = e.touches[0];
+  pswipe = { area, x0: t.clientX, y0: t.clientY, dx: 0, axis: null, raf: 0 };
+}, { passive: true });
+function pswipeMove(p) {
+  const s = pswipe;
+  if (!s) return false;
+  if (drag) { s.area.style.transform = ''; s.area.style.opacity = ''; pswipe = null; return false; }
+  const dx = p.x - s.x0, dy = p.y - s.y0;
+  if (!s.axis) {
+    if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return false;
+    if (Math.abs(dx) <= Math.abs(dy) * 1.2) { pswipe = null; return false; }
+    s.axis = 'x';
+    s.x0 += Math.sign(dx) * 6;
     cancelPending();
-    pswipe.area.style.transition = 'none';
+    s.area.style.transition = 'none';
+    s.area.style.willChange = 'transform, opacity';
   }
-  pswipe.dx = dx;
-  pswipe.area.style.transform = `translateX(${dx * .85}px)`;
-  pswipe.area.style.opacity = String(1 - Math.min(Math.abs(dx) / 600, .4));
-});
+  s.dx = p.x - s.x0;
+  if (!s.raf) s.raf = requestAnimationFrame(() => {
+    s.raf = 0;
+    if (pswipe !== s) return;
+    s.area.style.transform = `translate3d(${s.dx * .85}px,0,0)`;
+    if (!reduceMotion()) s.area.style.opacity = String(1 - Math.min(Math.abs(s.dx) / 600, .4));
+  });
+  return true;
+}
 function endPhoneSwipe(commit) {
   const s = pswipe;
   pswipe = null;
   if (!s || s.axis !== 'x') return;
+  cancelAnimationFrame(s.raf);
   suppressClickUntil = Date.now() + 300;
   const a = s.area;
+  a.style.willChange = '';
   if (commit && Math.abs(s.dx) > 60) {
     const n = s.dx < 0 ? 1 : -1;
-    a.style.transition = 'transform .18s ease-in, opacity .18s';
-    a.style.transform = `translateX(${n > 0 ? '-' : ''}60%)`;
-    a.style.opacity = '0';
     haptic(8);
+    if (reduceMotion()) { shiftPhone(n); route(); return; }
+    a.style.transition = 'transform .18s ease-in, opacity .18s';
+    a.style.transform = `translate3d(${n > 0 ? '-' : ''}60%,0,0)`;
+    a.style.opacity = '0';
     setTimeout(() => { shiftPhone(n); slideTo(n); }, 170);
   } else {
-    a.style.transition = 'transform .25s cubic-bezier(.2,.9,.3,1), opacity .25s';
+    a.style.transition = reduceMotion() ? 'none' : 'transform .25s cubic-bezier(.2,.9,.3,1), opacity .25s';
     a.style.transform = ''; a.style.opacity = '';
   }
 }
-document.addEventListener('pointerup', () => endPhoneSwipe(true));
-document.addEventListener('pointercancel', () => endPhoneSwipe(false));
+document.addEventListener('touchend', e => { if (!e.touches.length) endPhoneSwipe(true); }, { passive: true });
+document.addEventListener('touchcancel', () => endPhoneSwipe(false), { passive: true });
 /* Al girar el móvil o cambiar el tamaño de la ventana, cambia de diseño */
 matchMedia('(max-width: 1023px)').addEventListener('change', () => { if (location.hash.startsWith('#semana')) route(); });
 
@@ -438,7 +453,7 @@ document.addEventListener('pointerdown', e => {
 });
 document.addEventListener('pointermove', e => {
   lastPt = { x: e.clientX, y: e.clientY };
-  if (drag) { e.preventDefault(); moveDrag(); return; }
+  if (drag) { e.preventDefault(); queueMove(); return; }
   if (!pending) return;
   const dist = Math.hypot(e.clientX - pending.x0, e.clientY - pending.y0);
   if (pending.type === 'mouse') { if (dist > 5) startDrag(pending); }
@@ -447,8 +462,11 @@ document.addEventListener('pointermove', e => {
 document.addEventListener('pointerup', () => { if (drag) endDrag(true); else cancelPending(); });
 document.addEventListener('pointercancel', () => { if (drag) endDrag(false); else cancelPending(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && drag) endDrag(false); });
-document.addEventListener('touchmove', e => { if (drag) e.preventDefault(); }, { passive: false });
+/* (el touchmove que frena el desplazamiento mientras arrastras está en gestures.js) */
 document.addEventListener('contextmenu', e => { if (drag || pending) e.preventDefault(); });
+/* Mover el bloque una vez por fotograma, no en cada evento: más fluido en el móvil */
+let moveRaf = 0;
+function queueMove() { if (!moveRaf) moveRaf = requestAnimationFrame(() => { moveRaf = 0; if (drag) moveDrag(); }); }
 function cancelPending() { if (pending) { clearTimeout(pending.timer); pending = null; } }
 
 function eventById(id) {
@@ -525,31 +543,41 @@ function moveDrag() {
     drag.sc = sc;
     return;
   }
-  drag.ghost.style.transform = `translate(${x - 14}px, ${y - 18}px)`;
+  drag.ghost.style.transform = `translate3d(${x - 14}px, ${y - 18}px, 0)`;
   const el = document.elementFromPoint(x, y);
   const target = el && el.closest('[data-drop]');
-  clearPreview();
-  drag.target = null;
-  if (!target) return;
-  const kind = target.dataset.drop;
+  const kind = target && target.dataset.drop;
   if (kind === 'col') {
     const sc = target.closest('.cal-scroll');
     drag.sc = sc;
     let m = (y - drag.grabY - target.getBoundingClientRect().top) / hourHeight(sc) * 60;
     m = clamp(Math.round(m / SNAP) * SNAP, 0, 24 * 60 - drag.dur);
+    /* Solo se toca la página si cambia la hora o el día: sin parpadeos */
+    const key = 'col|' + target.dataset.date + '|' + m;
+    if (key === drag.key && drag.preview && drag.preview.parentNode === target) return;
+    drag.key = key;
+    $$('.drop-over').forEach(x => x.classList.remove('drop-over'));
     const end = Math.min(m + drag.dur, 24 * 60 - 1);
     const clash = overlapsWith(target.dataset.date, fmtHM(m), fmtHM(end), drag.ev ? drag.ev.id : null).length > 0;
-    const pv = document.createElement('div');
+    let pv = drag.preview;
+    if (!pv) { pv = drag.preview = document.createElement('div'); pv.innerHTML = '<div class="ev-time"></div>'; }
     pv.className = `ev preview ${clash ? 'clash' : ''}`;
     pv.style.cssText = `--c:${drag.ghost.style.getPropertyValue('--c')};top:calc(var(--hour-h) * ${m / 60});height:calc(var(--hour-h) * ${drag.dur / 60} - 2px);left:2px;width:calc(100% - 4px)`;
-    pv.innerHTML = `<div class="ev-time">${clash ? '⚠ ' : ''}${fmtHM(m)}–${fmtHM(end)}</div>`;
-    target.appendChild(pv);
-    drag.preview = pv;
+    pv.firstChild.textContent = `${clash ? '⚠ ' : ''}${fmtHM(m)}–${fmtHM(end)}`;
+    if (pv.parentNode !== target) target.appendChild(pv);
     drag.target = { kind, date: target.dataset.date, m };
   } else if ((kind === 'lane' || kind === 'tray') && drag.kind === 'task') {
+    const key = kind + '|' + (target.dataset.date || '');
+    if (key === drag.key) return;
+    drag.key = key;
+    clearPreview();
     target.classList.add('drop-over');
     drag.sc = target.closest('.cal-scroll');
     drag.target = { kind, date: target.dataset.date || null };
+  } else {
+    if (drag.key) clearPreview();
+    drag.key = null;
+    drag.target = null;
   }
 }
 
@@ -557,16 +585,20 @@ function autoScrollLoop() {
   if (!drag) return;
   const sc = drag.sc || $('.cal-scroll');
   if (sc) {
-    const r = sc.getBoundingClientRect(), { x, y } = lastPt, edge = 48, step = 14;
+    const r = sc.getBoundingClientRect(), { x, y } = lastPt, edge = 56;
+    /* Cuanto más cerca del borde, más rápido: arranca suave en vez de a tirones */
+    const sp = d => Math.round(2 + 16 * Math.pow(clamp(1 - d / edge, 0, 1), 2));
     let dx = 0, dy = 0;
-    if (y < r.top + edge && y > r.top - 20) dy = -step; else if (y > r.bottom - edge && y < r.bottom + 20) dy = step;
-    if (x < r.left + edge + 40 && x > r.left) dx = -step; else if (x > r.right - edge && x < r.right + 20) dx = step;
+    if (y < r.top + edge && y > r.top - 30) dy = -sp(y - r.top); else if (y > r.bottom - edge && y < r.bottom + 30) dy = sp(r.bottom - y);
+    if (x < r.left + edge + 40 && x > r.left) dx = -sp(x - r.left - 40); else if (x > r.right - edge && x < r.right + 30) dx = sp(r.right - x);
     if (dx || dy) { sc.scrollBy(dx, dy); moveDrag(); }
   }
   requestAnimationFrame(autoScrollLoop);
 }
 
 function endDrag(commit) {
+  cancelAnimationFrame(moveRaf); moveRaf = 0;
+  if (commit && drag.kind !== 'create' && drag.kind !== 'resize') moveDrag();   /* la última posición del dedo */
   const d = drag;
   drag = null;
   document.body.classList.remove('dragging');
