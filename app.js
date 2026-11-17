@@ -972,15 +972,32 @@ let deferredInstall = null;
 const THEMES = [['auto', 'Automático'], ['light', 'Claro'], ['dark', 'Oscuro']];
 function appearanceSection() {
   const cur = window.themePref ? themePref() : 'auto', i = THEMES.findIndex(([v]) => v === cur);
+  const sk = window.skinPref ? skinPref() : '';
   return `<div class="section">
     <div class="section-head"><h2>Apariencia</h2></div>
     <div class="settings-group glass">
       <div class="item theme-item"><span>Modo</span>
         <div class="segmented compact seg-slide theme-seg" role="tablist" aria-label="Modo de color" style="--n:3;--i:${i}">${THEMES.map(([v, l]) => `<button role="tab" class="${v === cur ? 'on' : ''}" aria-selected="${v === cur}" data-act="theme" data-v="${v}">${l}</button>`).join('')}</div>
       </div>
+      <div class="item skin-item"><span>Estilo</span>
+      <div class="skin-grid" role="radiogroup" aria-label="Estilo">${SKINS.map(([v, l, bg, card, dot]) => `<button class="skin-opt ${v === sk ? 'on' : ''}" role="radio" aria-checked="${v === sk}" data-act="skin" data-v="${v}">
+        <span class="sw" style="background:${bg}"><i style="background:${dot};opacity:.85"></i><i style="background:${card}"></i><i style="background:${card}"></i><b style="background:${dot}"></b></span><span>${l}</span></button>`).join('')}</div>
+      </div>
     </div>
-    <p class="hint">«Automático» cambia solo entre claro y oscuro según tu móvil u ordenador.</p>
+    <p class="hint">«Automático» cambia solo entre claro y oscuro según tu móvil u ordenador. El estilo cambia colores, formas y tamaños; tus datos no se tocan.</p>
   </div>`;
+}
+/* Estilos de la interfaz: [valor, nombre, fondo, tarjeta, color] (las muestras se pintan siempre en claro) */
+const SKINS = [
+  ['', 'Cristal', 'linear-gradient(150deg,#cfe0ff,#f3d6ea 60%,#d4f3e6)', 'rgba(255,255,255,.75)', '#007aff'],
+  ['sereno', 'Sereno', '#f5f3ef', '#fff', '#1d1b18'],
+  ['vivo', 'Vivo', 'linear-gradient(150deg,#c9b6ff,#ffc0de 55%,#ffe0a8)', 'rgba(255,255,255,.8)', 'linear-gradient(135deg,#7c3aed,#ec4899)'],
+  ['compacto', 'Compacto', 'linear-gradient(150deg,#d6e6ff,#e9e2f7)', 'rgba(255,255,255,.75)', '#0e8f84'],
+];
+function setSkin(v, grid) {
+  try { if (!v) localStorage.removeItem('organizador.skin'); else localStorage.setItem('organizador.skin', v); } catch {}
+  if (window.applyTheme) applyTheme();
+  if (grid) grid.querySelectorAll('.skin-opt').forEach(b => { const on = b.dataset.v === v; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
 }
 function setTheme(v, seg) {
   try { if (v === 'auto') localStorage.removeItem('organizador.theme'); else localStorage.setItem('organizador.theme', v); } catch {}
@@ -2177,6 +2194,7 @@ document.addEventListener('click', e => {
       state.settings.ui.weekMode = v; save(); softSwap(); return;
     }
     case 'theme': setTheme(el.dataset.v, el.closest('.theme-seg')); return;
+    case 'skin': setSkin(el.dataset.v, el.closest('.skin-grid')); return;
     case 'set-ui': {
       const k = el.dataset.k, v = el.dataset.v;
       state.settings.ui[k] = k === 'projectsArchived' ? !!v : v;

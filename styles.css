@@ -1768,3 +1768,152 @@ body[data-page="planificar"] .fab-mic { display: none; }
 .voice-edit { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 8px; font-size: 13px; font-weight: 500; color: var(--muted); }
 .voice-edit input { width: 100%; font-size: 17px; font-weight: 600; color: var(--text); }
 .voice:not(.open), .voice-back:not(.open) { pointer-events: none; }
+
+/* ======================================================================
+   v36: Estilos de la interfaz (Ajustes → Apariencia → Estilo)
+   «Cristal» es el de siempre (sin data-skin). Los demás solo cambian colores, formas y tamaños:
+   el fondo vivo y todo lo demás sigue igual. Se aplica antes de pintar (index.html), sin destello.
+   ====================================================================== */
+
+/* ---- Sereno: papel claro, sin adornos, tinta negra y títulos con serifa ---- */
+:root[data-skin="sereno"] {
+  --bg: #f5f3ef;
+  --blob-1: #e3ddd2; --blob-2: #eadfd8; --blob-3: #dfe3da; --blob-4: #e4dfe8;
+  --glass: rgba(255, 255, 255, .9);
+  --glass-strong: rgba(255, 255, 255, .94);
+  --glass-border: rgba(40, 32, 20, .08);
+  --glass-shadow: none;
+  --fill: rgba(40, 32, 20, .06);
+  --fill-2: rgba(40, 32, 20, .11);
+  --text: #1d1b18;
+  --muted: rgba(45, 40, 32, .58);
+  --separator: rgba(40, 32, 20, .1);
+  --accent: #1d1b18;
+  --accent-soft: rgba(29, 27, 24, .07);
+  --radius: 16px;
+  --nav-active-bg: rgba(29, 27, 24, .07);
+}
+:root[data-skin="sereno"][data-theme="dark"] {
+  --bg: #121110;
+  --blob-1: #26231f; --blob-2: #2a2321; --blob-3: #1f2420; --blob-4: #241f27;
+  --glass: rgba(30, 29, 27, .92);
+  --glass-strong: rgba(28, 27, 25, .95);
+  --glass-border: rgba(255, 250, 240, .08);
+  --glass-shadow: none;
+  --text: #f2efe9;
+  --muted: rgba(242, 239, 233, .55);
+  --separator: rgba(255, 250, 240, .09);
+  --fill: rgba(255, 250, 240, .08);
+  --fill-2: rgba(255, 250, 240, .14);
+  --accent: #f2efe9;
+  --accent-soft: rgba(242, 239, 233, .1);
+}
+[data-skin="sereno"] h1, [data-skin="sereno"] .item-card .name, [data-skin="sereno"] .sheet-head h2 {
+  font-family: ui-serif, "New York", "Iowan Old Style", Georgia, serif; font-weight: 600; letter-spacing: -.01em;
+}
+[data-skin="sereno"] h2 { text-transform: none; font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: 0; }
+[data-skin="sereno"] .fab { box-shadow: 0 6px 18px rgba(0, 0, 0, .18); }
+[data-skin="sereno"][data-theme="dark"] .check:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3 7.4l2.6 2.6L11 4.4' fill='none' stroke='%23121110' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+/* Sereno: las listas van sobre el papel, sin tarjeta, con líneas finas */
+[data-skin="sereno"] body::before, [data-skin="sereno"] body::after { opacity: .3; }
+[data-skin="sereno"] h1 { font-size: 33px; }
+[data-skin="sereno"] .page .tasks.glass { background: transparent; border: 0; border-radius: 0; box-shadow: none; border-top: 1px solid var(--separator); border-bottom: 1px solid var(--separator); }
+[data-skin="sereno"] .page .tasks .task-row { padding-left: 4px; }
+[data-skin="sereno"] .page .tasks .task + .task::before { left: 40px; }
+[data-skin="sereno"] .plan-card { box-shadow: inset 3px 0 0 var(--text); }
+[data-skin="sereno"] .tag { background: transparent; box-shadow: inset 0 0 0 1px var(--separator); }
+
+/* ---- Vivo: color, tarjetas redondas y letra redondeada ---- */
+:root[data-skin="vivo"] {
+  --bg: #f6f0ff;
+  --blob-1: #a78bfa; --blob-2: #ff8cc6; --blob-3: #ffc773; --blob-4: #7dd8ff;
+  --glass: rgba(255, 255, 255, .62);
+  --glass-strong: rgba(255, 255, 255, .84);
+  --glass-border: rgba(255, 255, 255, .85);
+  --glass-shadow: 0 10px 30px rgba(110, 50, 200, .1), inset 0 1px 0 rgba(255, 255, 255, .7);
+  --text: #1e1236;
+  --muted: rgba(50, 30, 90, .6);
+  --accent: #7c3aed;
+  --accent-soft: rgba(124, 58, 237, .13);
+  --grad: linear-gradient(135deg, #7c3aed, #ec4899);
+  --radius: 26px;
+  --nav-active-bg: rgba(124, 58, 237, .13);
+}
+:root[data-skin="vivo"][data-theme="dark"] {
+  --bg: #0d0818;
+  --blob-1: #5b21b6; --blob-2: #9d174d; --blob-3: #9a4a12; --blob-4: #0e6280;
+  --glass: rgba(36, 24, 58, .55);
+  --glass-strong: rgba(30, 20, 48, .82);
+  --glass-border: rgba(255, 255, 255, .1);
+  --glass-shadow: 0 10px 30px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .06);
+  --text: #f6f1ff;
+  --muted: rgba(236, 225, 255, .62);
+  --accent: #c4b5fd;
+  --accent-soft: rgba(196, 181, 253, .16);
+}
+[data-skin="vivo"] body { font-family: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Nunito", system-ui, sans-serif; }
+[data-skin="vivo"] body::before, [data-skin="vivo"] body::after { opacity: .75; }
+[data-skin="vivo"] h1 { font-weight: 800; }
+[data-skin="vivo"] .btn.primary, [data-skin="vivo"] .fab { background: var(--grad); color: #fff; }
+[data-skin="vivo"] .fab { box-shadow: 0 10px 26px rgba(170, 60, 220, .4); }
+[data-skin="vivo"] .check:checked { background-color: #8b3ff0; border-color: #8b3ff0; }
+[data-skin="vivo"] .progress > span { background: var(--grad); }
+[data-skin="vivo"][data-theme="dark"] .nav a.active { color: #fff; }
+[data-skin="vivo"] h1 { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; padding-bottom: 2px; }
+[data-skin="vivo"][data-theme="dark"] h1 { background-image: linear-gradient(135deg, #c4b5fd, #f9a8d4); }
+[data-skin="vivo"] h2 { color: var(--accent); font-weight: 700; }
+/* Vivo: tarjeta de plan en degradado y cada tarea en su propia tarjeta */
+[data-skin="vivo"] .plan-card { background: var(--grad); color: #fff; border: 0; box-shadow: 0 12px 28px rgba(170, 60, 220, .3); }
+[data-skin="vivo"] .plan-card .muted, [data-skin="vivo"] .plan-card .icon-btn { color: rgba(255, 255, 255, .85); }
+[data-skin="vivo"] .plan-card .btn.primary { background: #fff; color: #7c3aed; }
+[data-skin="vivo"] .plan-card.habit-hint .btn { background: rgba(255, 255, 255, .22); color: #fff; }
+[data-skin="vivo"] .page .tasks.glass { background: none; border: 0; box-shadow: none; overflow: visible; border-radius: 0; }
+[data-skin="vivo"] .page .tasks .task { background: var(--glass); border: .5px solid var(--glass-border); border-radius: 20px; margin-bottom: 8px; box-shadow: var(--glass-shadow); }
+[data-skin="vivo"] .page .tasks .task + .task::before { display: none; }
+[data-skin="vivo"] .fit { background: color-mix(in srgb, #7dd8ff 22%, var(--glass)); }
+
+/* ---- Compacto: lo mismo en menos espacio, para ver más tareas de un vistazo ---- */
+:root[data-skin="compacto"] {
+  --accent: #0e8f84;
+  --accent-soft: rgba(14, 143, 132, .12);
+  --radius: 14px;
+  --radius-sm: 10px;
+  --tab-h: 54px;
+  --head-h: 58px;
+  --gap: 10px;
+  --nav-active-bg: rgba(14, 143, 132, .12);
+}
+:root[data-skin="compacto"][data-theme="dark"] { --accent: #3dd6c6; --accent-soft: rgba(61, 214, 198, .16); }
+[data-skin="compacto"] body { font-size: 15px; }
+[data-skin="compacto"] input, [data-skin="compacto"] textarea, [data-skin="compacto"] select { font-size: 16px; } /* 16 px: el iPhone no hace zoom al escribir */
+[data-skin="compacto"] h1 { font-size: 24px; }
+[data-skin="compacto"] .page-head { margin-bottom: 10px; }
+[data-skin="compacto"] .section { margin-bottom: 18px; }
+[data-skin="compacto"] .card { padding: 12px; }
+[data-skin="compacto"] .task-row { min-height: 44px; padding-top: 5px; padding-bottom: 5px; gap: 10px; }
+[data-skin="compacto"] .check { width: 21px; height: 21px; }
+[data-skin="compacto"] .btn { min-height: 34px; font-size: 14px; padding: 0 13px; }
+[data-skin="compacto"] .btn.wide { min-height: 46px; font-size: 16px; }
+[data-skin="compacto"] .icon-btn { width: 32px; height: 32px; }
+[data-skin="compacto"] .icon-btn svg { width: 20px; height: 20px; }
+[data-skin="compacto"] .nav { border-radius: 27px; padding: 5px; }
+[data-skin="compacto"] .nav a { font-size: 10px; gap: 2px; border-radius: 22px; }
+[data-skin="compacto"] .nav a svg { width: 21px; height: 21px; }
+[data-skin="compacto"] .fab { width: 50px; height: 50px; }
+[data-skin="compacto"] .settings-group .item { min-height: 46px; padding-top: 9px; padding-bottom: 9px; }
+
+/* Selector de estilo en Ajustes: cuatro muestras pequeñas */
+.skin-item { flex-direction: column; align-items: stretch; text-align: left; }
+.skin-item > span { align-self: flex-start; }
+.skin-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 2px 0 4px; }
+.skin-opt { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; min-width: 0; }
+.skin-opt .sw { position: relative; width: 100%; aspect-ratio: 3 / 4; border-radius: 12px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--separator); transition: box-shadow .2s; }
+.skin-opt.on .sw { box-shadow: inset 0 0 0 2.5px var(--action); }
+.skin-opt .sw i { position: absolute; left: 14%; right: 14%; height: 12%; border-radius: 4px; }
+.skin-opt .sw i:nth-child(1) { top: 14%; right: 40%; height: 9%; }
+.skin-opt .sw i:nth-child(2) { top: 32%; }
+.skin-opt .sw i:nth-child(3) { top: 50%; }
+.skin-opt .sw b { position: absolute; right: 12%; bottom: 9%; width: 22%; aspect-ratio: 1; border-radius: 50%; }
+.skin-opt span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
