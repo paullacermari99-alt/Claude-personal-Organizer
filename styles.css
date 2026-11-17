@@ -2025,3 +2025,12 @@ body[data-page="planificar"] .fab-mic { display: none; }
   html, body, * { scrollbar-width: none; -ms-overflow-style: none; }
   html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { display: none; width: 0; height: 0; background: transparent; }
 }
+
+/* v42: en el móvil el calendario no enseña la barra de desplazamiento al bajar.
+   El iPhone la dibuja aunque se pida ocultarla, así que el calendario es 14 px más ancho y más alto
+   que su marco (.cal-clip) y la barra queda en esa franja que no se ve. */
+@media (max-width: 1023px), (pointer: coarse) {
+  .cal-clip { position: relative; overflow: hidden; border-radius: var(--radius); }
+  .cal-clip > .cal-scroll { margin-right: -14px; margin-bottom: -14px; padding-right: 14px; padding-bottom: 14px; border-radius: 0; border: 0; }
+  .cal-clip::after { content: ""; position: absolute; inset: 0; border-radius: inherit; border: .5px solid var(--glass-border); pointer-events: none; z-index: 6; }
+}

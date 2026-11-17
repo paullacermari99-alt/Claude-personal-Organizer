@@ -140,14 +140,14 @@ function calendarGrid(dates, opts = {}) {
       ${d === today ? `<div class="now-line" style="top:calc(var(--hour-h) * ${nowM / 60})"></div>` : ''}
     </div>`;
   }).join('');
-  return `<div class="cal-scroll glass ${opts.compact || dates.length === 1 ? 'compact' : ''} ${opts.phone ? 'phone' : ''} mode-${opts.mode || '7'}" data-key="${dates[0]}:${dates.length}" style="--days:${dates.length}">
+  return `<div class="cal-clip"><div class="cal-scroll glass ${opts.compact || dates.length === 1 ? 'compact' : ''} ${opts.phone ? 'phone' : ''} mode-${opts.mode || '7'}" data-key="${dates[0]}:${dates.length}" style="--days:${dates.length}">
     <div class="cal-grid">
       <div class="cal-corner"></div>
       ${heads}
       <div class="cal-hours">${hours}</div>
       ${cols}
     </div>
-  </div>`;
+  </div></div>`;
 }
 
 function hourHeight(scroller) { return parseFloat(getComputedStyle(scroller).getPropertyValue('--hour-h')) || 52; }
