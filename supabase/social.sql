@@ -540,6 +540,81 @@ language sql stable security definer set search_path = '' as $$
   where t.assignee = auth.uid() and t.done_at is null and p.archived_at is null and public.is_team_member(t.project_id)
 $$;
 
+-- ============ Avisos push del equipo ============
+-- Cola que vacía la función «reminders» (cada minuto) y envía como notificación a quien tenga
+-- activados los avisos con la app cerrada. Nadie la lee desde la app (sin políticas = solo servidor).
+create table if not exists public.notify_queue (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users on delete cascade,
+  title text not null,
+  body text not null,
+  url text,
+  tag text,
+  created_at timestamptz not null default now()
+);
+create index if not exists notify_queue_created_idx on public.notify_queue (created_at);
+alter table public.notify_queue enable row level security;
+
+create or replace function public.who(u uuid) returns text
+language sql stable security definer set search_path = '' as $$
+  select coalesce(nullif(p.display_name, ''), '@' || p.username, 'Alguien') from public.profiles p where p.id = u
+$$;
+create or replace function public.notify(u uuid, t text, b text, link text, tg text) returns void
+language sql security definer set search_path = '' as $$
+  insert into public.notify_queue (user_id, title, body, url, tag)
+  select u, t, b, link, tg where u is not null and u is distinct from auth.uid();
+$$;
+
+create or replace function public.friendships_notify() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if tg_op = 'INSERT' and new.status = 'pending' then
+    perform public.notify(new.addressee, 'Solicitud de amistad', coalesce(public.who(new.requester), 'Alguien') || ' quiere ser tu amigo en Boldup', '#amigos', 'friend-' || new.id);
+  elsif tg_op = 'UPDATE' and new.status = 'accepted' and old.status = 'pending' then
+    perform public.notify(new.requester, '¡Nuevo amigo!', coalesce(public.who(new.addressee), 'Alguien') || ' ha aceptado tu solicitud', '#amigos', 'friend-' || new.id);
+  end if;
+  return new;
+end $$;
+drop trigger if exists friendships_notify on public.friendships;
+create trigger friendships_notify after insert or update on public.friendships for each row execute function public.friendships_notify();
+
+create or replace function public.team_members_notify() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform public.notify(new.user_id, (select coalesce(p.icon || ' ', '') || p.name from public.team_projects p where p.id = new.project_id),
+    coalesce(public.who(new.added_by), 'Alguien') || ' te ha añadido a este proyecto', '#equipo/' || new.project_id, 'team-' || new.project_id);
+  return new;
+end $$;
+drop trigger if exists team_members_notify on public.team_members;
+create trigger team_members_notify after insert on public.team_members for each row execute function public.team_members_notify();
+
+create or replace function public.team_tasks_notify() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare pname text;
+begin
+  if new.assignee is not null and (tg_op = 'INSERT' or new.assignee is distinct from old.assignee) then
+    select coalesce(p.icon || ' ', '') || p.name into pname from public.team_projects p where p.id = new.project_id;
+    perform public.notify(new.assignee, pname, coalesce(public.who(auth.uid()), 'Alguien') || ' te ha asignado «' || new.title || '»' || coalesce(' · plazo ' || to_char(new.due, 'DD/MM'), ''), '#equipo/' || new.project_id, 'task-' || new.id);
+  end if;
+  return new;
+end $$;
+drop trigger if exists team_tasks_notify on public.team_tasks;
+create trigger team_tasks_notify after insert or update of assignee on public.team_tasks for each row execute function public.team_tasks_notify();
+
+create or replace function public.team_comments_notify() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare t public.team_tasks; pname text; msg text;
+begin
+  select * into t from public.team_tasks where id = new.task_id;
+  select coalesce(p.icon || ' ', '') || p.name into pname from public.team_projects p where p.id = new.project_id;
+  msg := coalesce(public.who(new.user_id), 'Alguien') || ' en «' || t.title || '»: ' || left(new.body, 120);
+  perform public.notify(t.assignee, pname, msg, '#equipo/' || new.project_id, 'comment-' || t.id);
+  if t.created_by is distinct from t.assignee then perform public.notify(t.created_by, pname, msg, '#equipo/' || new.project_id, 'comment-' || t.id); end if;
+  return new;
+end $$;
+drop trigger if exists team_comments_notify on public.team_comments;
+create trigger team_comments_notify after insert on public.team_comments for each row execute function public.team_comments_notify();
+
 -- ============ Permisos ============
 grant usage on schema public to anon, authenticated, service_role;
 -- Primero se quita todo (Supabase a veces da permisos por defecto) y luego se da solo lo necesario
@@ -573,6 +648,11 @@ do $$ declare f text; begin
 end $$;
 revoke execute on function public.team_log(uuid, text, uuid, text, jsonb) from public, anon, authenticated;
 revoke execute on function public.new_friend_code() from public, anon, authenticated;
+
+revoke all on public.notify_queue from anon, authenticated;
+grant all on public.notify_queue to service_role;
+revoke execute on function public.notify(uuid, text, text, text, text) from public, anon, authenticated;
+revoke execute on function public.who(uuid) from public, anon;
 
 -- Para que la app sepa al momento si la función está instalada
 notify pgrst, 'reload schema';

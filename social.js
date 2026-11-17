@@ -356,7 +356,8 @@ function viewSharedProjects() {
       : `<div class="empty pj-empty tm-empty"><b>Tu primer proyecto en equipo</b>Un tablero compartido con tus amigos: columnas con tarjetas, quién hace cada cosa, objetivos y un calendario común.
         <div class="tm-how"><span>1. Añade a tus amigos por su nick o ID</span><span>2. Crea el proyecto y elige quién entra</span><span>3. Repartid las tarjetas y moved cada una cuando avance</span></div>
         <button class="btn primary" data-sact="team-new">${I.plus}<span>Crear proyecto con amigos</span></button></div>`}
-    ${SOC.errors.teams ? `<p class="hint warn-text">${esc(SOC.errors.teams)}</p>` : ''}`;
+    ${SOC.errors.teams ? `<p class="hint warn-text">${esc(SOC.errors.teams)}</p>` : ''}
+    ${list.length && typeof pushActive === 'function' && !pushActive() && CFG.vapidPublicKey ? `<a class="soc-push glass" href="#ajustes/cuenta">🔔<span class="grow">Activa los avisos para enterarte cuando te asignen una tarjeta, te comenten o te pidan amistad.</span>${I.right}</a>` : ''}`;
 }
 function refreshShared() {
   if (!socOn()) return;

@@ -136,8 +136,35 @@ Deno.serve(async req => {
   const byUser = new Map<string, Any[]>();
   for (const s of subs) byUser.set(s.user_id, [...(byUser.get(s.user_id) || []), s]);
   let sent = 0;
+  /* Avisos del equipo (supabase/social.sql): solicitudes de amistad, te han asignado, comentarios… */
+  const team = new Map<string, Any[]>();
+  const handled: number[] = [];
+  const qr = await db('notify_queue?select=*&order=id.asc&limit=500');
+  if (qr.ok) for (const q of await qr.json()) team.set(q.user_id, [...(team.get(q.user_id) || []), q]);
+  const push = async (list: Any[], payload: Any) => {
+    for (const s of list) {
+      try {
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload));
+        sent++;
+      } catch (e: Any) {
+        if (e.statusCode === 404 || e.statusCode === 410) await db(`push_subscriptions?endpoint=eq.${encodeURIComponent(s.endpoint)}`, { method: 'DELETE' });
+      }
+    }
+  };
+  for (const [uid, qs] of team) if (!byUser.has(uid)) handled.push(...qs.map(q => q.id));
   for (const [uid, list] of byUser) {
     const rows: Any[] = await (await db(`organizer_state?select=data&user_id=eq.${uid}`)).json();
+    const qs = team.get(uid) || [];
+    if (qs.length) {
+      const st = rows[0] ? rows[0].data : {};
+      const quiet = inQuiet(st.settings?.reminders || {}, nowIn(st.settings?.timezone || 'Europe/Madrid').hm);
+      for (const q of qs) {
+        const old = Date.now() - Date.parse(q.created_at) > 12 * 3600000;
+        if (quiet && !old) continue;
+        handled.push(q.id);
+        if (!old) await push(list, { title: q.title, body: q.body, tag: q.tag || 'team', url: q.url || undefined });
+      }
+    }
     if (!rows[0]) continue;
     const due = remindersFor(rows[0].data);
     if (!due.length) continue;
@@ -155,5 +182,6 @@ Deno.serve(async req => {
       }
     }
   }
-  return new Response(JSON.stringify({ users: byUser.size, sent }), { headers: { 'Content-Type': 'application/json' } });
+  for (let i = 0; i < handled.length; i += 100) await db(`notify_queue?id=in.(${handled.slice(i, i + 100).join(',')})`, { method: 'DELETE' });
+  return new Response(JSON.stringify({ users: byUser.size, sent, team: handled.length }), { headers: { 'Content-Type': 'application/json' } });
 });

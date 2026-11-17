@@ -1,7 +1,7 @@
 /* Service worker: permite abrir la app sin conexión.
    Sube CACHE cuando cambien los archivos para forzar la actualización. */
-const CACHE = 'organizador-v70';
-const ASSETS = ['./', 'index.html', 'styles.css?v=70', 'config.js?v=70', 'core.js?v=70', 'smart.js?v=70', 'colors.js?v=70', 'ui.js?v=70', 'extcal.js?v=70', 'sync.js?v=70', 'onboarding.js?v=70', 'tour.js?v=70', 'calendar.js?v=70', 'gestures.js?v=70', 'extras.js?v=70', 'habits.js?v=70', 'stats.js?v=70', 'planner.js?v=70', 'voice.js?v=70', 'pro.js?v=70', 'social.js?v=70', 'app.js?v=70', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
+const CACHE = 'organizador-v71';
+const ASSETS = ['./', 'index.html', 'styles.css?v=71', 'config.js?v=71', 'core.js?v=71', 'smart.js?v=71', 'colors.js?v=71', 'ui.js?v=71', 'extcal.js?v=71', 'sync.js?v=71', 'onboarding.js?v=71', 'tour.js?v=71', 'calendar.js?v=71', 'gestures.js?v=71', 'extras.js?v=71', 'habits.js?v=71', 'stats.js?v=71', 'planner.js?v=71', 'voice.js?v=71', 'pro.js?v=71', 'social.js?v=71', 'app.js?v=71', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -37,12 +37,16 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', e => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { title: 'Boldup', body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || 'Boldup', { body: d.body || '', tag: d.tag, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', renotify: !!d.tag, vibrate: d.tag === 'focus-live' ? [200, 100, 200] : undefined }));
+  e.waitUntil(self.registration.showNotification(d.title || 'Boldup', { body: d.body || '', tag: d.tag, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', renotify: !!d.tag, vibrate: d.tag === 'focus-live' ? [200, 100, 200] : undefined, data: { url: typeof d.url === 'string' && d.url.startsWith('#') ? d.url : null } }));
 });
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  /* v71: los avisos del equipo abren su proyecto (o Amigos) */
+  const hash = (e.notification.data && e.notification.data.url) || '#hoy';
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
     const c = list.find(x => 'focus' in x);
-    return c ? c.focus() : self.clients.openWindow('./#hoy');
+    if (!c) return self.clients.openWindow('./' + hash);
+    if (hash !== '#hoy' && 'navigate' in c) return c.navigate(new URL(hash, c.url.split('#')[0]).href).then(w => (w || c).focus()).catch(() => c.focus());
+    return c.focus();
   }));
 });
