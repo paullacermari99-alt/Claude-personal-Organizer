@@ -57,11 +57,13 @@ function proEnsureDialog() {
   proDlg.id = 'pro-store';
   proDlg.setAttribute('aria-label', 'Boldup Pro');
   document.body.appendChild(proDlg);
-  proDlg.addEventListener('cancel', e => { e.preventDefault(); if (proDlg.dataset.ready === '1') proClose(); });
+  /* La tienda solo se cierra con la ✕: ni Esc, ni tocando fuera, ni deslizando */
+  proDlg.addEventListener('cancel', e => e.preventDefault());
   proDlg.addEventListener('click', e => {
-    const b = e.target.closest('[data-pro]');
-    if (!b) return;
-    const a = b.dataset.pro;
+    /* Ojo: <html> también lleva data-pro, por eso los botones de la tienda usan data-pa */
+    const b = e.target.closest('[data-pa]');
+    if (!b || !proDlg.contains(b)) return;
+    const a = b.dataset.pa;
     if (a === 'close') { if (proDlg.dataset.ready === '1') proClose(); }
     else if (a === 'plan') {
       proPlan = b.dataset.v;
@@ -90,7 +92,7 @@ function proStoreHTML(focus) {
     <div class="pro-fx" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <div class="pro-top">
       <span class="pro-chip">${PRO_STAR}PRO</span>
-      <button type="button" class="pro-x ${has ? 'ready' : ''}" data-pro="close" aria-label="${has ? 'Cerrar' : `Podrás cerrar en ${PRO_WAIT} segundos`}" ${has ? '' : 'aria-disabled="true"'}>
+      <button type="button" class="pro-x ${has ? 'ready' : ''}" data-pa="close" aria-label="${has ? 'Cerrar' : `Podrás cerrar en ${PRO_WAIT} segundos`}" ${has ? '' : 'aria-disabled="true"'}>
         <svg class="pro-ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16"/><circle class="pro-ring-v" cx="18" cy="18" r="16" pathLength="100"/></svg>
         <span class="pro-n" aria-hidden="true">${PRO_WAIT}</span>
         <svg class="pro-xi" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>
@@ -105,13 +107,13 @@ function proStoreHTML(focus) {
         </div>
       </div>
       <ul class="pro-grid">${PRO_FEATURES.map(([id, ic, t, d, soon], i) => `<li class="${id === focus ? 'hit' : ''}" style="--i:${i}"><span class="pg-ic">${ic}</span><b>${t}${soon ? ` <em>${soon}</em>` : ''}</b><span class="pg-d">${d}</span></li>`).join('')}</ul>
-      ${has ? `<div class="pro-actions"><button type="button" class="btn wide pro-free" data-pro="free">Volver a la versión gratis</button></div>` : `
+      ${has ? `<div class="pro-actions"><button type="button" class="btn wide pro-free" data-pa="free">Volver a la versión gratis</button></div>` : `
       <div class="pro-actions">
         <div class="pro-plans" role="radiogroup" aria-label="Plan">
-          <button type="button" role="radio" class="pro-plan ${proPlan === 'year' ? 'on' : ''}" aria-checked="${proPlan === 'year'}" data-pro="plan" data-v="year"><span class="pp-tag">−${PRO_PRICE.save}</span><span class="pp-name">Anual</span><span class="pp-price">${PRO_PRICE.yearMonth}<small>/mes</small></span></button>
-          <button type="button" role="radio" class="pro-plan ${proPlan === 'month' ? 'on' : ''}" aria-checked="${proPlan === 'month'}" data-pro="plan" data-v="month"><span class="pp-name">Mensual</span><span class="pp-price">${PRO_PRICE.month}<small>/mes</small></span></button>
+          <button type="button" role="radio" class="pro-plan ${proPlan === 'year' ? 'on' : ''}" aria-checked="${proPlan === 'year'}" data-pa="plan" data-v="year"><span class="pp-tag">−${PRO_PRICE.save}</span><span class="pp-name">Anual</span><span class="pp-price">${PRO_PRICE.yearMonth}<small>/mes</small></span></button>
+          <button type="button" role="radio" class="pro-plan ${proPlan === 'month' ? 'on' : ''}" aria-checked="${proPlan === 'month'}" data-pa="plan" data-v="month"><span class="pp-name">Mensual</span><span class="pp-price">${PRO_PRICE.month}<small>/mes</small></span></button>
         </div>
-        <button type="button" class="btn wide pro-cta" data-pro="buy"><span>Probar ${PRO_PRICE.trial} días gratis</span></button>
+        <button type="button" class="btn wide pro-cta" data-pa="buy"><span>Probar ${PRO_PRICE.trial} días gratis</span></button>
         <p class="pro-sub">${proSubText()}</p>
         <p class="pro-note">Vista de prueba: no se cobra nada</p>
       </div>`}
