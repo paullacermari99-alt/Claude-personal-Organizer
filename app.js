@@ -2632,8 +2632,22 @@ $('#focus').addEventListener('click', e => { if (backdropTap(e, $('#focus'))) cl
 /* ---------- PWA ---------- */
 
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; });
+/* v44: la app se actualiza sola. En iPhone la app instalada se queda abierta en memoria y no
+   volvía a pedir la página, así que seguías viendo la versión vieja. Ahora, al volver a la app
+   (y cada 30 min) se busca versión nueva; cuando llega, se recarga en cuanto no estés
+   escribiendo ni con una ventana abierta (tus datos ya están guardados). */
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW', err)));
+  const hadCtrl = !!navigator.serviceWorker.controller;
+  let swReloading = false;
+  const busy = () => !!document.querySelector('dialog[open], #voice.open') || (typeof overlayOpen === 'function' && overlayOpen())
+    || (document.activeElement && document.activeElement.matches('input:not([type=checkbox]):not([type=radio]), textarea'));
+  const reloadWhenIdle = () => { if (busy() && !document.hidden) { setTimeout(reloadWhenIdle, 2000); return; } location.reload(); };
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadCtrl || swReloading) return; swReloading = true; reloadWhenIdle(); });
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+    const check = () => reg.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    setInterval(check, 30 * 60000);
+  }).catch(err => console.warn('SW', err)));
 }
 
 /* ---------- Arranque ---------- */
