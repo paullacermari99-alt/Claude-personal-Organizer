@@ -398,7 +398,7 @@ function journalCard(d) {
     <div class="section-head"><h2>${d === today ? '¿Qué tal ha ido el día?' : 'Cómo fue el día'}</h2>${j && j.mood ? `<span class="muted small">${MOOD_LABEL[j.mood - 1]}</span>` : ''}</div>
     <div class="journal glass">
       <div class="j-row"><span class="j-label">Ánimo</span><div class="j-moods">${MOODS.map((m, i) => `<button type="button" class="j-mood ${j && j.mood === i + 1 ? 'on' : ''}" data-act="journal" data-k="mood" data-v="${i + 1}" data-date="${d}" aria-label="${MOOD_LABEL[i]}" aria-pressed="${!!(j && j.mood === i + 1)}">${m}</button>`).join('')}</div></div>
-      <div class="j-row"><span class="j-label">Energía</span><div class="j-energy">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="j-en ${j && j.energy >= n ? 'on' : ''}" data-act="journal" data-k="energy" data-v="${n}" data-date="${d}" aria-label="Energía ${n} de 5"></button>`).join('')}</div></div>
+      <div class="j-row"><span class="j-label">Energía</span><div class="j-energy ${j && j.energy ? 'lv-' + energyLevel(j.energy) : ''}">${Array.from({ length: ENERGY_MAX }, (_, i) => i + 1).map(n => `<button type="button" class="j-en z-${energyLevel(n)} ${j && j.energy >= n ? 'on' : ''}" data-act="journal" data-k="energy" data-v="${n}" data-date="${d}" aria-label="Energía ${n} de ${ENERGY_MAX}" aria-pressed="${!!(j && j.energy === n)}"></button>`).join('')}<span class="j-en-label">${j && j.energy ? ENERGY_LABEL[energyLevel(j.energy)] : ''}</span></div></div>
       <textarea class="j-note" data-input="journal-note" data-date="${d}" rows="2" placeholder="Una línea sobre el día (opcional)">${esc((j && j.note) || '')}</textarea>
     </div>
   </div>`;
@@ -1141,10 +1141,10 @@ function journalStats() {
     <div class="card glass">
       ${any ? `<div class="mood-grid">${days.map(d => { const j = journalOf(d) || {}; return `<div class="mood-day ${d === today ? 'today' : ''}" title="${esc(fmtLongDate(d))}${j.note ? ' · ' + esc(j.note) : ''}">
         <span class="md-emoji">${j.mood ? MOODS[j.mood - 1] : '·'}</span>
-        <span class="md-en"><i style="height:${(j.energy || 0) * 20}%"></i></span>
+        <span class="md-en lv-${energyLevel(j.energy)}"><i style="height:${(j.energy || 0) / ENERGY_MAX * 100}%"></i></span>
         <span class="md-n">${done.get(d) || ''}</span>
         <span class="md-d">${DOW_LETTER[dow(d)]}</span></div>`; }).join('')}</div>
-        <p class="hint">Cara = ánimo · barra = energía · número = tareas hechas.</p>` : emptyBox('A partir de las 18:00 verás en Hoy «¿Qué tal ha ido el día?». Con unos días anotados aquí verás cómo cambian tu ánimo y tu energía.')}
+        <p class="hint">Cara = ánimo · barra = energía (rojo baja, naranja media, verde alta) · número = tareas hechas.</p>` : emptyBox('A partir de las 18:00 verás en Hoy «¿Qué tal ha ido el día?». Con unos días anotados aquí verás cómo cambian tu ánimo y tu energía.')}
       ${tips.length ? `<ul class="insights">${tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
     </div></div>`;
 }

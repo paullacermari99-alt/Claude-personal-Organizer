@@ -957,9 +957,17 @@ body.focus-open { overflow: hidden; }
 .j-moods { display: flex; gap: 6px; flex-wrap: wrap; }
 .j-mood { width: 42px; height: 42px; border-radius: 50%; border: 0; background: var(--fill); font-size: 22px; cursor: pointer; filter: grayscale(.85); opacity: .7; transition: transform .15s, filter .15s, opacity .15s; }
 .j-mood.on { filter: none; opacity: 1; transform: scale(1.12); background: var(--fill-2); }
-.j-energy { display: flex; gap: 6px; }
-.j-en { width: 30px; height: 18px; border-radius: 6px; border: 0; background: var(--fill); cursor: pointer; transition: background .15s; }
-.j-en.on { background: var(--green); }
+/* v60: 6 rayitas; 1–2 rojo, 3–4 naranja, 5–6 verde. Apagadas llevan un tinte de su zona */
+.j-energy { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; --lv: var(--green); }
+.j-energy.lv-low { --lv: var(--red); }
+.j-energy.lv-mid { --lv: var(--orange); }
+.j-en { flex: 0 1 30px; min-width: 0; height: 30px; border-radius: 6px; border: 0; padding: 6px 0; cursor: pointer; transition: background-color .15s, transform .15s; --z: var(--green); background-color: color-mix(in srgb, var(--z) 16%, var(--fill)); background-clip: content-box; }
+.j-en.z-low { --z: var(--red); }
+.j-en.z-mid { --z: var(--orange); }
+.j-en.on { background-color: var(--lv); }
+.j-en:active { transform: scale(.92); }
+.j-en.z-low + .j-en.z-mid, .j-en.z-mid + .j-en.z-high { margin-left: 3px; }
+.j-en-label { margin-left: 4px; font-size: 13px; font-weight: 600; color: var(--lv); white-space: nowrap; }
 .j-note { min-height: 44px; resize: vertical; }
 
 .mood-grid { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; text-align: center; }
@@ -968,6 +976,8 @@ body.focus-open { overflow: hidden; }
 .md-emoji { font-size: 18px; line-height: 1; height: 20px; }
 .md-en { width: 8px; height: 40px; border-radius: 4px; background: var(--fill); display: flex; align-items: flex-end; overflow: hidden; }
 .md-en i { display: block; width: 100%; background: var(--green); border-radius: 4px; }
+.md-en.lv-low i { background: var(--red); }
+.md-en.lv-mid i { background: var(--orange); }
 .md-n { font-weight: 600; color: var(--text); min-height: 16px; }
 .insights { margin: 12px 0 0; padding-left: 18px; display: grid; gap: 6px; font-size: 15px; }
 

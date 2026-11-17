@@ -247,10 +247,14 @@ function searchAll(q) {
 
 const MOODS = ['😞', '😕', '😐', '🙂', '😄'];
 const MOOD_LABEL = ['Mal', 'Regular', 'Normal', 'Bien', 'Genial'];
+/* Energía de 1 a 6: 1–2 baja (rojo), 3–4 media (naranja), 5–6 alta (verde) */
+const ENERGY_MAX = 6;
+function energyLevel(e) { return !e ? '' : e <= 2 ? 'low' : e <= 4 ? 'mid' : 'high'; }
+const ENERGY_LABEL = { low: 'Baja', mid: 'Media', high: 'Alta' };
 function journalOf(d) { return (state.journal || {})[d] || null; }
 function setJournal(d, patch) {
   state.journal = state.journal || {};
-  const j = state.journal[d] = { mood: null, energy: null, note: '', ...(state.journal[d] || {}), ...patch };
+  const j = state.journal[d] = { mood: null, energy: null, note: '', ...(state.journal[d] || {}), ...patch, e6: 1 };
   if (!j.mood && !j.energy && !j.note) delete state.journal[d];
 }
 /* Tareas hechas por día (sin contar diarias para no inflar) */
@@ -265,7 +269,7 @@ function journalInsights() {
   const entries = Object.entries(state.journal || {}).filter(([d]) => d <= today);
   const avg = list => list.length ? list.reduce((a, b) => a + b, 0) / list.length : 0;
   const f1 = x => x.toFixed(1).replace('.0', '').replace('.', ',');
-  const hi = entries.filter(([, j]) => j.energy >= 4).map(([d]) => done.get(d) || 0);
+  const hi = entries.filter(([, j]) => j.energy >= 5).map(([d]) => done.get(d) || 0);
   const lo = entries.filter(([, j]) => j.energy && j.energy <= 2).map(([d]) => done.get(d) || 0);
   if (hi.length >= 2 && lo.length >= 2) out.push(`Con energía alta completas ${f1(avg(hi))} tareas de media; con energía baja, ${f1(avg(lo))}.`);
   const mGood = entries.filter(([, j]) => j.mood >= 4).map(([d]) => done.get(d) || 0);
@@ -277,6 +281,6 @@ function journalInsights() {
   const avgs = byDow.map(avg), best = avgs.indexOf(Math.max(...avgs));
   if (avgs[best] >= 1) out.push(`Tu día más productivo suele ser el ${['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][best]} (${f1(avgs[best])} tareas de media).`);
   const lowE = entries.filter(([d, j]) => j.energy && d >= addDays(today, -6)).map(([, j]) => j.energy);
-  if (lowE.length >= 3 && avg(lowE) <= 2.2) out.push('Llevas una semana con poca energía. Quizá toca planificar menos y descansar más.');
+  if (lowE.length >= 3 && avg(lowE) <= 2.6) out.push('Llevas una semana con poca energía. Quizá toca planificar menos y descansar más.');
   return out;
 }

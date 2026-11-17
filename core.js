@@ -181,6 +181,10 @@ function migrate(s) {
   s = { ...base, ...s, settings: { ...base.settings, ...s.settings, reminders: { ...base.settings.reminders, ...(s.settings || {}).reminders }, ui: { ...base.settings.ui, ...(s.settings || {}).ui } } };
   s.version = 2;
   s.epoch = epoch;
+  /* v60: la energía del diario pasa de 5 a 6 rayitas (e6 = ya en escala de 6) */
+  for (const j of Object.values(s.journal || {})) {
+    if (j && !j.e6) { if (j.energy) j.energy = Math.min(6, Math.max(1, Math.round(j.energy * 6 / 5))); j.e6 = 1; }
+  }
   return s;
 }
 
