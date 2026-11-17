@@ -917,6 +917,29 @@ function journalStats() {
 }
 
 let deferredInstall = null;
+/* Apariencia: automático (según el sistema), claro u oscuro. Se guarda en este dispositivo. */
+const THEMES = [['auto', 'Automático'], ['light', 'Claro'], ['dark', 'Oscuro']];
+function appearanceSection() {
+  const cur = window.themePref ? themePref() : 'auto', i = THEMES.findIndex(([v]) => v === cur);
+  return `<div class="section">
+    <div class="section-head"><h2>Apariencia</h2></div>
+    <div class="settings-group glass">
+      <div class="item theme-item"><span>Modo</span>
+        <div class="segmented compact seg-slide theme-seg" role="tablist" aria-label="Modo de color" style="--n:3;--i:${i}">${THEMES.map(([v, l]) => `<button role="tab" class="${v === cur ? 'on' : ''}" aria-selected="${v === cur}" data-act="theme" data-v="${v}">${l}</button>`).join('')}</div>
+      </div>
+    </div>
+    <p class="hint">«Automático» cambia solo entre claro y oscuro según tu móvil u ordenador.</p>
+  </div>`;
+}
+function setTheme(v, seg) {
+  try { if (v === 'auto') localStorage.removeItem('organizador.theme'); else localStorage.setItem('organizador.theme', v); } catch {}
+  if (window.applyTheme) applyTheme();
+  if (seg) {
+    seg.style.setProperty('--i', THEMES.findIndex(([k]) => k === v));
+    seg.querySelectorAll('button').forEach(b => { const on = b.dataset.v === v; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+  }
+}
+
 function viewSettings() {
   const s = state.settings, r = s.reminders;
   const perm = 'Notification' in window ? Notification.permission : 'unsupported';
@@ -927,6 +950,8 @@ function viewSettings() {
   <div class="page page-narrow">
   ${pageHead({ eyebrow: `${state.tasks.filter(t => !isRoutineTask(t)).length} tareas · ${state.projects.length} proyectos · ${state.goals.length} objetivos`, title: 'Ajustes' })}
   ${syncSection()}
+
+  ${appearanceSection()}
 
   <div class="section">
     <div class="section-head"><h2>Recordatorios</h2></div>
@@ -2018,6 +2043,7 @@ document.addEventListener('click', e => {
       if (v === '1' && !weekDays(weekStart).includes(viewDate)) viewDate = weekDays(weekStart).includes(todayStr()) ? todayStr() : weekStart;
       state.settings.ui.weekMode = v; save(); route(); return;
     }
+    case 'theme': setTheme(el.dataset.v, el.closest('.theme-seg')); return;
     case 'set-ui': {
       const k = el.dataset.k, v = el.dataset.v;
       state.settings.ui[k] = k === 'projectsArchived' ? !!v : v;

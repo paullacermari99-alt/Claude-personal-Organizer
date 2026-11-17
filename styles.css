@@ -34,8 +34,8 @@
   --gutter: 44px;
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
+/* Modo oscuro: lo decide Ajustes → Apariencia (automático = según el sistema), ver index.html */
+:root[data-theme="dark"] {
     --bg: #05060a;
     --blob-1: #1d3a8a;
     --blob-2: #6b1d4f;
@@ -57,7 +57,6 @@
     --orange-soft: rgba(255, 159, 10, .18);
     --red: #ff453a;
     color-scheme: dark;
-  }
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -377,7 +376,7 @@ dialog::backdrop { background: rgba(0,0,0,.28); animation: fade .25s; }
 /* Navegadores sin backdrop-filter: cristal más opaco para que se lea bien */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root { --glass: rgba(255,255,255,.9); --glass-strong: rgba(255,255,255,.96); }
-  @media (prefers-color-scheme: dark) { :root { --glass: rgba(36,36,40,.94); --glass-strong: rgba(30,30,34,.97); } }
+  :root[data-theme="dark"] { --glass: rgba(36,36,40,.94); --glass-strong: rgba(30,30,34,.97); }
 }
 
 /* ======================================================================
@@ -557,7 +556,7 @@ body.dragging { -webkit-user-select: none; user-select: none; }
 .tray-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 /* Cabeceras del calendario opacas para que las horas no se transparenten */
 :root { --solid: rgb(246, 247, 251); }
-@media (prefers-color-scheme: dark) { :root { --solid: rgb(22, 22, 27); } }
+:root[data-theme="dark"] { --solid: rgb(22, 22, 27); }
 .cal-corner, .cal-dayhead, .cal-hours { background: var(--solid); }
 .segmented button { white-space: nowrap; }
 @media (max-width: 1023px) {
@@ -582,9 +581,7 @@ body.dragging { -webkit-user-select: none; user-select: none; }
 
 /* Botones: en modo oscuro, texto e iconos blancos (nada de azul eléctrico sobre negro) */
 :root { --action: var(--accent); --action-bg: var(--accent); --on-action: #fff; --nav-active-bg: var(--accent-soft); }
-@media (prefers-color-scheme: dark) {
-  :root { --action: #f5f5f7; --action-bg: rgba(255, 255, 255, .92); --on-action: #0b0b0f; --nav-active-bg: rgba(255, 255, 255, .14); }
-}
+:root[data-theme="dark"] { --action: #f5f5f7; --action-bg: rgba(255, 255, 255, .92); --on-action: #0b0b0f; --nav-active-bg: rgba(255, 255, 255, .14); }
 a, .btn, .icon-btn.round, .back { color: var(--action); }
 .btn.primary { background: var(--action-bg); color: var(--on-action); }
 .sheet-head .btn.primary { color: var(--action); }
@@ -1052,7 +1049,7 @@ input:focus-visible, textarea:focus-visible { outline: 1.5px solid var(--muted);
 /* Menos adornos */
 body::before, body::after { opacity: .45; }
 :root { --glass-shadow: 0 2px 10px rgba(31, 38, 80, .05), inset 0 1px 0 rgba(255, 255, 255, .5); }
-@media (prefers-color-scheme: dark) { :root { --glass-shadow: 0 2px 12px rgba(0, 0, 0, .25), inset 0 1px 0 rgba(255, 255, 255, .04); } }
+:root[data-theme="dark"] { --glass-shadow: 0 2px 12px rgba(0, 0, 0, .25), inset 0 1px 0 rgba(255, 255, 255, .04); }
 .btn.attention, .icon-btn.round.attention { box-shadow: none; position: relative; }
 .btn.attention::after, .icon-btn.round.attention::after { content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--orange); }
 .ev.ext, .wk-ev.ext, .block.ext { background-image: none; }
@@ -1429,10 +1426,10 @@ dialog.is-closing::backdrop { animation: fade-out .2s forwards; }
 @keyframes swap-in { from { opacity: 0; transform: translateY(4px); } }
 /* Selector deslizante (Sesión única / Con descansos) */
 :root { --seg-thumb: #fff; }
-@media (prefers-color-scheme: dark) { :root { --seg-thumb: rgba(255, 255, 255, .17); } }
+:root[data-theme="dark"] { --seg-thumb: rgba(255, 255, 255, .17); }
 .segmented button.on { background: var(--seg-thumb); }
 .seg-slide { position: relative; isolation: isolate; }
-.seg-slide::before { content: ""; position: absolute; z-index: -1; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px); border-radius: 8px; background: var(--seg-thumb); box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.04); transform: translateX(calc(var(--i, 0) * 100%)); transition: transform .32s cubic-bezier(.2,.8,.2,1); }
+.seg-slide::before { content: ""; position: absolute; z-index: -1; top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / var(--n, 2)); border-radius: 8px; background: var(--seg-thumb); box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.04); transform: translateX(calc(var(--i, 0) * 100%)); transition: transform .32s cubic-bezier(.2,.8,.2,1); }
 .seg-slide button, .seg-slide button.on { background: transparent; box-shadow: none; font-weight: 600; color: var(--muted); transition: color .25s; }
 .seg-slide button.on { color: var(--text); }
 /* Pantalla completa: ocupa todo, respeta la muesca y reparte arriba / centro / abajo */
@@ -1511,3 +1508,8 @@ dialog.is-closing::backdrop { animation: fade-out .2s forwards; }
 body::before { animation: bg-drift-a 38s ease-in-out infinite; }
 body::after  { animation: bg-drift-b 47s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { body::before, body::after { animation: none; } }
+
+/* v26: Apariencia en Ajustes (Automático / Claro / Oscuro) */
+.theme-item { flex-wrap: wrap; gap: 10px; }
+.theme-seg { flex: 0 1 300px; min-width: 0; }
+.theme-seg button { flex: 1; min-width: 0; padding-left: 6px; padding-right: 6px; }
