@@ -170,7 +170,7 @@ function addParsedTask(text, ctx = {}) {
   }
   if (p.context && !ctx.projectId && !ctx.goalId) p.tags.push(contextTag(p.context).id);
   const t = newTask({
-    title: p.title, due: p.due || ctx.due || null, projectId: p.projectId || ctx.projectId || null, goalId: ctx.goalId || null,
+    title: p.title, due: p.due || ctx.due || (p.time ? todayStr() : null), projectId: p.projectId || ctx.projectId || null, goalId: ctx.goalId || null,
     tags: p.tags, priority: p.priority || 'none', estimate: p.estimate, repeat: p.repeat,
   });
   state.tasks.push(t);

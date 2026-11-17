@@ -309,10 +309,11 @@ function interpret(raw) {
   const body = text.replace(/^(?:recu[eé]rdame(?:\s+que)?|ap[uú]nta(?:me)?|a[nñ]ade|anota(?:me)?|(?:crea(?:r|me)?\s+)?(?:una\s+)?(?:nueva\s+)?tarea(?:\s+de)?|tengo que)[\s,:]+/i, '');
   const p = parseQuick(body, todayStr());
   if (!p.title) return { say: 'No te he entendido. Prueba otra vez.' };
-  const ctx = location.hash.startsWith('#proyecto/') ? { projectId: location.hash.split('/')[1] } : {};
+  /* Si no dices cuándo, va a Hoy (dentro de un proyecto, al proyecto sin fecha) */
+  const ctx = location.hash.startsWith('#proyecto/') ? { projectId: location.hash.split('/')[1] } : { due: todayStr() };
   const short = summarize(p.title);
   return {
-    say: 'Nueva tarea', title: short || cap(p.title.replace(/^(?:quiero|quisiera|me gustaria|me gustaría|necesito)\s+/i, '')), html: p.found.length ? `<div class="voice-chips">${chipsOf(p.found)}</div>` : '<p class="muted small">Sin fecha: irá a la bandeja de Tareas.</p>',
+    say: 'Nueva tarea', title: short || cap(p.title.replace(/^(?:quiero|quisiera|me gustaria|me gustaría|necesito)\s+/i, '')), html: p.found.length ? `<div class="voice-chips">${chipsOf(p.found)}</div>` : (ctx.due ? '<p class="muted small">Sin fecha: irá a Hoy.</p>' : '<p class="muted small">Sin fecha: irá al proyecto.</p>'),
     run: tt => {
       const t = addParsedTask(body, ctx);
       if (t && tt && tt !== t.title) { state.events.forEach(e => { if (e.taskId === t.id) e.title = tt; }); t.title = tt; }
