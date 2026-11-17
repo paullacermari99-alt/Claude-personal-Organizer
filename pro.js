@@ -77,8 +77,8 @@ function proEnsureDialog() {
       proLS(PRO_DEMO_KEY, '1'); proApply();
       setTimeout(() => {
         proDlg.classList.remove('won'); proClose(true);
-        if (typeof toast === 'function') toast('Pro desbloqueado en modo prueba. No se ha cobrado nada.');
         if (typeof rerender === 'function') rerender();
+        proWelcome();
       }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 750);
     }
     else if (a === 'free') { proLS(PRO_DEMO_KEY, null); proApply(); proClose(true); if (typeof rerender === 'function') rerender(); }
@@ -221,3 +221,66 @@ document.addEventListener('click', e => {
   proApply();
   if (typeof rerender === 'function') rerender();
 });
+
+/* ---------- v66: «Ya eres Pro»: ventana pequeña tras suscribirse, con las ventajas en carrusel ---------- */
+let proWel = null, proWelTimer = 0, proWelCur = 0;
+function proWelcome() {
+  if (!proWel) {
+    proWel = document.createElement('dialog');
+    proWel.id = 'pro-welcome';
+    proWel.setAttribute('aria-label', 'Ya eres Pro');
+    document.body.appendChild(proWel);
+    proWel.addEventListener('cancel', e => { e.preventDefault(); proWelClose(); });
+    proWel.addEventListener('click', e => {
+      if (typeof backdropTap === 'function' && backdropTap(e, proWel)) { proWelClose(); return; }
+      const b = e.target.closest('[data-pw]');
+      if (!b || !proWel.contains(b)) return;
+      if (b.dataset.pw === 'close') proWelClose();
+      else if (b.dataset.pw === 'go') { proWelGo(+b.dataset.i); proWelAuto(); }
+    });
+  }
+  proWel.innerHTML = `
+    <button type="button" class="pw-x" data-pw="close" aria-label="Cerrar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+    <div class="pw-badge">${PRO_STAR}<i class="pw-ring"></i></div>
+    <h2>¡Ya eres <b>Pro</b>!</h2>
+    <p>Disfruta la app sin límites.</p>
+    <div class="pw-car" aria-roledescription="carrusel" aria-label="Lo que incluye Pro">
+      ${PRO_FEATURES.map(([id, ic, t, d], i) => `<button type="button" class="pw-card" data-pw="go" data-i="${i}" tabindex="-1"><span class="pw-ic">${ic}</span><b>${t}</b><span>${d}</span></button>`).join('')}
+    </div>
+    <div class="pw-dots" aria-hidden="true">${PRO_FEATURES.map(() => '<i></i>').join('')}</div>
+    <button type="button" class="btn wide pw-go" data-pw="close">Continuar</button>
+    <p class="pw-note">Modo prueba: no se ha cobrado nada.</p>`;
+  proWelCur = 0;
+  proWelGo(0, true);
+  proWel.showModal();
+  if (typeof markOpened === 'function') markOpened(proWel);
+  proWelAuto();
+}
+/* Cada tarjeta se coloca según su distancia a la del centro: la del medio grande y nítida,
+   las de los lados más pequeñas y difuminadas; las demás esperan invisibles fuera */
+function proWelGo(i, instant) {
+  const cards = [...proWel.querySelectorAll('.pw-card')], n = cards.length;
+  proWelCur = (i + n) % n;
+  cards.forEach((c, k) => {
+    let d = (k - proWelCur + n) % n; if (d > n / 2) d -= n;
+    const a = Math.abs(d);
+    c.style.transition = instant ? 'none' : '';
+    c.style.setProperty('--d', d);
+    c.style.opacity = a === 0 ? 1 : a === 1 ? .45 : 0;
+    c.classList.toggle('on', d === 0);
+    c.setAttribute('aria-hidden', d !== 0);
+  });
+  proWel.querySelectorAll('.pw-dots i').forEach((dot, k) => dot.classList.toggle('on', k === proWelCur));
+}
+function proWelAuto() {
+  clearInterval(proWelTimer);
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  proWelTimer = setInterval(() => { if (proWel && proWel.open) proWelGo(proWelCur + 1); else clearInterval(proWelTimer); }, 2400);
+}
+function proWelClose() {
+  if (!proWel || !proWel.open) return;
+  clearInterval(proWelTimer);
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { proWel.close(); return; }
+  proWel.classList.add('closing');
+  setTimeout(() => { proWel.classList.remove('closing'); proWel.close(); }, 200);
+}
