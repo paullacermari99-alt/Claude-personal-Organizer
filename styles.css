@@ -1483,8 +1483,7 @@ dialog.is-closing::backdrop { animation: fade-out .2s forwards; }
 .focus-layer.focus-full .focus-title { margin: auto 0 0; text-align: center; padding: 0 8px; font-size: clamp(22px, 6.4vw, 30px); }
 .focus-layer.focus-full .focus-actions { margin-top: auto; }
 .focus-layer.focus-full .ring.big, .focus-layer.focus-full .ring.big svg { width: var(--rs); height: var(--rs); }
-.focus-layer.focus-full .ring.big circle { stroke-width: 4.5; }
-.focus-layer.focus-full .ring.big .time { font-size: calc(var(--rs) * .2); font-weight: 600; }
+.focus-layer.focus-full .dial .bar { stroke-width: 5; }
 @media (min-width: 700px) { .focus-layer.focus-full .focus-card { padding-top: calc(28px + env(safe-area-inset-top)); } .focus-layer.focus-full .focus-close, .focus-layer.focus-full .focus-fullbtn { top: calc(26px + env(safe-area-inset-top)); } }
 @media (prefers-reduced-motion: reduce) { #app.page-enter > *, .focus-card.swap * { animation: none !important; } .seg-slide::before, .focus-layer { transition: none; } }
 
@@ -2459,4 +2458,104 @@ html:has(#pro-store[open]) { overflow: hidden; }
     -webkit-mask-image: linear-gradient(to top, #000 50%, transparent); mask-image: linear-gradient(to top, #000 50%, transparent); }
   .nav-veil i:nth-child(3) { height: 45%; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
     -webkit-mask-image: linear-gradient(to top, #000 45%, transparent); mask-image: linear-gradient(to top, #000 45%, transparent); }
+}
+
+/* ---------- v66: ventana de enfoque más profesional ---------- */
+/* Estado arriba: punto de color + texto (late mientras corre el tiempo) */
+.focus-status { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; letter-spacing: .01em; }
+.focus-status i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; opacity: .7; }
+.focus-status.s-run i { background: var(--accent); opacity: 1; animation: st-pulse 2s ease-in-out infinite; }
+.focus-status.s-break i { background: var(--green); opacity: 1; animation: st-pulse 2.6s ease-in-out infinite; }
+.focus-status.s-pause i { background: #ff9f0a; opacity: 1; }
+.focus-status.s-done i { background: var(--green); opacity: 1; }
+.focus-status.s-run, .focus-status.s-break { color: var(--text); }
+@keyframes st-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(.6); opacity: .45; } }
+
+/* Esfera: una hora entera con marcas por minuto, arco con degradado y tirador */
+.dial { --ds: 208px; --dial-a: var(--accent); --dial-b: color-mix(in srgb, var(--accent) 55%, #fff); position: relative; }
+:root[data-theme="dark"] .dial { --dial-b: color-mix(in srgb, var(--accent) 60%, #000); }
+[data-skin="vivo"] .dial { --dial-a: #7c3aed; --dial-b: #ec4899; }
+[data-skin="vivo"][data-theme="dark"] .dial { --dial-a: #c4b5fd; --dial-b: #f9a8d4; }
+.is-break .dial { --dial-a: var(--green); --dial-b: color-mix(in srgb, var(--green) 55%, #2ac3a2); }
+.focus-card .ring.big.dial, .focus-card .ring.big.dial svg { width: var(--ds); height: var(--ds); }
+.dial svg { position: relative; overflow: visible; }
+.dial .g0 { stop-color: var(--dial-b); }
+.dial .g1 { stop-color: var(--dial-a); }
+.dial circle.face { fill: color-mix(in srgb, var(--glass-strong) 70%, transparent); stroke: none; }
+.dial circle.track { stroke: var(--fill); stroke-width: 3.2; }
+.dial circle.bar { stroke: url(#dial-g); stroke-width: 6; }
+.dial .tick { stroke: var(--muted); stroke-width: .7; opacity: .35; stroke-linecap: round; }
+.dial .tick.maj { stroke-width: 1.3; opacity: .7; }
+.dial .dial-knob { transform-box: view-box; transform-origin: 50% 50%; transition: transform .5s cubic-bezier(.2,.8,.2,1); }
+.focus-card.is-running .dial .dial-knob { transition: transform 1s linear; }
+.dial .dial-knob circle { fill: #fff; stroke: var(--dial-a); stroke-width: 2.2; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.25)); }
+.dial-mid { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; pointer-events: none; }
+.dial-time { font-size: calc(var(--ds) * .2); font-weight: 300; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1; color: var(--text); }
+.dial-label { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .02em; min-height: 14px; display: flex; align-items: center; }
+.dial-dots { display: flex; gap: 5px; align-items: center; }
+.dial-dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--fill-2); transition: width .3s, background-color .3s; }
+.dial-dots i.done { background: var(--dial-a); }
+.dial-dots i.cur { width: 16px; background: var(--dial-a); }
+/* Halo suave que respira mientras el tiempo corre */
+.dial-halo { position: absolute; inset: -6%; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--dial-a) 22%, transparent) 0%, transparent 68%); opacity: 0; transition: opacity .6s; pointer-events: none; }
+.is-live .dial-halo { opacity: 1; animation: dial-breathe 4.5s ease-in-out infinite; }
+@keyframes dial-breathe { 0%, 100% { transform: scale(.94); opacity: .55; } 50% { transform: scale(1.06); opacity: 1; } }
+.focus-timer.is-paused .dial-time { opacity: .5; }
+.focus-timer.is-paused .dial .bar, .focus-timer.is-paused .dial .dial-knob { opacity: .45; }
+
+/* Mensaje de ánimo */
+.focus-cheer { display: flex; align-items: center; gap: 10px; max-width: 340px; padding: 10px 14px; border-radius: 14px; background: var(--accent-soft); color: var(--text); font-size: 15px; font-weight: 500; line-height: 1.35; text-align: left; }
+.focus-cheer .cheer-ic { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; color: #fff; background: var(--accent); }
+[data-skin="vivo"] .focus-cheer .cheer-ic { background: var(--grad); }
+:root[data-theme="dark"] .focus-cheer .cheer-ic { color: #000; background: #fff; }
+.focus-cheer.is-break { background: color-mix(in srgb, var(--green) 14%, transparent); }
+.focus-cheer.is-break .cheer-ic, :root[data-theme="dark"] .focus-cheer.is-break .cheer-ic { background: transparent; font-size: 17px; }
+.focus-cheer.in { animation: cheer-in .55s cubic-bezier(.2,.9,.3,1.2); }
+.focus-cheer.in .cheer-ic { animation: cheer-ic .7s cubic-bezier(.3,1.6,.5,1) .1s both; }
+@keyframes cheer-in { from { opacity: 0; transform: translateY(8px) scale(.97); } }
+@keyframes cheer-ic { from { transform: scale(.3) rotate(-40deg); } }
+.sum-cheer { margin: 2px 0 4px; font-weight: 600; font-size: 15px; color: var(--text); }
+
+/* Controles mientras corre: reiniciar · pausar/seguir (grande) · completar */
+.focus-ctrl { display: flex; align-items: flex-start; justify-content: center; gap: 28px; padding-top: 2px; }
+.focus-ctrl button { border: 0; background: none; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text); cursor: pointer; font: inherit; -webkit-tap-highlight-color: transparent; }
+.focus-ctrl small { font-size: 12px; font-weight: 600; color: var(--muted); }
+.focus-ctrl .fc-ic { display: grid; place-items: center; border-radius: 50%; transition: transform .15s; }
+.focus-ctrl button:active .fc-ic { transform: scale(.93); }
+.fc-side .fc-ic { width: 52px; height: 52px; margin: 10px 0; background: var(--fill); }
+.fc-side .fc-ic svg { width: 20px; height: 20px; }
+.fc-main .fc-ic { width: 72px; height: 72px; background: var(--action-bg); color: var(--on-action); box-shadow: 0 8px 22px color-mix(in srgb, var(--action-bg) 30%, transparent); }
+.fc-main .fc-ic svg { width: 26px; height: 26px; }
+.fc-main.is-play .fc-ic svg { transform: translateX(2px); }
+[data-skin="vivo"] .fc-main .fc-ic { background: var(--grad); color: #fff; }
+.focus-ctrl button:focus-visible { outline: none; }
+.focus-ctrl button:focus-visible .fc-ic { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* Antes de empezar: «Empezar» es lo principal */
+.focus-actions .fc-start { flex: 1.7; }
+.focus-actions .fc-done { flex: 1; }
+@media (max-width: 359px) { .fc-mins { display: none; } }
+.focus-card.is-running .focus-extra .hint { display: none; }
+.focus-dis input { background: var(--fill); }
+#focus-sub { max-width: 320px; }
+@media (max-height: 820px) and (max-width: 600px) {
+  .focus-card .dial { --ds: 176px; }
+  .fc-main .fc-ic { width: 64px; height: 64px; }
+  .fc-side .fc-ic { width: 48px; height: 48px; margin: 8px 0; }
+  .focus-cheer { font-size: 14px; padding: 8px 12px; }
+}
+@media (max-height: 700px) and (max-width: 600px) {
+  .focus-card .dial { --ds: 156px; }
+  /* Pantallas bajas: mientras corre, lo esencial cabe sin desplazar */
+  .focus-card.is-running label.focus-extra { display: none; }
+  .focus-card.is-running { gap: 10px; }
+  .focus-layer.focus-full .focus-card.is-running { --rs: min(66vw, 34vh, 300px); }
+  .focus-layer.focus-full .focus-title { font-size: 22px; }
+  .focus-layer.focus-full .focus-cheer { font-size: 14px; }
+}
+.focus-layer.focus-full .focus-card .dial { --ds: var(--rs); }
+.focus-layer.focus-full .dial-label { font-size: 13px; }
+.focus-layer.focus-full .focus-cheer { font-size: 16px; }
+@media (prefers-reduced-motion: reduce) {
+  .focus-status i, .is-live .dial-halo, .focus-cheer.in, .focus-cheer.in .cheer-ic { animation: none !important; }
+  .dial .dial-knob { transition: none !important; }
 }

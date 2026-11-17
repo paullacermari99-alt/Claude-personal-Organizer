@@ -1921,8 +1921,8 @@ function timerSchedule(tm) {
   const long = tm.mode === 'long';
   for (let i = 0; i < 20; i++) {
     if (!long || (phase === 'work' && round >= tm.rounds)) { out.push({ at, title: 'Enfoque completado', body: `${name}. ${long ? `${tm.rounds} rondas hechas. ` : ''}Buen trabajo.` }); break; }
-    if (phase === 'work') { out.push({ at, title: `Descanso de ${tm.brk} min`, body: `Ronda ${round} de ${tm.rounds} hecha. Levántate un momento.` }); phase = 'break'; at += tm.brk * 60000; }
-    else { round++; out.push({ at, title: `Ronda ${round} de ${tm.rounds}`, body: `Vuelve a: ${name}` }); phase = 'work'; at += tm.work * 60000; }
+    if (phase === 'work') { out.push({ at, title: `Descanso de ${tm.brk} min`, body: `Ronda ${round} de ${tm.rounds} hecha. ${cheer('brk', at)}` }); phase = 'break'; at += tm.brk * 60000; }
+    else { round++; out.push({ at, title: `Ronda ${round} de ${tm.rounds}`, body: `${cheer(round >= tm.rounds ? 'last' : 'back', at)} Vuelve a: ${name}` }); phase = 'work'; at += tm.work * 60000; }
   }
   return out;
 }
@@ -1935,7 +1935,40 @@ const RING = 2 * Math.PI * 38;
 /* v28: el reloj de enfoque representa una hora entera (como un temporizador de cocina):
    lo coloreado es el tiempo que queda. 15 min = un cuarto del círculo, 60 min = el círculo entero. */
 const ringOffset = ms => RING * (1 - Math.min(1, Math.max(0, ms / 3600000)));
-const RING_TICKS = [0, 1, 2, 3].map(k => { const a = k * Math.PI / 2, c = Math.cos(a), s = Math.sin(a); return `<line class="tick" x1="${(42 + c * 30).toFixed(1)}" y1="${(42 + s * 30).toFixed(1)}" x2="${(42 + c * 27).toFixed(1)}" y2="${(42 + s * 27).toFixed(1)}"/>`; }).join('');
+/* v66: esfera profesional: 60 marcas (una por minuto, más largas cada 5) y un tirador al final del arco */
+const RING_TICKS = Array.from({ length: 60 }, (_, k) => { const a = k * Math.PI / 30, c = Math.cos(a), s = Math.sin(a), maj = k % 5 === 0, r0 = maj ? 30.4 : 31.8; return `<line class="tick${maj ? ' maj' : ''}" x1="${(42 + c * r0).toFixed(2)}" y1="${(42 + s * r0).toFixed(2)}" x2="${(42 + c * 33.4).toFixed(2)}" y2="${(42 + s * 33.4).toFixed(2)}"/>`; }).join('');
+const knobDeg = ms => 360 * Math.min(1, Math.max(0, ms / 3600000));
+
+/* v66: mensajes de ánimo. Salen cada vez que toca seguir: al empezar, al volver de una pausa,
+   al volver del descanso, en la última ronda y a mitad de sesión. En el descanso, una idea para descansar de verdad. */
+const CHEERS = {
+  start: ['Solo esto, nada más. Tú puedes.', 'Empezar es lo más difícil, y ya lo has hecho.', 'Un paso pequeño ahora vale más que un plan perfecto.', 'Móvil lejos, cabeza aquí. Vamos.', 'No tiene que salir perfecto, tiene que salir.', 'Estos minutos son solo para esto.', 'Hazlo por la versión de ti que lo agradecerá esta noche.', 'Piensa solo en el siguiente minuto. Así se avanza.'],
+  resume: ['Bien vuelto. Retomar también es avanzar.', 'Pausar no es rendirse. Seguimos.', 'Donde lo dejaste, ahí sigues. Vamos.', 'Lo importante es volver, y has vuelto.', 'Otra vez dentro. Un minuto detrás de otro.', 'Coge aire y retoma el hilo.'],
+  back: ['Descanso hecho. A por la siguiente ronda.', 'Con la batería cargada. Vamos con ello.', 'Cada ronda te acerca. Sigue así.', 'La constancia gana a la motivación. Otra ronda.', 'Tu yo de mañana te lo va a agradecer.', 'Vas cogiendo ritmo. No lo sueltes.', 'Lo estás haciendo genial. Sigue la marcha.'],
+  last: ['Última ronda. Remata y lo tienes.', 'Esta es la buena: la última. ¡Vamos!', 'Ya casi. Dale el último empujón.', 'Última vuelta: termina lo que empezaste.'],
+  half: ['Ya vas por la mitad. Sigue así.', 'Mitad hecha. Lo más difícil ya ha pasado.', 'Buen ritmo. Mantén el foco un poco más.', 'Llevas la mitad: no te pares ahora.'],
+  brk: ['Levántate y estira un poco.', 'Bebe agua y respira hondo.', 'Mira lejos un momento: tus ojos lo agradecen.', 'Descansa de verdad: nada de pantallas.', 'Camina un poco y vuelve con energía.'],
+  end: ['Lo has conseguido. Eso es avanzar de verdad.', 'Cumpliste lo que te propusiste. Bien hecho.', 'Un poco mejor que ayer. Así se hace.', 'Esto es no procrastinar. Enhorabuena.', 'Hoy has sido tu mejor versión un rato más.'],
+};
+/* Con semilla sale siempre el mismo (así el aviso del servidor y la app dicen lo mismo); sin ella, uno al azar que no repite el anterior */
+function cheer(kind, seed) {
+  const l = CHEERS[kind] || CHEERS.start;
+  if (seed != null) return l[Math.abs(Math.floor(seed / 1000)) % l.length];
+  let last = null; try { last = localStorage.getItem('organizador.cheer'); } catch {}
+  let i = Math.floor(Math.random() * l.length);
+  if (l.length > 1 && l[i] === last) i = (i + 1) % l.length;
+  try { localStorage.setItem('organizador.cheer', l[i]); } catch {}
+  return l[i];
+}
+function cheerHTML(c, anim) {
+  return `<div class="focus-cheer ${c.k === 'brk' ? 'is-break' : ''} ${anim ? 'in' : ''}" id="focus-cheer" role="status"><span class="cheer-ic" aria-hidden="true">${c.k === 'brk' ? '☕' : '✦'}</span><span class="cheer-t">${esc(c.t)}</span></div>`;
+}
+/* Cambia el mensaje sin volver a pintar la ventana */
+function swapCheer(c) {
+  const el = $('#focus-cheer');
+  if (!el) return;
+  el.outerHTML = cheerHTML(c, true);
+}
 let celebratedAt = null;
 
 /* Aviso fijo con el tiempo que queda, visible fuera de la app (pantalla de bloqueo y bandeja).
@@ -2045,6 +2078,7 @@ function summaryHTML(s, t) {
     <div class="done-badge" aria-hidden="true"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="23"/><path d="M15.5 27l7 7L37 19.5"/></svg></div>
     <div class="sum-big">${s.minutes} min</div>
     <div class="muted">de enfoque${s.rounds > 1 ? ` · ${s.rounds} rondas` : ''}${t.subtasks.length ? ` · ${t.subtasks.filter(x => x.done).length}/${t.subtasks.length} pasos` : ''}</div>
+    ${s.cheer ? `<p class="sum-cheer">${esc(s.cheer)}</p>` : ''}
     ${ds.length ? `<div class="sum-dis"><div class="small muted">Apuntaste para después:</div><ul class="plain small">${ds.map(x => `<li>${esc(x.title)}</li>`).join('')}</ul></div>` : ''}
     <div class="small muted">¿Cómo ha ido?</div>
     <div class="chips-row rate">${faces.map(([v, f, l]) => `<button class="chip-btn ${s.rating === v ? 'on' : ''}" data-act="focus-rate" data-v="${v}" aria-label="${l}" title="${l}">${f}</button>`).join('')}</div>
@@ -2055,6 +2089,8 @@ function renderFocus(noMorph) {
   if (!t) { closeFocus(); return; }
   const layer = $('#focus'), prevCard = layer.hidden ? null : layer.querySelector('.focus-card');
   const prevRing = prevCard && $('#focus-ring') ? $('#focus-ring').style.strokeDashoffset || $('#focus-ring').getAttribute('stroke-dashoffset') : null;
+  const prevKnob = prevCard && $('#focus-knob') ? $('#focus-knob').style.transform : null;
+  const prevCheer = prevCard && $('#focus-cheer') ? $('#focus-cheer').textContent : null;
   const prev = prevCard && { h: prevCard.offsetHeight, mode: prevCard.dataset.mode, i: prevCard.querySelector('.focus-mode') ? prevCard.querySelector('.focus-mode').style.getPropertyValue('--i') : null };
   const sum = getSummary(), showSum = sum && sum.taskId === t.id && !getTimer();
   const full = $('#focus').classList.contains('focus-full');
@@ -2072,27 +2108,40 @@ function renderFocus(noMorph) {
         <span>Descanso</span>${chips('focus-plan-brk', LONG_OPTS.brk, plan.brk)}
         <span>Rondas</span>${chips('focus-plan-rounds', LONG_OPTS.rounds, plan.rounds, '')}
       </div>`}`;
-  const sub = paused ? 'En pausa.'
-    : mine ? (timer.mode === 'long' ? `${timer.phase === 'break' ? `Vuelves a las ${clockAt(timer.endAt)}` : timer.round < timer.rounds ? `Descanso a las ${clockAt(timer.endAt)}` : `Termina a las ${clockAt(timer.endAt)}`}. Puedes salir de la app: te avisaré.` : `Termina a las ${clockAt(timer.endAt)}. Puedes salir de la app: te avisaré.`)
+  const brk = mine && timer.phase === 'break';
+  const sub = paused ? 'Tómate tu tiempo. Seguimos cuando quieras.'
+    : mine ? `${timer.mode === 'long' ? (brk ? `Vuelves a las ${clockAt(timer.endAt)}` : timer.round < timer.rounds ? `Descanso a las ${clockAt(timer.endAt)}` : `Termina a las ${clockAt(timer.endAt)}`) : `Termina a las ${clockAt(timer.endAt)}`}. Si sales de la app, te aviso.`
     : other ? 'Hay otro temporizador en marcha; si empiezas este, lo sustituye.'
     : plan.mode === 'long' ? `${plan.rounds} rondas de ${plan.work} min con ${plan.brk} min de descanso: ${total >= 60 ? Math.floor(total / 60) + ' h ' + (total % 60 ? total % 60 + ' min' : '') : total + ' min'} en total.`
-    : 'Una sola sesión, sin descansos. El círculo es una hora: lo de color es el tiempo de tu sesión.';
+    : 'Una sola sesión, sin descansos. La esfera es una hora: lo de color es tu sesión.';
   const startMins = plan.mode === 'long' ? plan.work : focusMins;
-  layer.innerHTML = `<div class="focus-card glass ${showSum ? 'is-summary' : ''} ${mine ? 'is-running' : ''} ${prevCard ? 'no-pop' : ''}" data-mode="${mine ? 'run' : showSum ? 'sum' : plan.mode}" role="dialog" aria-label="Enfoque">
+  const ms0 = mine ? timerLeft(timer) : startMins * 60000;
+  /* Estado arriba: un punto de color que late mientras corre el tiempo */
+  const status = showSum ? ['done', 'Sesión terminada'] : !mine ? ['idle', 'Enfoque'] : paused ? ['pause', 'En pausa'] : brk ? ['break', 'Descanso'] : ['run', timer.mode === 'long' ? `Ronda ${timer.round} de ${timer.rounds}` : 'Concentrado'];
+  const rounds = mine ? timer.rounds : plan.mode === 'long' ? plan.rounds : 1;
+  const dots = rounds > 1 ? `<div class="dial-dots" aria-label="Ronda ${mine ? timer.round : 1} de ${rounds}">${Array.from({ length: rounds }, (_, k) => { const r = k + 1, cur = mine ? timer.round : 0; return `<i class="${r < cur || (r === cur && brk) ? 'done' : r === cur ? 'cur' : ''}"></i>`; }).join('')}</div>` : '';
+  const dialLabel = mine ? (dots || `hasta las ${clockAt(timer.endAt)}`) : (dots || 'min');
+  const ch = mine && !paused && timer.cheer ? timer.cheer : null;
+  const ctrl = (act, icon, label, cls = 'fc-side', extra = '') => `<button class="${cls}" data-act="${act}" ${extra} aria-label="${label}"><span class="fc-ic">${icon}</span><small>${label}</small></button>`;
+  layer.innerHTML = `<div class="focus-card glass ${showSum ? 'is-summary' : ''} ${mine ? 'is-running' : ''} ${paused ? 'is-paused' : ''} ${prevCard ? 'no-pop' : ''}" data-mode="${mine ? 'run' : showSum ? 'sum' : plan.mode}" role="dialog" aria-label="Enfoque">
     <button class="icon-btn round focus-close" data-act="focus-close" aria-label="Cerrar">${I.close}</button>
     <button class="icon-btn round focus-fullbtn" data-act="focus-full" aria-label="${full ? 'Salir de pantalla completa' : 'Pantalla completa'}" title="${full ? 'Salir de pantalla completa' : 'Pantalla completa'}">${full ? I.shrink : I.expand}</button>
-    <div class="eyebrow">${showSum ? 'Sesión terminada' : 'Enfoque'}</div>
+    <div class="eyebrow focus-status s-${status[0]}"><i aria-hidden="true"></i><span>${status[1]}</span></div>
     <h2 class="focus-title ${t.done ? 'done' : ''}">${esc(t.title)}</h2>
     ${showSum ? summaryHTML(sum, t) : ''}
     <label class="field focus-extra">¿Por dónde empiezas?<input type="text" data-input="first-step" data-id="${t.id}" value="${esc(t.firstStep)}" placeholder="Ej.: abrir el documento y escribir el título" enterkeyhint="done">
       <span class="hint">Una acción pequeña y concreta, de menos de 2 minutos. Así arrancar cuesta mucho menos.</span></label>
     ${t.subtasks.length ? `<div class="focus-subs focus-extra">${t.subtasks.map(s => `<label><input type="checkbox" class="check sm" data-act="sub-toggle" data-id="${t.id}" data-sub="${s.id}" ${s.done ? 'checked' : ''}><span>${esc(s.title)}</span></label>`).join('')}</div>` : ''}
-    <div class="focus-timer ${paused ? 'is-paused' : ''} ${mine && timer.phase === 'break' ? 'is-break' : ''} ${showSum ? 'is-hidden' : ''}">
-      ${mine && timer.mode === 'long' ? `<div class="focus-phase">${timer.phase === 'break' ? 'Descanso' : 'Trabajo'}<span>${timer.round}/${timer.rounds}</span></div>` : ''}
-      <div class="ring big" aria-hidden="true">
-        <svg viewBox="0 0 84 84"><circle class="track" cx="42" cy="42" r="38"/>${RING_TICKS}<circle class="bar" id="focus-ring" cx="42" cy="42" r="38" stroke-dasharray="${RING}" stroke-dashoffset="${prevRing != null ? prevRing : ringOffset((mine ? timerLeft(timer) : startMins * 60000))}"/></svg>
-        <div class="time" id="focus-time">${pad(startMins)}:00</div>
+    <div class="focus-timer ${paused ? 'is-paused' : ''} ${brk ? 'is-break' : ''} ${mine && !paused ? 'is-live' : ''} ${showSum ? 'is-hidden' : ''}">
+      <div class="ring big dial" aria-hidden="true">
+        <span class="dial-halo"></span>
+        <svg viewBox="0 0 84 84"><defs><linearGradient id="dial-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="g0"/><stop offset="1" class="g1"/></linearGradient></defs>
+          <circle class="face" cx="42" cy="42" r="35"/><circle class="track" cx="42" cy="42" r="38"/>${RING_TICKS}
+          <circle class="bar" id="focus-ring" cx="42" cy="42" r="38" stroke-dasharray="${RING}" stroke-dashoffset="${prevRing != null ? prevRing : ringOffset(ms0)}"/>
+          <g class="dial-knob" id="focus-knob" style="transform:${prevKnob || `rotate(${knobDeg(ms0)}deg)`}"><circle cx="80" cy="42" r="4.3"/></g></svg>
+        <div class="dial-mid"><span class="dial-time" id="focus-time">${pad(startMins)}:00</span><span class="dial-label">${dialLabel}</span></div>
       </div>
+      ${ch ? cheerHTML(ch, ch.t !== prevCheer) : ''}
       ${setup}
       <p class="muted small" id="focus-sub">${sub}</p>
     </div>
@@ -2100,13 +2149,17 @@ function renderFocus(noMorph) {
       <input type="text" name="title" placeholder="¿Te viene algo a la cabeza? Apúntalo y sigue" autocomplete="off" enterkeyhint="done" aria-label="Apuntar distracción">
       <button class="icon-btn round" type="submit" aria-label="Apuntar">${I.plus}</button>
     </form>${(timer.distractions || []).length ? `<p class="muted small dis-count">${timer.distractions.length} apuntada${timer.distractions.length === 1 ? '' : 's'} en la bandeja para después</p>` : ''}` : ''}
-    <div class="focus-actions">
-      ${mine ? `<button class="btn" data-act="focus-reset">${I.reset}<span>Reiniciar</span></button>
-        <button class="btn" data-act="${paused ? 'focus-resume' : 'focus-pause'}">${paused ? I.play + '<span>Seguir</span>' : I.pause + '<span>Pausar</span>'}</button>`
-      : showSum ? `<button class="btn" data-act="focus-again">${I.repeat}<span>Otra sesión</span></button>`
-      : `<button class="btn" data-act="focus-start">${I.play}<span>Empezar</span></button>`}
-      <button class="btn primary" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar tarea'}</button>
-    </div>
+    ${mine ? `<div class="focus-ctrl">
+        ${ctrl('focus-reset', I.reset, 'Reiniciar')}
+        ${ctrl(paused ? 'focus-resume' : 'focus-pause', paused ? I.play : I.pause, paused ? 'Seguir' : 'Pausar', 'fc-main' + (paused ? ' is-play' : ''))}
+        ${ctrl('focus-done', I.check, t.done ? 'Hecha' : 'Completar', 'fc-side', `data-id="${t.id}"`)}
+      </div>`
+    : `<div class="focus-actions">
+      ${showSum ? `<button class="btn" data-act="focus-again">${I.repeat}<span>Otra sesión</span></button>
+      <button class="btn primary" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar tarea'}</button>`
+      : `<button class="btn fc-done" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar'}</button>
+      <button class="btn primary fc-start" data-act="focus-start">${I.play}<span>Empezar<span class="fc-mins"> · ${startMins} min</span></span></button>`}
+    </div>`}
   </div>`;
   if (prev && !noMorph) morphFocus(layer.querySelector('.focus-card'), prev);
   /* El círculo pasa suave de la duración anterior a la nueva */
@@ -2136,11 +2189,10 @@ function focusAction(act) {
     askNotify();
     setSummary(null);
     const plan = focusPlan(), long = plan.mode === 'long', mins = long ? plan.work : focusMins;
-    setTimer({ taskId: focusTaskId, mode: plan.mode, work: long ? plan.work : mins, brk: plan.brk, rounds: long ? plan.rounds : 1, round: 1, phase: 'work', minutes: mins, endAt: Date.now() + mins * 60000, pausedLeft: null });
-    toast(long ? `A por ello: ronda 1 de ${plan.rounds}, ${mins} minutos.` : `A por ello: ${mins} minutos solo para esto.`);
+    setTimer({ taskId: focusTaskId, mode: plan.mode, work: long ? plan.work : mins, brk: plan.brk, rounds: long ? plan.rounds : 1, round: 1, phase: 'work', minutes: mins, endAt: Date.now() + mins * 60000, pausedLeft: null, cheer: { k: 'start', t: cheer('start') } });
   } else if (!tm) return;
   else if (act === 'pause') setTimer({ ...tm, pausedLeft: timerLeft(tm) });
-  else if (act === 'resume') setTimer({ ...tm, endAt: Date.now() + tm.pausedLeft, pausedLeft: null });
+  else if (act === 'resume') setTimer({ ...tm, endAt: Date.now() + tm.pausedLeft, pausedLeft: null, cheer: tm.phase === 'break' ? tm.cheer : { k: 'resume', t: cheer('resume') } });
   else if (act === 'reset') {
     /* Lo ya trabajado cuenta en Progreso */
     if (tm.mode !== 'long') focusMins = tm.minutes;
@@ -2166,7 +2218,7 @@ function updateTimerUI() {
     pill.hidden = true;
     const el = $('#focus-time');
     const m0 = focusPlan().mode === 'long' ? focusPlan().work : focusMins || 25;
-    if (el) { el.textContent = pad(m0) + ':00'; $('#focus-ring').style.strokeDashoffset = ringOffset(m0 * 60000); }
+    if (el) { el.textContent = pad(m0) + ':00'; $('#focus-ring').style.strokeDashoffset = ringOffset(m0 * 60000); const k = $('#focus-knob'); if (k) k.style.transform = `rotate(${knobDeg(m0 * 60000)}deg)`; }
     closeFocusNote();
     return;
   }
@@ -2182,6 +2234,13 @@ function updateTimerUI() {
   if (el && timer.taskId === focusTaskId) {
     el.textContent = txt;
     $('#focus-ring').style.strokeDashoffset = ringOffset(left);
+    const k = $('#focus-knob'); if (k) k.style.transform = `rotate(${knobDeg(left)}deg)`;
+  }
+  /* A mitad de una sesión de trabajo (de 10 min o más), un empujón */
+  if (!paused && !brk && timer.minutes >= 10 && left <= timer.minutes * 30000 && timer.half !== timer.round) {
+    const c = { k: 'half', t: cheer('half') };
+    setTimer({ ...timer, cheer: c, half: timer.round });
+    if (layerOpen && timer.taskId === focusTaskId) swapCheer(c);
   }
   if (document.visibilityState !== 'visible') focusNote();
 }
@@ -2191,12 +2250,13 @@ function advanceTimer(tm) {
   while (n.pausedLeft == null && n.endAt <= Date.now()) {
     if (n.phase === 'work') logFocus(n.minutes, n.taskId);
     if (n.mode !== 'long' || (n.phase === 'work' && n.round >= n.rounds)) { last = 'end'; n = null; break; }
-    if (n.phase === 'work') { n = { ...n, phase: 'break', minutes: n.brk, endAt: n.endAt + n.brk * 60000 }; last = 'break'; }
-    else { n = { ...n, phase: 'work', round: n.round + 1, minutes: n.work, endAt: n.endAt + n.work * 60000 }; last = 'work'; }
+    /* El mensaje sale de la hora del cambio: el mismo que manda el aviso del servidor */
+    if (n.phase === 'work') { n = { ...n, phase: 'break', minutes: n.brk, cheer: { k: 'brk', t: cheer('brk', n.endAt) }, endAt: n.endAt + n.brk * 60000 }; last = 'break'; }
+    else { n = { ...n, phase: 'work', round: n.round + 1, minutes: n.work, cheer: { k: n.round + 1 >= n.rounds ? 'last' : 'back', t: cheer(n.round + 1 >= n.rounds ? 'last' : 'back', n.endAt) }, endAt: n.endAt + n.work * 60000 }; last = 'work'; }
   }
   if (last === 'end') {
     const total = tm.mode === 'long' ? tm.rounds * tm.work : tm.minutes;
-    setSummary({ taskId: tm.taskId, minutes: total, rounds: tm.mode === 'long' ? tm.rounds : 1, distractions: tm.distractions || [], date: todayStr(), at: Date.now(), rating: null });
+    setSummary({ taskId: tm.taskId, minutes: total, rounds: tm.mode === 'long' ? tm.rounds : 1, distractions: tm.distractions || [], date: todayStr(), at: Date.now(), rating: null, cheer: cheer('end') });
   }
   setTimer(n);
   save();
@@ -2204,9 +2264,10 @@ function advanceTimer(tm) {
   beep();
   const t = tm.taskId && task(tm.taskId), name = t ? t.title : '';
   const msg = last === 'end' ? `Enfoque completado${name ? ': ' + name : ''}.${tm.mode === 'long' ? ` ${tm.rounds} rondas hechas.` : ''} Buen trabajo.`
-    : last === 'break' ? `Ronda ${n.round} de ${n.rounds} hecha. Descanso de ${n.brk} min.`
-    : `Vuelta al trabajo: ronda ${n.round} de ${n.rounds}.`;
-  toast(msg);
+    : last === 'break' ? `Ronda ${n.round} de ${n.rounds} hecha. Descanso de ${n.brk} min. ${n.cheer.t}`
+    : `Ronda ${n.round} de ${n.rounds}. ${n.cheer.t}`;
+  /* Con la ventana abierta, el cambio ya se ve en ella (estado, esfera y mensaje) */
+  if ($('#focus').hidden) toast(msg);
   /* Con avisos push activos, los avisos de cambio los manda el servidor (llegan aunque la app esté cerrada) */
   if (document.visibilityState !== 'visible' && !pushActive()) notify('focus:' + tm.endAt, last === 'end' ? 'Enfoque completado' : last === 'break' ? 'Descanso' : `Ronda ${n.round} de ${n.rounds}`, msg, 'focus-live');
   if (last === 'end' && tm.taskId && task(tm.taskId) && $('#focus').hidden && document.visibilityState === 'visible') openFocus(tm.taskId);
