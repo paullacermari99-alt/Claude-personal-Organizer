@@ -290,7 +290,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .02em; color: v
 .segmented { display: flex; padding: 3px; border-radius: 12px; background: var(--fill); margin-bottom: 18px; }
 .segmented button {
   flex: 1; border: 0; background: transparent; padding: 7px 4px; border-radius: 9px; font-size: 13px; font-weight: 500; cursor: pointer;
-  transition: background .2s, box-shadow .2s;
+  /* v63: sin transición de fondo: la pastilla se desliza (seg-ghost), no se funde (parpadeaba) */
 }
 .segmented button.on { background: var(--glass-strong); box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.04); font-weight: 600; }
 

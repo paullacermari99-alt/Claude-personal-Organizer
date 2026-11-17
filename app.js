@@ -83,32 +83,56 @@ function softSwap(fn = route) {
   const app = $('#app'), y = window.scrollY;
   const pageOf = () => app.querySelector(':scope > .page') || app;
   const before = [...pageOf().children].map(n => n.outerHTML);
-  const segs = $$('.segmented:not(.seg-slide)', app).map(sg => { const on = sg.querySelector('button.on'); return on ? { x: on.offsetLeft, w: on.offsetWidth } : null; });
+  /* v63: los selectores (Semana / 3 días / Día, pestañas…) no se vuelven a crear: se reutiliza el
+     mismo elemento y solo se le cambian clases y textos. Así la pastilla no desaparece ni un fotograma. */
+  const segs = $$('.segmented:not(.seg-slide)', app).map(sg => {
+    const ref = sg.querySelector('.seg-ghost') || sg.querySelector('button.on');
+    let from = null;
+    if (ref) { const r = ref.getBoundingClientRect(), o = sg.getBoundingClientRect(); from = { x: r.left - o.left - sg.clientLeft, w: r.width }; }
+    return { sg, from };
+  });
   clearTimeout(pageEnter.t); app.classList.remove('page-enter');
   fn();
   window.scrollTo(0, y);
-  if (reduceMotion()) return;
   /* v59: lo que ya estaba (filtros, «Añadir», listas, avisos…) cambia en el sitio, sin fundido:
      antes todo lo que cambiaba bajaba a casi transparente y volvía (parpadeo). Solo aparece con
      un fundido corto un bloque que antes no existía (p. ej. el aviso de «no hay nada»). */
   const had = new Set(before.map(kindOf));
   [...pageOf().children].forEach(n => {
-    if (had.has(kindOf(n.outerHTML)) || !n.animate) return;
+    if (reduceMotion() || had.has(kindOf(n.outerHTML)) || !n.animate) return;
     n.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' });
   });
-  $$('.segmented:not(.seg-slide)', app).forEach((sg, i) => {
-    const from = segs[i], on = sg.querySelector('button.on');
-    if (!from || !on || !sg.animate || (from.x === on.offsetLeft && from.w === on.offsetWidth)) return;
+  $$('.segmented:not(.seg-slide)', app).forEach((fresh, i) => {
+    const prev = segs[i], sg = prev && keepSegmented(prev.sg, fresh) ? prev.sg : fresh;
+    const from = prev && prev.from, on = sg.querySelector('button.on');
+    if (!from || !on || reduceMotion() || !sg.animate || (Math.abs(from.x - on.offsetLeft) < 1 && Math.abs(from.w - on.offsetWidth) < 1)) return;
+    const cs = getComputedStyle(on);
     const g = document.createElement('span');
     g.className = 'seg-ghost';
-    g.style.cssText = `left:${on.offsetLeft}px;top:${on.offsetTop}px;width:${on.offsetWidth}px;height:${on.offsetHeight}px`;
+    g.style.cssText = `left:${on.offsetLeft}px;top:${on.offsetTop}px;width:${on.offsetWidth}px;height:${on.offsetHeight}px;border-radius:${cs.borderRadius};background:${cs.backgroundColor};box-shadow:${cs.boxShadow}`;
     sg.prepend(g); sg.classList.add('seg-moving');
     const a = g.animate([{ transform: `translateX(${from.x - on.offsetLeft}px)`, width: from.w + 'px' }, { transform: 'none', width: on.offsetWidth + 'px' }], { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)' });
-    const end = () => { g.remove(); sg.classList.remove('seg-moving'); };
+    const end = () => { if (!g.isConnected) return; g.remove(); if (!sg.querySelector('.seg-ghost')) sg.classList.remove('seg-moving'); };
     a.finished.then(end, end);
   });
 }
-/* Tipo de bloque: etiqueta + clases + id de su primera etiqueta (sin estados como «on» u «open») */
+/* Pasa al selector que ya está en pantalla lo que ha cambiado en el nuevo y lo deja en su sitio.
+   Solo si tiene las mismas opciones; si no, se queda el nuevo. */
+function keepSegmented(old, fresh) {
+  const ob = [...old.querySelectorAll(':scope > button')], nb = [...fresh.querySelectorAll(':scope > button')];
+  const key = b => `${b.dataset.act}|${b.dataset.k || ''}|${b.dataset.v}`;
+  if (!ob.length || ob.length !== nb.length || ob.some((b, j) => key(b) !== key(nb[j]))) return false;
+  old.querySelectorAll('.seg-ghost').forEach(g => g.remove());
+  old.classList.remove('seg-moving');
+  const sync = (a, b) => {
+    [...a.attributes].forEach(at => { if (!b.hasAttribute(at.name)) a.removeAttribute(at.name); });
+    [...b.attributes].forEach(at => { if (a.getAttribute(at.name) !== at.value) a.setAttribute(at.name, at.value); });
+  };
+  sync(old, fresh);
+  ob.forEach((b, j) => { sync(b, nb[j]); if (b.innerHTML !== nb[j].innerHTML) b.innerHTML = nb[j].innerHTML; });
+  fresh.replaceWith(old);
+  return true;
+}
 function kindOf(html) {
   const m = /^<([a-z0-9-]+)([^>]*)>/i.exec(html || '');
   if (!m) return '';
