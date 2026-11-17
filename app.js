@@ -1185,7 +1185,6 @@ function newAnySheet() {
   const ctx = name === 'hoy' ? { due: viewDate } : name === 'proyecto' ? { projectId: id } : name === 'objetivo' ? { goalId: id } : {};
   actionSheet('Crear', [
     ['Tarea', I.review, () => taskModal(ctx)],
-    ...(voiceOK ? [['Dictar una tarea', I.mic, () => { taskModal(ctx); startDictation(modalForm.elements.title, $('.mic-btn', modalForm)); }]] : []),
     ['Evento o bloque', I.cal, () => eventModal(defaultEventCtx())],
     ['Diaria', I.daily, () => routineModal({ projectId: ctx.projectId || null })],
     ['Hábito', I.repeat, () => habitModal()],
