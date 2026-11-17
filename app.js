@@ -445,6 +445,7 @@ function viewToday() {
       <a class="icon-btn round mobile-only" href="#ajustes" aria-label="Ajustes">${I.gear}</a>`,
   })}
 
+  <div data-live="syncbar">${syncBanner()}</div>
   <div class="today-grid">
     <div class="col-main">
       <div class="day-hero glass">
@@ -706,6 +707,8 @@ function viewGoal(id) {
 }
 
 /* ---------- Vista: Proyectos ---------- */
+/* v43: rediseño completo. Cada proyecto dice de un vistazo cómo va (estado + anillo con su color)
+   y qué toca ahora (su siguiente tarea, que se puede marcar o empezar sin entrar). */
 
 function sortedProjects() {
   const ui = state.settings.ui;
@@ -719,85 +722,194 @@ function sortedProjects() {
 function projectStats(p) {
   const tasks = tasksOfProject(p.id), pr = progressOf(tasks);
   const goals = state.goals.filter(g => g.projectId === p.id);
-  const next = tasks.filter(t => !t.done).sort(sortByDue)[0];
-  return { pr, goals, next };
+  const open = tasks.filter(t => !t.done).sort(sortByDue);
+  return { tasks, pr, goals, open, next: open[0] || null };
 }
+/* Estado en pocas palabras: lo primero que necesitas saber del proyecto */
+function projectState(p, s = projectStats(p)) {
+  const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  if (p.archived) return { k: 'arch', txt: 'Archivado' };
+  if (!s.tasks.length) return { k: 'idle', txt: 'Sin tareas todavía' };
+  if (!s.open.length) return { k: 'ok', txt: '¡Todo hecho!' };
+  const late = s.open.filter(isOverdue).length;
+  if (late) return { k: 'warn', txt: n(late, 'tarea atrasada', 'tareas atrasadas') };
+  const today = todayStr();
+  const dues = [...s.open.filter(t => t.due), ...s.goals.filter(g => goalStatus(g) === 'activo' && g.due)].sort(sortByDue);
+  if (dues[0] && daysBetween(today, dues[0].due) <= 7) return { k: 'soon', txt: `Plazo ${relDay(dues[0].due).toLowerCase()}` };
+  const last = Math.max(p.createdAt || 0, ...s.tasks.map(t => t.doneAt || 0));
+  const idle = Math.floor((Date.now() - last) / 86400000);
+  if (idle >= 7) return { k: 'idle', txt: `Parado hace ${idle} días` };
+  return { k: 'go', txt: `En marcha · ${n(s.open.length, 'pendiente', 'pendientes')}` };
+}
+function projRing(pr, size = 'sm') {
+  const C = 2 * Math.PI * 25, off = C * (1 - (pr.total ? pr.done / pr.total : 0));
+  return `<span class="pj-ring ${size}" role="img" aria-label="${pr.done} de ${pr.total} tareas hechas">
+    <svg viewBox="0 0 60 60" aria-hidden="true"><circle class="track" cx="30" cy="30" r="25"/><circle class="bar" cx="30" cy="30" r="25" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/></svg>
+    <span class="pj-pct">${size === 'lg' ? `<b>${pr.done}</b><small>de ${pr.total}</small>` : pr.total ? `${pr.pct}<small>%</small>` : '–'}</span>
+  </span>`;
+}
+function stateLine(st) { return `<span class="pj-state st-${st.k}"><i></i>${esc(st.txt)}</span>`; }
 function favBtn(p) { return `<button class="icon-btn fav ${p.favorite ? 'on' : ''}" data-act="project-fav" data-id="${p.id}" aria-label="${p.favorite ? 'Quitar de favoritos' : 'Marcar como favorito'}">${p.favorite ? I.starFill : I.star}</button>`; }
+/* La siguiente tarea, con su círculo para marcarla y ▶ para empezar */
+function nextRow(t, label = 'Ahora toca') {
+  return `<div class="pj-next" data-task="${t.id}">
+    <input type="checkbox" class="check" data-act="toggle-task" data-id="${t.id}" aria-label="Completar ${esc(t.title)}">
+    <button class="pj-next-body" data-act="edit-task" data-id="${t.id}"><span class="pj-next-l">${label}${t.due ? ` · <span class="${isOverdue(t) ? 'warn-text' : ''}">${esc(relDay(t.due).toLowerCase())}</span>` : ''}</span><span class="pj-next-t">${esc(t.title)}</span></button>
+    <button class="icon-btn pj-play" data-act="focus-open" data-id="${t.id}" aria-label="Empezar ${esc(t.title)}">${I.play}</button>
+  </div>`;
+}
 function projectCard(p) {
-  const { pr, goals, next } = projectStats(p);
-  const left = pr.total - pr.done;
-  return `<a class="card glass item-card lite" href="#proyecto/${p.id}" style="--c:${p.color}">
-    <div class="top"><div class="swatch emoji">${esc(p.icon || '📁')}</div><div class="name">${esc(p.name)}<span class="ic-sub">${goals.length} objetivo${goals.length === 1 ? '' : 's'} · ${left} pendiente${left === 1 ? '' : 's'}${p.archived ? ' · Archivado' : ''}</span></div>${favBtn(p)}</div>
-    <div class="stat-row">${progressBar(pr.pct)}<span class="count">${pr.total ? pr.pct + '%' : '–'}</span></div>
-    <div class="ic-next one-line">${next ? `<span class="step-ic">→</span>${esc(next.title)}` : `<span class="muted">${pr.total ? '¡Todo hecho!' : 'Sin tareas todavía'}</span>`}</div>
-  </a>`;
+  const s = projectStats(p), st = projectState(p, s);
+  const sub = [s.goals.length && `${s.goals.length} objetivo${s.goals.length === 1 ? '' : 's'}`, s.pr.total && `${s.pr.done} de ${s.pr.total} tareas`].filter(Boolean).join(' · ');
+  const foot = p.archived ? `<div class="pj-foot"><button class="btn small" data-act="project-archive" data-id="${p.id}">${I.archive}<span>Recuperar proyecto</span></button></div>`
+    : s.next ? nextRow(s.next)
+    : `<div class="pj-foot"><button class="btn small" data-act="new-task" data-project="${p.id}">${I.plus}<span>${s.tasks.length ? 'Añadir otro paso' : 'Añadir el primer paso'}</span></button></div>`;
+  return `<article class="pj-card glass ${p.favorite ? 'is-fav' : ''}" style="--c:${p.color}">
+    <a class="pj-main" href="#proyecto/${p.id}">
+      <span class="pj-ic">${esc(p.icon || '📁')}${p.favorite ? `<span class="pj-star" aria-label="Favorito">${I.starFill}</span>` : ''}</span>
+      <span class="pj-text">
+        <span class="pj-name">${esc(p.name)}</span>
+        <span data-live="pjs-${p.id}">${stateLine(st)}${sub ? `<span class="pj-sub">${sub}</span>` : ''}</span>
+      </span>
+      <span data-live="pjr-${p.id}">${projRing(s.pr)}</span>
+    </a>
+    ${foot}
+  </article>`;
 }
 function projectRow(p) {
-  const { pr, goals } = projectStats(p);
-  return `<li><a class="proj-row" href="#proyecto/${p.id}" style="--c:${p.color}">
-    <span class="swatch emoji sm">${esc(p.icon || '📁')}</span>
-    <span class="grow"><span class="name">${esc(p.name)}</span><span class="small muted">${goals.length} obj. · ${pr.done}/${pr.total} tareas</span></span>
-    <span class="mini-progress">${progressBar(pr.pct)}</span>
-    ${favBtn(p)}
+  const s = projectStats(p), st = projectState(p, s);
+  return `<li><a class="pj-row" href="#proyecto/${p.id}" style="--c:${p.color}">
+    <span class="pj-ic sm">${esc(p.icon || '📁')}${p.favorite ? `<span class="pj-star" aria-label="Favorito">${I.starFill}</span>` : ''}</span>
+    <span class="pj-text"><span class="pj-name">${esc(p.name)}</span>${stateLine(st)}</span>
+    ${projRing(s.pr)}
   </a></li>`;
+}
+const PROJ_SORTS = [['manual', 'Creación'], ['nombre', 'Nombre'], ['recientes', 'Más recientes'], ['progreso', 'Progreso']];
+function projectsViewSheet() {
+  const ui = state.settings.ui, cur = ui.projectsSort || 'manual', view = ui.projectsView === 'list' ? 'list' : 'cards';
+  const it = (key, v, l, on, ic = '') => `<button type="button" class="sheet-item ${on ? 'on' : ''}" data-modal="${key}" data-v="${v}">${ic}<span>${l}</span>${on ? '<span class="sheet-check">✓</span>' : ''}</button>`;
+  openModal('Ver y ordenar', `
+    <div class="tpl-h">Ver como</div>
+    <div class="sheet-list">${it('view', 'cards', 'Tarjetas con «Ahora toca»', view === 'cards', I.grid)}${it('view', 'list', 'Lista compacta', view === 'list', I.list)}</div>
+    <div class="tpl-h">Ordenar por</div>
+    <div class="sheet-list">${PROJ_SORTS.map(([v, l]) => it('sort', v, l, cur === v)).join('')}</div>
+    <p class="hint">Los favoritos (★) van siempre primero.</p>`, {
+    actions: {
+      view: el => { ui.projectsView = el.dataset.v; save(); modal.close(); softSwap(); },
+      sort: el => { ui.projectsSort = el.dataset.v; save(); modal.close(); softSwap(); },
+    },
+  });
 }
 function viewProjects() {
   const ui = state.settings.ui, list = sortedProjects();
-  const nArch = state.projects.filter(p => p.archived).length;
+  const nArch = state.projects.filter(p => p.archived).length, nAct = state.projects.length - nArch;
+  const sortName = (PROJ_SORTS.find(([v]) => v === (ui.projectsSort || 'manual')) || PROJ_SORTS[0])[1];
   return `
   <div class="page page-projects">
-  ${pageHead({ eyebrow: (n => n ? `${n} en marcha` : 'Lo que estás construyendo')(state.projects.filter(p => !p.archived).length), title: 'Proyectos', actions: `
-    <button class="btn primary" data-act="new-project">${I.plus}<span>Nuevo</span></button>` })}
-  <div class="toolbar">
+  ${pageHead({ eyebrow: nAct ? `${nAct} en marcha` : 'Lo que estás construyendo', title: 'Proyectos', actions: `
+    <button class="btn primary pj-new" data-act="new-project" aria-label="Nuevo proyecto">${I.plus}<span>Nuevo</span></button>` })}
+  <div class="pj-bar">
     <div class="segmented compact" role="tablist">
-      <button role="tab" class="${!ui.projectsArchived ? 'on' : ''}" data-act="set-ui" data-k="projectsArchived" data-v="">Activos</button>
+      <button role="tab" class="${!ui.projectsArchived ? 'on' : ''}" data-act="set-ui" data-k="projectsArchived" data-v="">Activos${nAct ? ' · ' + nAct : ''}</button>
       <button role="tab" class="${ui.projectsArchived ? 'on' : ''}" data-act="set-ui" data-k="projectsArchived" data-v="1">Archivados${nArch ? ' · ' + nArch : ''}</button>
     </div>
-    <select data-set-ui="projectsSort" aria-label="Ordenar">${[['manual', 'Orden: creación'], ['nombre', 'Orden: nombre'], ['recientes', 'Orden: recientes'], ['progreso', 'Orden: progreso']].map(([v, l]) => `<option value="${v}" ${ui.projectsSort === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-    <div class="segmented compact icons view-switch" role="tablist" aria-label="Vista">
-      <button role="tab" class="${ui.projectsView !== 'list' ? 'on' : ''}" data-act="set-ui" data-k="projectsView" data-v="cards" aria-label="Tarjetas">${I.grid}</button>
-      <button role="tab" class="${ui.projectsView === 'list' ? 'on' : ''}" data-act="set-ui" data-k="projectsView" data-v="list" aria-label="Lista">${I.list}</button>
-    </div>
+    <button class="btn small ghost pj-sort" data-act="projects-view" aria-label="Ver y ordenar: ${esc(sortName)}">${ui.projectsView === 'list' ? I.list : I.grid}<span>${esc(sortName)}</span></button>
   </div>
-  ${!list.length ? (ui.projectsArchived ? emptyBox('No hay proyectos archivados.') : `<div class="empty">Crea un proyecto y divídelo en objetivos y tareas pequeñas.<div class="tpl-suggest"><div class="small muted">O empieza con una plantilla:</div><div class="chips-row">${BUILTIN_TEMPLATES.slice(0, 4).map(t => `<button class="chip-btn" data-act="tpl-pick" data-id="${t.id}">${t.data.project.icon} ${esc(t.name)}</button>`).join('')}</div></div></div>`)
-    : ui.projectsView === 'list' ? `<ul class="proj-list glass">${list.map(projectRow).join('')}</ul>` : `<div class="grid">${list.map(projectCard).join('')}</div>`}
+  ${!list.length ? (ui.projectsArchived ? emptyBox('No hay proyectos archivados. Cuando termines uno, archívalo desde su menú ⋯ y quedará aquí.') : `<div class="empty pj-empty">
+      <b>Tu primer proyecto</b>Algo grande que quieres sacar adelante, dividido en objetivos y pasos pequeños.
+      <div class="tpl-suggest"><div class="small muted">Empieza rápido con una plantilla:</div><div class="chips-row">${BUILTIN_TEMPLATES.slice(0, 4).map(t => `<button class="chip-btn" data-act="tpl-pick" data-id="${t.id}">${t.data.project.icon} ${esc(t.name)}</button>`).join('')}</div></div>
+      <button class="btn primary" data-act="new-project">${I.plus}<span>Crear proyecto</span></button></div>`)
+    : ui.projectsView === 'list' ? `<ul class="pj-list glass">${list.map(projectRow).join('')}</ul>` : `<div class="pj-grid">${list.map(projectCard).join('')}</div>`}
   </div>`;
+}
+function projectMenu(p) {
+  actionSheet(`${p.icon || ''} ${p.name}`.trim(), [
+    [p.favorite ? 'Quitar de favoritos' : 'Marcar como favorito', p.favorite ? I.star : I.starFill, () => { p.favorite = !p.favorite; save(); softSwap(); haptic(); }],
+    ['Nuevo objetivo', I.target, () => goalModal({ projectId: p.id })],
+    ['Guardar como plantilla', I.template, () => templatesSheet('project', { projectId: p.id })],
+    ['Editar proyecto', I.gear, () => projectModal(p)],
+    [p.archived ? 'Recuperar de archivados' : 'Archivar proyecto', I.archive, () => setProjectArchived(p, !p.archived)],
+  ]);
+}
+function setProjectArchived(p, on) {
+  p.archived = on; save(); haptic();
+  toast(on ? 'Proyecto archivado' : 'Proyecto recuperado', { action: 'Deshacer', onAction: () => { p.archived = !on; save(); rerender(); } });
+  rerender();
+}
+function goalRow(g) {
+  const st = goalStatus(g), pct = goalProgress(g), next = st !== 'cumplido' && nextTaskOfGoal(g);
+  const n = g.due && st !== 'cumplido' ? daysUntil(g.due) : null;
+  const when = n === null ? '' : n < 0 ? `venció hace ${-n} d` : n === 0 ? 'vence hoy' : n === 1 ? 'queda 1 día' : `quedan ${n} días`;
+  const sub = st === 'cumplido' ? '✓ Conseguido' : next ? `→ ${esc(next.title)}` : 'Sin próxima tarea';
+  return `<li><a class="pj-goal ${st}" href="#objetivo/${g.id}" style="--c:${g.color}">
+    <span class="pj-goal-ic">${I.target}</span>
+    <span class="pj-text"><span class="pj-goal-t">${esc(g.title)}</span><span class="pj-goal-s">${sub}</span>${when ? `<span class="pj-goal-w ${n <= 7 ? 'warn-text' : ''}">${when}</span>` : ''}</span>
+    <span class="pj-goal-p"><span class="pj-goal-n">${pct}%</span>${progressBar(pct)}</span>
+  </a></li>`;
 }
 function viewProject(id, sub) {
   const p = project(id);
   if (!p) return `<div class="page">${pageHead({ eyebrow: backLink('#proyectos', 'Proyectos'), title: 'No encontrado' })}${emptyBox('Este proyecto ya no existe.')}</div>`;
   const tab = ['resumen', 'objetivos', 'tareas'].includes(sub) ? sub : (p.defaultView || 'resumen');
-  const tasks = tasksOfProject(id), pr = progressOf(tasks);
-  const goals = state.goals.filter(g => g.projectId === id).sort(sortByDue);
+  const s = projectStats(p), st = projectState(p, s), { tasks, pr, open, next } = s;
+  const goals = s.goals.slice().sort(sortByDue);
+  const left = pr.total - pr.done;
+  const today = todayStr();
+  const title = !pr.total ? 'Aún no hay pasos' : !left ? '¡Proyecto completado!' : left === 1 ? 'Te queda 1 tarea' : `Te quedan ${left} tareas`;
+  const nextDl = [...open.filter(t => t.due), ...goals.filter(g => goalStatus(g) !== 'cumplido' && g.due)].sort(sortByDue)[0];
+  const hero = `<section class="pj-hero glass" style="--c:${p.color}">
+    <div class="pj-hero-main" data-live="pj-hero">
+      ${projRing(pr, 'lg')}
+      <div class="pj-hero-text">
+        <div class="pj-hero-t">${title}</div>
+        ${stateLine(st)}
+        <div class="pj-hero-l">${[goals.length && `${goals.length} objetivo${goals.length === 1 ? '' : 's'}`, pr.total && `${pr.pct}% hecho`, nextDl && st.k !== 'soon' && `${nextDl.horizon ? 'meta' : 'plazo'} ${esc(relDay(nextDl.due).toLowerCase())}`].filter(Boolean).join(' · ')}</div>
+      </div>
+    </div>
+    ${p.notes ? `<div class="pj-notes">${esc(p.notes)}</div>` : ''}
+  </section>`;
   let body = '';
   if (tab === 'resumen') {
-    const nextTasks = tasks.filter(t => !t.done).sort(sortByDue).slice(0, 5);
-    const today = todayStr();
-    const deadlines = [...tasks.filter(t => !t.done && t.due), ...goals.filter(g => g.status !== 'cumplido' && g.due)]
-      .filter(x => daysBetween(today, x.due) <= 30).sort(sortByDue).slice(0, 6);
-    body = `<div class="detail-grid">
-      <div class="col-side"><div class="card glass info-card">
-        <div class="meta"><span class="tag">${goals.length} objetivo${goals.length === 1 ? '' : 's'}</span>${p.archived ? '<span class="tag">Archivado</span>' : ''}</div>
-        ${statRow('project-progress', pr.pct, `${pr.pct}% · ${pr.done}/${pr.total}`)}
-        ${p.notes ? `<div class="notes">${esc(p.notes)}</div>` : ''}
-      </div></div>
-      <div class="col-main">
-        <div class="section"><div class="section-head"><h2>Siguientes tareas</h2></div>${nextTasks.length ? taskList(nextTasks, { hideProject: true }) : emptyBox('No hay tareas pendientes.')}${quickAdd({ project: p.id })}</div>
-        <div class="section"><div class="section-head"><h2>Próximos plazos</h2></div>${deadlines.length ? `<div class="settings-group glass">${deadlines.map(x => `<a class="item" href="${x.horizon ? '#objetivo/' + x.id : '#proyecto/' + p.id + '/tareas'}"><span>${x.horizon ? I.target : '☑'} ${esc(x.title)}</span><span class="tag ${x.due < today ? 'warn' : ''}">${esc(relDay(x.due))}</span></a>`).join('')}</div>` : emptyBox('Nada vence en los próximos 30 días.')}</div>
-      </div></div>`;
+    const nextEv = next && blocksOfTask(next.id).filter(e => e.date >= today).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))[0];
+    const after = open.slice(1, 5);
+    body = `
+    <div class="section">
+      <div class="section-head"><h2>Ahora toca</h2></div>
+      ${next ? `<div class="pj-now glass" style="--c:${p.color}">
+          <button class="pj-now-t" data-act="edit-task" data-id="${next.id}">${esc(next.title)}</button>
+          <div class="pj-now-m">${[next.due ? `<span class="${isOverdue(next) ? 'warn-text' : ''}">Plazo ${esc(relDay(next.due).toLowerCase())}</span>` : 'Sin plazo', next.estimate && durLabel(next.estimate), nextEv && `reservado ${esc(relDay(nextEv.date).toLowerCase())} ${esc(nextEv.start)}`, next.goalId && goal(next.goalId) && `◎ ${esc(goal(next.goalId).title)}`].filter(Boolean).join(' · ')}</div>
+          ${next.firstStep ? `<div class="pj-now-step"><span class="step-ic">→</span>${esc(next.firstStep)}</div>` : ''}
+          <div class="pj-now-a">
+            <button class="btn primary" data-act="focus-open" data-id="${next.id}">${I.play}<span>Empezar</span></button>
+            <button class="btn" data-act="reserve-task" data-id="${next.id}">${I.cal}<span>Reservar</span></button>
+          </div>
+        </div>`
+        : `<div class="pj-now glass empty-now"><div class="pj-now-t">${pr.total ? 'No queda nada pendiente' : '¿Cuál es el primer paso?'}</div><div class="pj-now-m">${pr.total ? 'Añade el siguiente paso o archiva el proyecto si ya está terminado.' : 'Algo pequeño que puedas hacer hoy en menos de 30 minutos.'}</div>
+          <div class="pj-now-a"><button class="btn primary" data-act="new-task" data-project="${p.id}">${I.plus}<span>Añadir paso</span></button>${pr.total && !p.archived ? `<button class="btn" data-act="project-archive" data-id="${p.id}">${I.archive}<span>Archivar</span></button>` : ''}</div></div>`}
+    </div>
+    <div class="section">
+      <div class="section-head"><h2>Objetivos</h2><button class="btn small ghost" data-act="new-goal" data-project="${p.id}">${I.plus}<span>Objetivo</span></button></div>
+      ${goals.length ? `<ul class="pj-goals glass">${goals.map(goalRow).join('')}</ul>` : `<p class="hint">Un objetivo es una meta con fecha dentro del proyecto (por ejemplo, «Publicar la web antes de enero»).</p>`}
+    </div>
+    <div class="section">
+      <div class="section-head"><h2>Después</h2>${open.length > 5 ? `<a class="btn small ghost" href="#proyecto/${p.id}/tareas">Ver las ${open.length}</a>` : ''}</div>
+      ${taskList(after, { hideProject: true })}${quickAdd({ project: p.id }, 'Añadir un paso')}
+    </div>`;
   } else if (tab === 'objetivos') {
     body = `<div class="section"><div class="section-head"><h2>Objetivos · ${goals.length}</h2><button class="btn small" data-act="new-goal" data-project="${p.id}">${I.plus}<span>Objetivo</span></button></div>
       ${goals.length ? `<div class="grid">${goals.map(goalCard).join('')}</div>` : emptyBox('Añade un objetivo con plazo a este proyecto.')}</div>`;
   } else {
-    const sorted = tasks.slice().sort(sortByDue);
-    body = `<div class="section"><div class="section-head"><h2>Tareas · ${pr.total - pr.done} pendientes</h2></div>
-      ${taskList(sorted, { hideProject: true })}${quickAdd({ project: p.id })}
-      <p class="hint">Aquí también aparecen las tareas de los objetivos de este proyecto.</p></div>`;
+    const done = tasks.filter(t => t.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    body = `<div class="section"><div class="section-head"><h2>Pendientes · ${open.length}</h2></div>
+      ${taskList(open, { hideProject: true })}${quickAdd({ project: p.id }, 'Añadir un paso')}
+      <p class="hint">Aquí también aparecen las tareas de los objetivos de este proyecto.</p></div>
+      ${done.length ? collapsible('pj-done', 'Hechas', done.length, taskList(done, { hideProject: true })) : ''}`;
   }
   return `
-  <div class="page page-project">
-  ${pageHead({ eyebrow: backLink('#proyectos', 'Proyectos'), title: `${esc(p.icon || '')} ${esc(p.name)}`, dot: p.color, actions: `${favBtn(p)}<button class="btn" data-act="templates" data-kind="project" data-id="${p.id}" title="Guardar como plantilla">${I.template}<span>Plantilla</span></button><button class="btn" data-act="edit-project" data-id="${p.id}">Editar</button>` })}
-  <div class="segmented" role="tablist">${[['resumen', 'Resumen'], ['objetivos', 'Objetivos'], ['tareas', 'Tareas']].map(([v, l]) => `<button role="tab" class="${tab === v ? 'on' : ''}" data-act="proj-tab" data-id="${p.id}" data-v="${v}">${l}</button>`).join('')}</div>
+  <div class="page page-project page-proj2">
+  ${pageHead({ eyebrow: backLink('#proyectos', 'Proyectos'), title: `${p.icon ? `<span class="h1-emoji">${esc(p.icon)}</span> ` : ''}${esc(p.name)}`, actions: `<button class="btn" data-act="edit-project" data-id="${p.id}">Editar</button><button class="icon-btn pj-more" data-act="project-menu" data-id="${p.id}" aria-label="Más opciones">${I.more}</button>` })}
+  ${hero}
+  <div class="segmented pj-tabs" role="tablist">${[['resumen', 'Resumen'], ['objetivos', `Objetivos${goals.length ? ' · ' + goals.length : ''}`], ['tareas', `Tareas${open.length ? ' · ' + open.length : ''}`]].map(([v, l]) => `<button role="tab" class="${tab === v ? 'on' : ''}" data-act="proj-tab" data-id="${p.id}" data-v="${v}">${l}</button>`).join('')}</div>
   ${body}
   </div>`;
 }
@@ -809,10 +921,26 @@ function agoLabel(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
   return m < 1 ? 'ahora mismo' : m < 60 ? `hace ${m} min` : `hace ${Math.round(m / 60)} h`;
 }
+/* v46: estado de la sincronización con un punto de color (verde = todo subido) */
+function syncLine() {
+  const st = syncState();
+  return st ? `<span class="sync-line grow"><span class="sync-dot ${st.tone}"></span><span>${esc(st.text)}</span></span>` : '';
+}
+/* Aviso en Hoy solo cuando algo no va bien: sin cuenta en este dispositivo, sesión cerrada o error */
+function syncBanner() {
+  const st = syncState();
+  if (!st || st.tone === 'ok' || st.tone === 'busy') return '';
+  if (st.none) { let off = false; try { off = localStorage.getItem('organizador.syncHintOff') === '1'; } catch {} if (off) return ''; }
+  if (st.tone === 'warn' && !st.none && failCount < 3) return '';
+  const msg = st.none ? 'Sin conectar a tu cuenta: lo que crees aquí no llegará a tus otros dispositivos.'
+    : st.lost ? 'Tu sesión se cerró en este dispositivo. Vuelve a entrar para que tus cambios se sincronicen.' : st.text;
+  const act = st.none || st.lost ? `<a class="btn small primary" href="#ajustes/cuenta">${st.lost ? 'Entrar' : 'Conectar'}</a>` : `<button class="btn small" data-act="sync-now">Reintentar</button>`;
+  return `<div class="sync-banner glass ${st.tone}"><span class="sync-dot ${st.tone}"></span><span class="grow">${msg}</span>${act}${st.none ? `<button class="icon-btn" data-act="sync-hint-off" aria-label="No mostrar más">${I.close}</button>` : ''}</div>`;
+}
 function syncSection() {
   let body;
   if (!cloudReady()) body = `<div class="item"><span class="muted">Aún no está activada. Cuando esté, podrás entrar con tu email y tener los mismos datos en el móvil y el ordenador.</span></div>`;
-  else if (!getSession()) body = `${syncInfo.notice ? `<div class="item"><span class="grow">${syncInfo.notice}</span></div>` : ''}
+  else if (!getSession()) body = `<div class="item">${syncLine()}</div>${syncInfo.notice ? `<div class="item"><span class="grow">${syncInfo.notice}</span></div>` : ''}
     <form class="item login" data-act="login">
       <input type="email" name="email" placeholder="Email" autocomplete="email" aria-label="Email" required>
       <input type="password" name="password" placeholder="Contraseña" autocomplete="current-password" aria-label="Contraseña" minlength="6">
@@ -822,14 +950,14 @@ function syncSection() {
     const s = getSession();
     body = `${syncInfo.needPassword ? `<form class="item login" data-act="new-password"><span class="grow">Pon tu contraseña nueva</span><input type="password" name="password" placeholder="Contraseña nueva" autocomplete="new-password" aria-label="Contraseña nueva" minlength="6" required><button class="btn small primary" type="submit">Guardar</button></form>` : ''}
       <div class="item"><span>Cuenta</span><span class="muted">${esc((s.user && s.user.email) || '…')}</span></div>
-      <div class="item" data-live="sync"><span>${syncInfo.status === 'error' ? `<span style="color:var(--red)">Error: ${esc(syncInfo.error)}</span>` : syncInfo.status === 'syncing' ? 'Sincronizando…' : `Sincronizado ${agoLabel(syncInfo.lastSync)}`}</span><button class="btn small" data-act="sync-now">Sincronizar ahora</button></div>
+      <div class="item" data-live="sync">${syncLine()}<button class="btn small" data-act="sync-now">Sincronizar ahora</button></div>
       ${CFG.vapidPublicKey ? `<div class="item"><span>Avisos con la app cerrada</span><button class="btn small ${pushActive() ? '' : 'primary'}" data-act="push-toggle">${pushActive() ? 'Desactivar' : 'Activar'}</button></div>` : ''}
       <div class="item"><span>Cerrar sesión en este dispositivo</span><button class="btn small danger" data-act="sign-out">Salir</button></div>`;
   }
   return `<div class="section">
     <div class="section-head"><h2>Cuenta y sincronización</h2></div>
     <div class="settings-group glass">${body}</div>
-    <p class="hint">${getSession() ? 'Los cambios se guardan en tu cuenta al momento y se cargan en tus otros dispositivos al abrir la app.' : 'Crea tu cuenta una vez y entra con el mismo email y contraseña en el móvil y en el ordenador. En iPhone, para recibir avisos con la app cerrada, instálala en la pantalla de inicio.'}</p>
+    <p class="hint">${getSession() ? 'Lo que creas o cambias se sube a tu cuenta en unos segundos y aparece en tus otros dispositivos al abrir la app (o en menos de un minuto si ya está abierta). Si usas dos dispositivos a la vez, se juntan los cambios de los dos: no se pierde nada.' : 'Crea tu cuenta una vez y entra con el mismo email y contraseña en el móvil y en el ordenador. En iPhone, para recibir avisos con la app cerrada, instálala en la pantalla de inicio.'}</p>
   </div>`;
 }
 
@@ -1080,8 +1208,8 @@ function settingsSummary(k) {
 function accountCard() {
   const sess = cloudReady() && getSession(), email = sess && sess.user && sess.user.email;
   const sub = !cloudReady() ? 'Tus datos se guardan en este dispositivo'
-    : !sess ? 'Entra para tener tus datos en el móvil y el ordenador'
-    : syncInfo.status === 'error' ? 'No se pudo sincronizar' : syncInfo.status === 'syncing' ? 'Sincronizando…' : `Sincronizado ${agoLabel(syncInfo.lastSync)}`;
+    : !sess ? `<span class="sync-line" data-live="acc"><span class="sync-dot ${syncState().tone}"></span>${esc(syncState().lost ? 'Sesión cerrada: entra de nuevo' : 'Entra para tener tus datos en el móvil y el ordenador')}</span>`
+    : `<span class="sync-line" data-live="acc"><span class="sync-dot ${syncState().tone}"></span>${esc(syncState().text)}</span>`;
   return `<a class="account-card glass" href="#ajustes/cuenta">
     <span class="acc-avatar">${email ? esc(email[0].toUpperCase()) : '<img src="icons/icon.svg" alt="" width="44" height="44">'}</span>
     <span class="grow"><b>${email ? esc(email) : 'Sin cuenta'}</b><span class="small muted">${sub}</span></span>
@@ -1208,6 +1336,7 @@ function openModal(title, body, opts = {}) {
   delete modalForm.dataset.tagsTouched; delete modalForm.dataset.colorTouched; modalForm._autoTag = null;
   closeModalNow();
   modal.showModal();
+  markOpened(modal);
   modalForm.scrollTop = 0;
   /* Sin esto el navegador enfoca «Cancelar» y lo dibuja como seleccionado */
   modalForm.focus({ preventScroll: true });
@@ -1266,7 +1395,8 @@ modalForm.addEventListener('change', e => {
   if (e.target.name === 'progressMode') modalForm.dataset.pm = e.target.value;
   if (e.target.name === 'p' && e.target.checked && $$('input[name=p]:checked', modalForm).length > 3) { e.target.checked = false; toast('Como máximo 3 prioridades'); }
 });
-modal.addEventListener('click', e => { if (e.target === modal) modal.close(); });
+/* Tocar fuera cierra la hoja, solo si el toque empezó fuera y no es el mismo toque que la abrió */
+modal.addEventListener('click', e => { if (backdropTap(e, modal)) modal.close(); else if (e.target === modal) e.preventDefault(); });
 /* v23: la hoja se va deslizando hacia abajo (o se desvanece en el ordenador) en vez de desaparecer de golpe */
 const nativeClose = HTMLDialogElement.prototype.close;
 function closeModalNow() {
@@ -1280,6 +1410,7 @@ modal.close = function (v) {
   modal._t = setTimeout(() => { modal.classList.remove('is-closing'); if (modal.open) nativeClose.call(modal, v); }, 200);
 };
 modal.addEventListener('cancel', e => { e.preventDefault(); modal.close(); });
+modal.addEventListener('close', () => { if (syncInfo.pending && getSession()) setTimeout(() => syncNow(), 400); });
 
 function optionList(items, selected, label, emptyLabel) {
   return `<option value="">${emptyLabel}</option>` + items.map(i => `<option value="${i.id}" ${i.id === selected ? 'selected' : ''}>${esc(label(i))}</option>`).join('');
@@ -1814,6 +1945,7 @@ function openFocus(id) {
   const wasOpen = !layer.hidden;
   if (!wasOpen) layer.innerHTML = '';
   renderFocus();
+  if (!wasOpen) markOpened(layer);
   layer.hidden = false;
   document.body.classList.add('focus-open');
 }
@@ -2319,6 +2451,9 @@ document.addEventListener('click', e => {
     case 'focus-again': setSummary(null); renderFocus(); return;
     case 'edit-project': projectModal(project(id)); return;
     case 'project-fav': e.preventDefault(); { const p = project(id); p.favorite = !p.favorite; haptic(); } break;
+    case 'project-menu': projectMenu(project(id)); return;
+    case 'project-archive': setProjectArchived(project(id), !project(id).archived); return;
+    case 'projects-view': projectsViewSheet(); return;
     case 'proj-tab': location.hash = `#proyecto/${id}/${el.dataset.v}`; return;
     case 'new-goal': goalModal({ projectId: el.dataset.project || null }); return;
     case 'edit-goal': goalModal(goal(id)); return;
@@ -2334,6 +2469,7 @@ document.addEventListener('click', e => {
       break;
     }
     case 'sync-now': syncNow(true); return;
+    case 'sync-hint-off': try { localStorage.setItem('organizador.syncHintOff', '1'); } catch {} refreshLive(); return;
     case 'onboarding': startOnboarding(); return;
     case 'tour': startTour(); return;
     case 'tour-screens': resetTours(); setFlag(TOUR_KEY); toast('Verás de nuevo la explicación al entrar en cada pantalla'); return;
@@ -2490,7 +2626,8 @@ function onNewDayOrReturn() {
   return created || changed;
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { save(true); focusNote(true); return; }
+  /* Al salir de la app se suben ya los cambios pendientes (el iPhone la congela enseguida) */
+  if (document.visibilityState === 'hidden') { save(true); focusNote(true); if (syncInfo.pending) syncNow(); return; }
   closeFocusNote();
   { const s = getSummary(); if (s && !getTimer() && $('#focus').hidden && task(s.taskId) && Date.now() - s.at < 3 * 3600000) setTimeout(() => openFocus(s.taskId), 300); }
   if (modal.open) return;
@@ -2510,13 +2647,27 @@ setInterval(() => {
   checkReminders();
 }, 30000);
 $('#focus-pill').addEventListener('click', () => { const tm = getTimer(); if (tm && tm.taskId) openFocus(tm.taskId); });
-$('#focus').addEventListener('click', e => { if (e.target.id === 'focus') closeFocus(); });
+$('#focus').addEventListener('click', e => { if (backdropTap(e, $('#focus'))) closeFocus(); });
 
 /* ---------- PWA ---------- */
 
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; });
+/* v44: la app se actualiza sola. En iPhone la app instalada se queda abierta en memoria y no
+   volvía a pedir la página, así que seguías viendo la versión vieja. Ahora, al volver a la app
+   (y cada 30 min) se busca versión nueva; cuando llega, se recarga en cuanto no estés
+   escribiendo ni con una ventana abierta (tus datos ya están guardados). */
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW', err)));
+  const hadCtrl = !!navigator.serviceWorker.controller;
+  let swReloading = false;
+  const busy = () => !!document.querySelector('dialog[open], #voice.open') || (typeof overlayOpen === 'function' && overlayOpen())
+    || (document.activeElement && document.activeElement.matches('input:not([type=checkbox]):not([type=radio]), textarea'));
+  const reloadWhenIdle = () => { if (busy() && !document.hidden) { setTimeout(reloadWhenIdle, 2000); return; } location.reload(); };
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadCtrl || swReloading) return; swReloading = true; reloadWhenIdle(); });
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+    const check = () => reg.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    setInterval(check, 30 * 60000);
+  }).catch(err => console.warn('SW', err)));
 }
 
 /* ---------- Arranque ---------- */
@@ -2548,4 +2699,5 @@ if (wasReset) { save(); toast('Nueva versión: empiezas con la app vacía. Tus a
 setTimeout(checkReminders, 2000);
 refreshCalendars().then(changed => { if (changed && !modal.open) rerender(); }).catch(() => {});
 if (cameFromLogin) firstSync().then(rerender).catch(e => toast(e.message)); else syncNow();
-setInterval(() => { if (document.visibilityState === 'visible' && !modal.open) syncNow(); }, 120000);
+/* Con la app abierta se miran los cambios de tus otros dispositivos cada 30 s */
+setInterval(() => { if (document.visibilityState === 'visible' && !modal.open) syncNow(); }, 30000);

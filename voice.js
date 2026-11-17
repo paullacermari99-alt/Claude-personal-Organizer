@@ -387,6 +387,7 @@ function vShow(text) {
 let vHideT = null;
 function openVoice() {
   clearTimeout(vTimer); clearTimeout(vHideT);
+  if (vBack.hidden) markOpened(vBack);
   vEl.hidden = false; vBack.hidden = false;
   const inp = $('.voice-type input', vEl);
   inp.value = '';
@@ -455,7 +456,7 @@ document.addEventListener('click', e => {
   else if (k === 'idle') vIdle();
   else if (k === 'kbd') { vSession++; stopListening(true); vEl.classList.remove('listening'); vRender('Pulsa el micrófono 🎤 de tu teclado y habla', '<p class="voice-hint">Cuando acabes, pulsa «Ir» en el teclado.</p>'); $('.voice-type input', vEl).focus(); vFollowKeyboard(true); }
 });
-vBack.addEventListener('click', closeVoice);
+vBack.addEventListener('click', e => { if (backdropTap(e, vBack)) closeVoice(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !vEl.hidden) closeVoice(); });
 $('.voice-type', vEl).addEventListener('submit', e => {
   e.preventDefault();
