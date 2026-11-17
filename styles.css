@@ -2387,15 +2387,19 @@ html[data-pro="free"] .fab-mic::after { position: absolute; top: -6px; right: -8
 }
 html:has(#pro-store[open]) { overflow: hidden; }
 
-/* v55: barra de abajo con el resaltado concéntrico. La barra y la pastilla del seleccionado son
-   cápsulas y el hueco es igual por los cuatro lados, así que en los extremos la curva del resaltado
-   sigue exactamente la de la barra (radio de la pastilla = radio de la barra − hueco). */
+/* v56: barra de abajo menos circular. Antes era una cápsula y los textos de los extremos
+   («Hoy», «Proyectos») quedaban pegados a la curva. Ahora es un rectángulo con esquinas
+   redondeadas, con el mismo hueco por los cuatro lados, y el resaltado sigue siendo concéntrico:
+   radio del resaltado = radio de la barra − hueco. */
 @media (max-width: 1023px) {
-  .nav { --nav-pad: 6px; padding: var(--nav-pad); border-radius: 999px; }
-  .nav a { border-radius: 999px; }
-  [data-skin="compacto"] .nav { --nav-pad: 5px; padding: var(--nav-pad); border-radius: 999px; }
-  [data-skin="compacto"] .nav a { border-radius: 999px; }
+  .nav { --nav-pad: 6px; --nav-r: 22px; padding: var(--nav-pad); border-radius: var(--nav-r); left: 8px; right: 8px; }
+  .nav a { border-radius: calc(var(--nav-r) - var(--nav-pad) - .5px); }
+  [data-skin="compacto"] .nav { --nav-pad: 5px; --nav-r: 18px; padding: var(--nav-pad); border-radius: var(--nav-r); }
+  [data-skin="compacto"] .nav a { border-radius: calc(var(--nav-r) - var(--nav-pad) - .5px); }
 }
+/* Cada pestaña mide lo que su nombre más un margen igual para todas: «Proyectos» y «Objetivos»
+   ya no van apretados contra el borde, y todos los textos tienen el mismo aire a los lados */
+@media (max-width: 1023px) { .nav a { flex: 1 1 auto; min-width: 0; padding-left: 2px; padding-right: 2px; } }
 @media (max-width: 360px) {
   .nav, [data-skin="compacto"] .nav { --nav-pad: 5px; padding: var(--nav-pad); }
 }
