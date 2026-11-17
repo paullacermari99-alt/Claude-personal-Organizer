@@ -15,6 +15,7 @@ const svg = (d, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="cur
 const I = {
   star: svg('<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>'),
   starFill: svg('<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill="currentColor"/>'),
+  more: svg('<circle cx="5.5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.6" fill="currentColor" stroke="none"/>'),
   left: svg('<path d="M14.5 5.5L8 12l6.5 6.5"/>', 'stroke-width="2.2"'),
   right: svg('<path d="M9.5 5.5L16 12l-6.5 6.5"/>', 'stroke-width="2.2"'),
   down: svg('<path d="M6 9.5l6 6 6-6"/>', 'stroke-width="2.2"'),
