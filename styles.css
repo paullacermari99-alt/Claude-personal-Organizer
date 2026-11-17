@@ -957,16 +957,17 @@ body.focus-open { overflow: hidden; }
 .j-moods { display: flex; gap: 6px; flex-wrap: wrap; }
 .j-mood { width: 42px; height: 42px; border-radius: 50%; border: 0; background: var(--fill); font-size: 22px; cursor: pointer; filter: grayscale(.85); opacity: .7; transition: transform .15s, filter .15s, opacity .15s; }
 .j-mood.on { filter: none; opacity: 1; transform: scale(1.12); background: var(--fill-2); }
-/* v60–61: 6 píldoras; 1–2 rojo, 3–4 naranja, 5–6 verde. Apagadas llevan un tinte de su zona.
-   El botón mide 32 px de alto para tocarlo bien; la píldora visible es de 12 px (padding + content-box) */
+/* v60–62: 6 rectángulos planos con esquinas redondeadas; 1–2 rojo, 3–4 naranja, 5–6 verde. Apagadas llevan un tinte de su zona.
+   El botón mide 32 px de alto para tocarlo bien; el rectángulo visible es de 14 px con esquinas de 5 px (::before) */
 .j-energy { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; --lv: var(--green); }
 .j-energy.lv-low { --lv: var(--red); }
 .j-energy.lv-mid { --lv: var(--orange); }
-.j-en { flex: 0 1 32px; min-width: 0; height: 32px; border-radius: 999px; border: 0; padding: 10px 0; cursor: pointer; transition: background-color .2s, transform .15s; --z: var(--green); background-color: color-mix(in srgb, var(--z) 16%, var(--fill)); background-clip: content-box; }
+.j-en { flex: 0 1 32px; min-width: 0; height: 32px; border: 0; padding: 0; background: none; cursor: pointer; display: flex; align-items: center; --z: var(--green); }
+.j-en::before { content: ""; display: block; width: 100%; height: 14px; border-radius: 5px; background: color-mix(in srgb, var(--z) 16%, var(--fill)); transition: background-color .2s, transform .15s; }
 .j-en.z-low { --z: var(--red); }
 .j-en.z-mid { --z: var(--orange); }
-.j-en.on { background-color: var(--lv); }
-.j-en:active { transform: scaleX(.9); }
+.j-en.on::before { background: var(--lv); }
+.j-en:active::before { transform: scale(.92); }
 .j-en.z-low + .j-en.z-mid, .j-en.z-mid + .j-en.z-high { margin-left: 4px; }
 
 /* v61: cada ánimo se mueve a su manera al elegirlo (.pop) y luego respira suave mientras está elegido */
