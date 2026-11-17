@@ -13,7 +13,7 @@ let focusMins = null;
 let toastTimer, toastAction = null;
 function toast(msg, opts = {}) {
   const el = $('#toast');
-  el.innerHTML = `<span>${esc(msg)}</span>${opts.action ? `<button type="button" class="toast-btn">${esc(opts.action)}</button>` : ''}`;
+  el.innerHTML = `<span>${esc(String(msg).replace(/● /g, ""))}</span>${opts.action ? `<button type="button" class="toast-btn">${esc(opts.action)}</button>` : ''}`;
   toastAction = opts.onAction || null;
   el.classList.toggle('actionable', !!opts.action);
   /* Capa superior: así el aviso se ve encima de una hoja abierta */
@@ -1097,6 +1097,7 @@ function openModal(title, body, opts = {}) {
     ${body}
     ${opts.onDelete ? `<button type="button" class="btn wide danger" data-modal="delete">${opts.deleteLabel || 'Eliminar'}</button>` : ''}`;
   modalOpts = opts;
+  delete modalForm.dataset.tagsTouched; delete modalForm.dataset.colorTouched; modalForm._autoTag = null;
   closeModalNow();
   modal.showModal();
   modalForm.scrollTop = 0;
@@ -1131,13 +1132,27 @@ modalForm.addEventListener('input', e => {
   if (e.target.id === 'gsearch') { $('#gs-results', modalForm).innerHTML = searchResults(e.target.value); return; }
   const c = e.target.dataset.customFor;
   if (c) { const r = modalForm.querySelector(`input[name="${c}"][value="custom"]`); if (r) r.checked = true; }
+  if (e.target.dataset.ctxColor && !modalForm.dataset.colorTouched) {
+    const cx = contextOf(e.target.value), r = cx && modalForm.querySelector(`input[name=color][value="${contextColor(cx)}"]`);
+    if (r) r.checked = true;
+  }
   if (e.target.dataset.nl) {
     const pv = $('.nl-preview', modalForm);
-    const found = e.target.value.trim().length > 2 ? parseQuick(e.target.value).found : [];
-    if (pv) { pv.innerHTML = found.map(x => `<span class="tag">${esc(x)}</span>`).join(''); pv.classList.toggle('on', found.length > 0); }
+    const pq = e.target.value.trim().length > 2 ? parseQuick(e.target.value) : null, found = pq ? pq.found : [];
+    /* v32: marca sola la etiqueta del tema (si existe y no has tocado las etiquetas) */
+    if (!modalForm.dataset.tagsTouched) {
+      const prev = modalForm._autoTag && modalForm.querySelector(`input[name=tag][value="${modalForm._autoTag}"]`);
+      if (prev) prev.checked = false;
+      modalForm._autoTag = null;
+      const tg = pq && pq.context && contextTag(pq.context, false), box = tg && modalForm.querySelector(`input[name=tag][value="${tg.id}"]`);
+      if (box && !modalForm.querySelector('input[name=tag]:checked')) { box.checked = true; modalForm._autoTag = tg.id; }
+    }
+    if (pv) { pv.innerHTML = foundChips(found); pv.classList.toggle('on', found.length > 0); }
   }
 });
 modalForm.addEventListener('change', e => {
+  if (e.isTrusted && e.target.name === 'tag') modalForm.dataset.tagsTouched = '1';
+  if (e.isTrusted && (e.target.name === 'color' || e.target.name === 'colorCustom')) modalForm.dataset.colorTouched = '1';
   if (e.target.name === 'repeat') modalForm.dataset.rep = e.target.value;
   if (e.target.name === 'repUnit') modalForm.dataset.rpt = e.target.value;
   if (e.target.name === 'progressMode') modalForm.dataset.pm = e.target.value;
@@ -1269,6 +1284,8 @@ function taskModal(t0 = {}) {
           if (p.projectId && !obj.projectId) obj.projectId = p.projectId;
           for (const name of p.newTags) { const tg = { id: uid(), name, color: COLORS[state.tags.length % COLORS.length] }; state.tags.push(tg); p.tags.push(tg.id); }
           obj.tags = [...new Set([...obj.tags, ...p.tags])];
+          /* v32: tema automático solo si no has elegido etiqueta, proyecto ni objetivo */
+          if (p.context && !obj.tags.length && !obj.projectId && !obj.goalId) obj.tags = [contextTag(p.context).id];
           nlTime = p.time;
           if (!voiced) toast('Añadida · ' + p.found.join(' · '));
         }
@@ -1534,7 +1551,7 @@ function goalModal(g0 = {}) {
   const isNew = !g0.id;
   const g = isNew ? { title: '', horizon: 'corto', due: '', description: '', success: '', projectId: null, progressMode: 'auto', progress: 0, color: COLORS[(state.goals.length + 1) % COLORS.length], ...g0 } : g0;
   openModal(isNew ? 'Nuevo objetivo' : 'Objetivo', `
-    <label class="field">Objetivo<input type="text" name="title" required value="${esc(g.title)}" placeholder="Correr 10 km en menos de 60 min"></label>
+    <label class="field">Objetivo<input type="text" name="title" required value="${esc(g.title)}" placeholder="Correr 10 km en menos de 60 min" ${isNew ? 'data-ctx-color="1"' : ''}></label>
     <div class="row">
       <label class="field">Horizonte<select name="horizon" required>${Object.entries(HORIZONS).map(([k, l]) => `<option value="${k}" ${g.horizon === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label class="field">Plazo<input type="date" name="due" required value="${esc(g.due || '')}"></label>
@@ -1547,6 +1564,11 @@ function goalModal(g0 = {}) {
     <div class="field">Color${colorField('color', g.color)}</div>`, {
     onSave: d => {
       const obj = isNew ? { id: uid(), status: 'activo', achievedAt: null, createdAt: Date.now() } : goal(g.id);
+      /* v32: si no has tocado el color, el del proyecto o el del tema («correr» → Deporte) */
+      if (isNew && readColor(d, 'color') === g.color) {
+        const pj = d.projectId && project(d.projectId), cx = contextOf(d.title);
+        if (pj) d.color = pj.color; else if (cx) d.color = contextColor(cx);
+      }
       Object.assign(obj, { title: d.title.trim(), horizon: d.horizon, due: d.due, description: d.description.trim(), success: d.success.trim(), projectId: d.projectId || null, progressMode: d.progressMode, progress: Number(d.progress) || 0, color: readColor(d, 'color') || COLORS[0] });
       if (isNew) { state.goals.push(obj); setTimeout(() => { location.hash = '#objetivo/' + obj.id; }); }
     },
@@ -2286,7 +2308,7 @@ document.addEventListener('input', e => {
     const prev = el.form && el.form.nextElementSibling;
     if (prev && prev.classList.contains('qa-preview')) {
       const found = el.value.trim().length > 2 ? parseQuick(el.value).found : [];
-      prev.innerHTML = found.map(x => `<span class="tag">${esc(x)}</span>`).join('');
+      prev.innerHTML = foundChips(found);
       prev.classList.toggle('on', found.length > 0);
     }
   }

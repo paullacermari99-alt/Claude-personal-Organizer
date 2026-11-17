@@ -153,6 +153,9 @@ function parseQuick(text, today = todayStr()) {
 
   out.title = s.replace(/\s+/g, ' ').replace(/\s+(a|el|la|para|de)$/i, '').trim();
   out.title = cap(out.title);
+  /* v32: el tema (y su color) según lo que dices, si no has puesto etiqueta ni proyecto */
+  out.context = !out.projectId && !out.tags.length && !out.newTags.length && out.title ? contextOf(out.title) : null;
+  if (out.context) out.found.push('● ' + out.context.name);
   return out;
 }
 const durLabelShort = m => m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}` : `${m} min`;
@@ -165,6 +168,7 @@ function addParsedTask(text, ctx = {}) {
     const tg = { id: uid(), name, color: COLORS[state.tags.length % COLORS.length] };
     state.tags.push(tg); p.tags.push(tg.id);
   }
+  if (p.context && !ctx.projectId && !ctx.goalId) p.tags.push(contextTag(p.context).id);
   const t = newTask({
     title: p.title, due: p.due || ctx.due || null, projectId: p.projectId || ctx.projectId || null, goalId: ctx.goalId || null,
     tags: p.tags, priority: p.priority || 'none', estimate: p.estimate, repeat: p.repeat,

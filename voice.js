@@ -45,7 +45,6 @@ function listen(h) {
   try { rec.start(); } catch (_) { if (h.onError) h.onError('No se ha podido empezar a dictar.'); return false; }
   voiceRec = rec;
   rec._max = setTimeout(() => stopListening(false), 15000); /* nunca se queda escuchando para siempre */
-  if (navigator.vibrate) try { navigator.vibrate(12); } catch (_) { /* sin vibración */ }
   return true;
 }
 
@@ -127,8 +126,8 @@ function dateOf(text) {
   const p = parseQuick('x ' + text, todayStr());
   return { due: p.due, time: p.time, found: p.found };
 }
-const listTitles = ts => ts.slice(0, 8).map(t => `<li>${esc(t.title)}${t.due && t.due < todayStr() ? ' <span class="muted small">· atrasada</span>' : ''}</li>`).join('') + (ts.length > 8 ? `<li class="muted">y ${ts.length - 8} más</li>` : '');
-const chipsOf = found => found.map(x => `<span class="tag">${esc(x)}</span>`).join('');
+const listTitles = ts => ts.slice(0, 8).map(t => `<li${taskColor(t) ? ` class="has-dot" style="--c:${taskColor(t)}"` : ''}>${esc(t.title)}${t.due && t.due < todayStr() ? ' <span class="muted small">· atrasada</span>' : ''}</li>`).join('') + (ts.length > 8 ? `<li class="muted">y ${ts.length - 8} más</li>` : '');
+const chipsOf = foundChips;
 
 /* Devuelve { say, html?, run?() , go? } — run cambia datos (se confirma antes); go navega al momento */
 function interpret(raw) {
@@ -140,6 +139,51 @@ function interpret(raw) {
   /* Abrir pantallas */
   let m = /^(?:abre|abrir|ve a|ir a|vete a|vamos a|llevame a|ensename|muestrame|ver|pon)\s+(?:(?:la|el|los|las|mis?|pantalla de)\s+)*(\w+)/.exec(n);
   if (m && PAGES[m[1]]) { const [h, l] = PAGES[m[1]]; return { say: 'Abro ' + l, go: () => { location.hash = '#' + h; } }; }
+
+  /* v32: colores. «¿qué tareas verdes tengo?», «mueve las rojas a mañana», «pon el informe en azul» */
+  const cw = COLOR_WORD_RE.exec(n), fam = cw && familyOfWord(cw[1]);
+  if (fam) {
+    const cname = COLOR_NAMES[fam], open = state.tasks.filter(t => !t.done);
+    const ofColor = open.filter(t => colorFamily(taskColor(t)) === fam);
+    /* Mover las de un color */
+    m = /^(?:mueve|mover|pasa|pasar|aplaza|aplazar|cambia|lleva|deja)\s+(?:todas\s+|todos\s+)?(?:las|los)?\s*(?:tareas\s+)?(?:de\s+color\s+|en\s+)?\S+\s+(?:de hoy\s+)?(?:a|al|para)\s+(.+)$/.exec(n);
+    if (m && familyOfWord(n.split(/\s+/).find(w => familyOfWord(w)) || '') === fam && !/^(?:mueve|pasa|cambia|lleva)\s+(?:el|la)\s/.test(n)) {
+      const d = dateOf(text.slice(text.length - m[1].length));
+      const ts = /de hoy/.test(n) ? ofColor.filter(t => t.due && t.due <= todayStr()) : ofColor;
+      if (!d.due) return { say: '¿A qué día? Prueba «mueve las ' + cname + 's a mañana».' };
+      if (!ts.length) return { say: `No tienes tareas ${cname}s pendientes.` };
+      return { say: `Pasar ${ts.length} tarea${ts.length > 1 ? 's' : ''} ${cname}${ts.length > 1 ? 's' : ''} a ${relDay(d.due).toLowerCase()}`, html: `<ul class="voice-list">${listTitles(ts)}</ul>`, run: () => { ts.forEach(t => { t.due = d.due; }); return 'Movidas a ' + relDay(d.due).toLowerCase(); } };
+    }
+    /* Pintar una tarea u objetivo: «pon el informe en azul», «cambia el color de correr a verde» */
+    m = /^(?:pon|ponme|ponle|cambia|cambiar|pinta|pintar|marca|colorea)\s+(?:el\s+color\s+(?:de|del)\s+)?(.+?)\s+(?:en|de|a|al|con)\s+(?:color\s+|el\s+)?\S+$/.exec(n);
+    if (m && familyOfWord(n.split(/\s+/).pop())) {
+      const start = m[0].indexOf(m[1]), name = text.slice(start, start + m[1].length).replace(/^(?:el|la)\s+objetivo\s+/i, '');
+      const t = findTaskByName(name), gq = norm(name).replace(ARTICLE, '').replace(/^objetivo\s+/, '');
+      const g = !t && state.goals.find(x => norm(x.title).includes(gq));
+      if (!t && !g) return { say: `No encuentro ninguna tarea ni objetivo que se llame «${name}».` };
+      if (g) return { say: `Poner en ${cname} el objetivo «${g.title}»`, html: `<div class="voice-chips"><span class="tag dot" style="--c:${paletteColor(fam)}">${esc(cap(cname))}</span></div>`, run: () => { g.color = paletteColor(fam); return 'Color cambiado'; } };
+      /* Una tarea toma el color de su etiqueta: uso una tuya de ese color, o creo una con el nombre del color */
+      const tg = state.tags.find(x => t.tags.includes(x.id) && colorFamily(x.color) === fam) || state.tags.find(x => colorFamily(x.color) === fam);
+      const label = tg ? tg.name : cap(cname);
+      return {
+        say: `Poner en ${cname} «${t.title}»`, html: `<div class="voice-chips"><span class="tag dot" style="--c:${tg ? tg.color : paletteColor(fam)}">${esc(label)}</span></div>${tg ? '' : `<p class="muted small">Creo la etiqueta «${esc(label)}».</p>`}`,
+        run: () => {
+          const use = tg || (state.tags.push({ id: uid(), name: label, color: paletteColor(fam) }), state.tags[state.tags.length - 1]);
+          const themed = new Set(CONTEXTS.map(c => norm(c.name)));
+          t.tags = [use.id, ...t.tags.filter(id => id !== use.id && !themed.has(norm((tag(id) || {}).name || '')))];
+          return 'Color cambiado';
+        },
+      };
+    }
+    /* Preguntar por un color: «¿qué tareas verdes tengo?», «¿qué tengo en rojo?», «objetivos azules» */
+    if (/^(?:que|cuales|y que|dime|muestrame|ensename|ver|lista|mis)\b|^(?:tareas|objetivos)\b/.test(n)) {
+      if (/objetivo/.test(n)) {
+        const gs = state.goals.filter(g => g.status !== 'cumplido' && colorFamily(g.color) === fam);
+        return { say: gs.length ? `Tienes ${gs.length} objetivo${gs.length > 1 ? 's' : ''} ${cname}${gs.length > 1 ? 's' : ''}:` : `No tienes objetivos ${cname}s.`, html: gs.length ? `<ul class="voice-list">${gs.slice(0, 8).map(g => `<li class="has-dot" style="--c:${g.color}">${esc(g.title)}</li>`).join('')}</ul>` : '' };
+      }
+      return { say: ofColor.length ? `Tienes ${ofColor.length} tarea${ofColor.length > 1 ? 's' : ''} ${cname}${ofColor.length > 1 ? 's' : ''}:` : `No tienes tareas ${cname}s pendientes.`, html: ofColor.length ? `<ul class="voice-list">${listTitles(ofColor)}</ul>` : '' };
+    }
+  }
 
   /* Preguntas: ¿qué tengo hoy / mañana / atrasado? */
   if (/^(?:que|y que)\s+(?:tengo|hay|me queda|queda|tengo que hacer)|^(?:que tareas|mis tareas)/.test(n)) {
@@ -220,11 +264,12 @@ function interpret(raw) {
   if (rest) {
     const p = parseQuick(rest, todayStr());
     const due = p.due || addMonths(todayStr(), 3);
-    const title = p.title || cap(rest);
+    const title = summarize(rest) || p.title || cap(rest);
+    const cx = p.context || contextOf(title), gColor = cx ? contextColor(cx) : COLORS[(state.goals.length + 1) % COLORS.length];
     return {
-      say: `Nuevo objetivo «${title}»`, html: `<div class="voice-chips"><span class="tag">🎯 ${esc(HORIZONS[horizonFor(due)])}</span><span class="tag">📅 ${esc(fmtShortDate(due))}</span></div>${p.due ? '' : '<p class="muted small">Sin fecha dicha: le pongo 3 meses. Puedes cambiarla luego.</p>'}`,
-      run: () => {
-        const g = { id: uid(), title, horizon: horizonFor(due), due, description: '', success: '', projectId: null, status: 'activo', achievedAt: null, progressMode: 'auto', progress: 0, color: COLORS[(state.goals.length + 1) % COLORS.length], createdAt: Date.now() };
+      say: 'Nuevo objetivo', title, html: `<div class="voice-chips">${cx ? `<span class="tag dot" style="--c:${gColor}">${esc(cx.name)}</span>` : ''}<span class="tag">🎯 ${esc(HORIZONS[horizonFor(due)])}</span><span class="tag">📅 ${esc(fmtShortDate(due))}</span></div>${p.due ? '' : '<p class="muted small">Sin fecha dicha: le pongo 3 meses. Puedes cambiarla luego.</p>'}`,
+      run: tt => {
+        const g = { id: uid(), title: tt || title, horizon: horizonFor(due), due, description: '', success: '', projectId: null, status: 'activo', achievedAt: null, progressMode: 'auto', progress: 0, color: gColor, createdAt: Date.now() };
         state.goals.push(g);
         return 'Objetivo creado';
       },
@@ -233,12 +278,12 @@ function interpret(raw) {
   rest = tail(new RegExp(CREATE + 'proyecto(?:\\s+de|\\s+llamado|\\s+que se llama)?[\\s:,]+'));
   if (rest) {
     const name = cap(rest);
-    return { say: `Nuevo proyecto «${name}»`, run: () => { state.projects.push({ id: uid(), name, icon: '📁', color: COLORS[state.projects.length % COLORS.length], archived: false, favorite: false, order: state.projects.length, defaultView: 'resumen', notes: '', createdAt: Date.now() }); return 'Proyecto creado'; } };
+    return { say: 'Nuevo proyecto', title: name, run: tt => { state.projects.push({ id: uid(), name: tt || name, icon: '📁', color: COLORS[state.projects.length % COLORS.length], archived: false, favorite: false, order: state.projects.length, defaultView: 'resumen', notes: '', createdAt: Date.now() }); return 'Proyecto creado'; } };
   }
   rest = tail(new RegExp(CREATE + 'habito(?:\\s+de)?[\\s:,]+'));
   if (rest) {
     const title = cap(rest.replace(/\s+(?:cada dia|todos los dias|a diario)$/i, ''));
-    return { say: `Nuevo hábito «${title}», cada día`, run: () => { habits().push({ id: uid(), title, icon: HABIT_ICONS[0], color: COLORS[(habits().length + 2) % COLORS.length], freq: 'daily', days: [], n: 3, done: {}, createdAt: Date.now(), order: Date.now() }); return 'Hábito creado. ¡A por la racha!'; } };
+    return { say: 'Nuevo hábito, cada día', title, run: tt => { habits().push({ id: uid(), title: tt || title, icon: HABIT_ICONS[0], color: COLORS[(habits().length + 2) % COLORS.length], freq: 'daily', days: [], n: 3, done: {}, createdAt: Date.now(), order: Date.now() }); return 'Hábito creado. ¡A por la racha!'; } };
   }
 
   /* Por defecto: una tarea («dentista mañana a las 10») */
@@ -246,9 +291,14 @@ function interpret(raw) {
   const p = parseQuick(body, todayStr());
   if (!p.title) return { say: 'No te he entendido. Prueba otra vez.' };
   const ctx = location.hash.startsWith('#proyecto/') ? { projectId: location.hash.split('/')[1] } : {};
+  const short = summarize(p.title);
   return {
-    say: `Nueva tarea «${p.title}»`, html: p.found.length ? `<div class="voice-chips">${chipsOf(p.found)}</div>` : '<p class="muted small">Sin fecha: irá a la bandeja de Tareas.</p>',
-    run: () => { addParsedTask(body, ctx); return 'Tarea añadida'; },
+    say: 'Nueva tarea', title: short || cap(p.title.replace(/^(?:quiero|quisiera|me gustaria|me gustaría|necesito)\s+/i, '')), html: p.found.length ? `<div class="voice-chips">${chipsOf(p.found)}</div>` : '<p class="muted small">Sin fecha: irá a la bandeja de Tareas.</p>',
+    run: tt => {
+      const t = addParsedTask(body, ctx);
+      if (t && tt && tt !== t.title) { state.events.forEach(e => { if (e.taskId === t.id) e.title = tt; }); t.title = tt; }
+      return 'Tarea añadida';
+    },
   };
 }
 
@@ -301,14 +351,17 @@ function vListen() {
 function vShow(text) {
   const r = interpret(text);
   vPlan = r;
-  const heard = `<p class="voice-heard">«${esc(cleanVoice(text))}»</p>`;
+  const heard = `<p class="voice-heard">Has dicho: «${esc(cleanVoice(text))}»</p>`;
   if (r.go) { vRender(r.say, heard); clearTimeout(vTimer); vTimer = setTimeout(() => { closeVoice(); r.go(); }, 450); return; }
-  if (r.run) vRender(r.say, heard + (r.html || ''), '<button type="button" class="btn" data-voice="idle">No</button><button type="button" class="btn primary" data-voice="do">Hacer</button>');
+  /* El título se puede corregir antes de «Hacer» */
+  const edit = r.title != null ? `<label class="voice-edit"><span>Título</span><input type="text" value="${esc(r.title)}" maxlength="120" enterkeyhint="done"></label>` : '';
+  if (r.run) vRender(r.say, edit + heard + (r.html || ''), '<button type="button" class="btn" data-voice="idle">No</button><button type="button" class="btn primary" data-voice="do">Hacer</button>');
   else vRender(r.say, heard + (r.html || ''));
 }
+let vHideT = null;
 function openVoice() {
-  clearTimeout(vTimer);
-  vEl.hidden = false; vBack.hidden = false; document.body.classList.add('voice-open');
+  clearTimeout(vTimer); clearTimeout(vHideT);
+  vEl.hidden = false; vBack.hidden = false;
   $('.voice-type input', vEl).value = '';
   vIdle();
   requestAnimationFrame(() => { vEl.classList.add('open'); vBack.classList.add('open'); });
@@ -318,17 +371,23 @@ function closeVoice() {
   vSession++;
   stopListening(true);
   clearTimeout(vTimer);
-  vEl.classList.remove('open', 'listening'); vBack.classList.remove('open');
-  vEl.hidden = true; vBack.hidden = true; document.body.classList.remove('voice-open');
   vPlan = null;
+  /* Se desvanece y luego se oculta: sin saltos ni temblores */
+  if (vEl.hidden) return;
+  if (document.activeElement && vEl.contains(document.activeElement)) document.activeElement.blur();
+  vEl.classList.remove('open', 'listening'); vBack.classList.remove('open');
+  clearTimeout(vHideT);
+  vHideT = setTimeout(() => { if (!vEl.classList.contains('open')) { vEl.hidden = true; vBack.hidden = true; } }, reduceMotion() ? 0 : 200);
 }
 function vDo() {
   const r = vPlan;
   if (!r || !r.run) return;
+  const ed = $('.voice-edit input', vEl), title = ed ? ed.value.trim() : null;
+  if (ed && !title) { ed.focus(); return; }
   const snap = JSON.parse(JSON.stringify(state));
-  const msg = r.run();
-  save(); rerender();
+  const msg = r.run(title);
   closeVoice();
+  save(); rerender();
   toast(msg || 'Hecho', { action: 'Deshacer', onAction: () => { Object.keys(state).forEach(k => { if (!(k in snap)) delete state[k]; }); Object.assign(state, snap); save(); rerender(); toast('Deshecho'); } });
 }
 document.addEventListener('click', e => {
@@ -350,6 +409,9 @@ $('.voice-type', vEl).addEventListener('submit', e => {
   vSession++; stopListening(true); vEl.classList.remove('listening');
   inp.value = ''; inp.blur();
   vShow(v);
+});
+$('.voice-more', vEl).addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.closest('.voice-edit')) { e.preventDefault(); vDo(); }
 });
 /* Si sales de la app mientras escucha, deja de escuchar */
 document.addEventListener('visibilitychange', () => { if (document.hidden) stopListening(true); });

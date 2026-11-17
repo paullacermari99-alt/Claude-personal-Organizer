@@ -1720,7 +1720,7 @@ body[data-page="planificar"] .fab { display: none; }
 }
 .fab-mic svg { width: 22px; height: 22px; }
 .fab-mic:active { transform: scale(.9); }
-body[data-page="planificar"] .fab-mic, body.voice-open .fab-mic { display: none; }
+body[data-page="planificar"] .fab-mic { display: none; }
 @media (min-width: 1024px) { .fab-mic { right: 24px; bottom: 24px; width: 52px; height: 52px; } }
 
 .voice-back { position: fixed; inset: 0; z-index: 44; background: rgba(0, 0, 0, .18); opacity: 0; transition: opacity .2s; }
@@ -1730,7 +1730,7 @@ body[data-page="planificar"] .fab-mic, body.voice-open .fab-mic { display: none;
   max-width: 460px; margin: 0 auto; padding: 14px 16px 16px; border-radius: 26px;
   background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
   border: .5px solid var(--glass-border); box-shadow: 0 18px 50px rgba(0, 0, 0, .22);
-  opacity: 0; transform: translateY(14px) scale(.98); transform-origin: bottom right; transition: opacity .2s, transform .22s;
+  opacity: 0; transform: translateY(10px); transition: opacity .2s ease, transform .2s ease;
   max-height: calc(100dvh - var(--tab-h) - 140px); overflow-y: auto; overscroll-behavior: contain;
 }
 .voice.open { opacity: 1; transform: none; }
@@ -1762,3 +1762,9 @@ body[data-page="planificar"] .fab-mic, body.voice-open .fab-mic { display: none;
 .voice-type { margin-top: 12px; }
 .voice-type input { width: 100%; }
 @media (prefers-reduced-motion: reduce) { .voice, .voice-back { transition: none; } .voice.listening .voice-mic::after { animation: none; opacity: 0; } }
+/* v32: punto de color en las listas del asistente */
+.voice-list li.has-dot { list-style: none; position: relative; }
+.voice-list li.has-dot::before { content: ""; position: absolute; left: -16px; top: .5em; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.voice-edit { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 8px; font-size: 13px; font-weight: 500; color: var(--muted); }
+.voice-edit input { width: 100%; font-size: 17px; font-weight: 600; color: var(--text); }
+.voice:not(.open), .voice-back:not(.open) { pointer-events: none; }
