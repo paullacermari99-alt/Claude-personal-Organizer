@@ -74,14 +74,19 @@ body {
   overflow-x: hidden;
 }
 /* Fondo de color difuminado que da vida al cristal */
-body::before {
+body::before, body::after {
   content: ""; position: fixed; inset: -20vmax; z-index: -1; pointer-events: none;
+  filter: blur(30px);
+}
+body::before {
   background:
     radial-gradient(40vmax 40vmax at 15% 10%, var(--blob-1), transparent 60%),
+    radial-gradient(45vmax 45vmax at 40% 95%, var(--blob-3), transparent 60%);
+}
+body::after {
+  background:
     radial-gradient(38vmax 38vmax at 90% 30%, var(--blob-2), transparent 60%),
-    radial-gradient(45vmax 45vmax at 40% 95%, var(--blob-3), transparent 60%),
     radial-gradient(30vmax 30vmax at 75% 70%, var(--blob-4), transparent 60%);
-  filter: blur(30px);
 }
 button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
 a { color: var(--accent); text-decoration: none; }
@@ -927,7 +932,7 @@ body.focus-open { overflow: hidden; }
    Se mantiene en lo que flota sobre el contenido (barra inferior, hojas, cabeceras fijas, avisos). */
 @media (max-width: 1023px) {
   .page .glass { -webkit-backdrop-filter: none; backdrop-filter: none; }
-  body::before { will-change: transform; }
+  body::before, body::after { will-change: transform; }
 }
 
 /* ---------- v13: lenguaje normal, ¿me cabe?, diario, calendarios externos, buscador ---------- */
@@ -1045,7 +1050,7 @@ input:focus-visible, textarea:focus-visible { outline: 1.5px solid var(--muted);
 .cal-col.is-today { background-color: color-mix(in srgb, var(--text) 3%, transparent); }
 
 /* Menos adornos */
-body::before { opacity: .45; }
+body::before, body::after { opacity: .45; }
 :root { --glass-shadow: 0 2px 10px rgba(31, 38, 80, .05), inset 0 1px 0 rgba(255, 255, 255, .5); }
 @media (prefers-color-scheme: dark) { :root { --glass-shadow: 0 2px 12px rgba(0, 0, 0, .25), inset 0 1px 0 rgba(255, 255, 255, .04); } }
 .btn.attention, .icon-btn.round.attention { box-shadow: none; position: relative; }
@@ -1486,3 +1491,23 @@ dialog.is-closing::backdrop { animation: fade-out .2s forwards; }
 #toast { width: max-content; }
 #toast.actionable > span { flex: 1; min-width: 0; text-align: left; }
 .toast-btn { flex: none; }
+
+/* ---------- v25: fondo vivo ----------
+   Las manchas de color se desplazan muy despacio, cada capa a su ritmo, para que el fondo respire sin
+   distraer. Solo se mueve con transform (lo hace la tarjeta gráfica, no cuesta al hacer scroll) y los
+   ciclos son largos y suaves, sin saltos. Quien pide menos movimiento en el sistema lo ve quieto. */
+@keyframes bg-drift-a {
+  0%   { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+  33%  { transform: translate3d(7vmax, 5vmax, 0) scale(1.08) rotate(4deg); }
+  66%  { transform: translate3d(-4vmax, 8vmax, 0) scale(.96) rotate(-3deg); }
+  100% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+}
+@keyframes bg-drift-b {
+  0%   { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+  33%  { transform: translate3d(-8vmax, -4vmax, 0) scale(1.06) rotate(-5deg); }
+  66%  { transform: translate3d(5vmax, -7vmax, 0) scale(1.1) rotate(3deg); }
+  100% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+}
+body::before { animation: bg-drift-a 38s ease-in-out infinite; }
+body::after  { animation: bg-drift-b 47s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { body::before, body::after { animation: none; } }
