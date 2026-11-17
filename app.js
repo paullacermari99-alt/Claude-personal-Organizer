@@ -2670,6 +2670,17 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   }).catch(err => console.warn('SW', err)));
 }
 
+/* v49: con cuenta, el tutorial espera a saber si ya lo viste en otro dispositivo;
+   si no se puede comprobar (sin conexión), no se enseña ahora y se vuelve a mirar la próxima vez */
+function startTourIfNew(delay = 700) {
+  const go = () => {
+    if (tour.on || (typeof ob !== 'undefined' && ob.el)) return;
+    if (!tourSeen()) { if (accountKnown()) startTour(); }
+    else maybeScreenTour();
+  };
+  if (tourSeen() || !getSession() || syncInfo.lastSync) { setTimeout(go, delay); return; }
+  setTimeout(() => Promise.resolve(syncRunning || syncNow()).catch(() => {}).then(() => setTimeout(go, 300)), delay);
+}
 /* ---------- Arranque ---------- */
 const cameFromLogin = captureAuthRedirect();
 state = loadState();
@@ -2677,7 +2688,7 @@ state = loadState();
 const firstRun = !state;
 /* Nueva versión: todos empiezan de cero (ajustes y cuenta se conservan) */
 const wasReset = isOldEpoch(state);
-if (wasReset) { state = resetForNewEpoch(state); setTimer(null); resetTours(); }
+if (wasReset) { state = resetForNewEpoch(state); setTimer(null); }
 syncInfo.freshDevice = firstRun;
 if (!state) { let demo = false; try { demo = localStorage.getItem('organizador.demo') === '1'; } catch { /* sin almacenamiento */ } if (demo) seedDemo(); else seedState(); }
 generateRoutines();
@@ -2688,12 +2699,12 @@ if (pendingShortcut) history.replaceState(null, '', location.pathname + '#hoy');
 route();
 if (pendingShortcut) setTimeout(() => runShortcut(pendingShortcut), 50);
 /* Bienvenida solo para quien es nuevo: sin datos, sin sesión y sin haberla visto */
+if (seenToAccount()) save(true);
 if (firstRun && !getSession() && !cameFromLogin && !onboardingSeen()) startOnboarding();
 else {
   if (!onboardingSeen()) markOnboarded();
-  /* Tutorial de los primeros pasos: una vez, para nuevos y tras empezar de cero */
-  if (!tourSeen() && !pendingShortcut) setTimeout(() => startTour(), 700);
-  else if (!pendingShortcut) maybeScreenTour();
+  /* Tutorial de los primeros pasos: una sola vez por persona (se guarda en la cuenta) */
+  if (!pendingShortcut) startTourIfNew(700);
 }
 if (wasReset) { save(); toast('Nueva versión: empiezas con la app vacía. Tus ajustes y tu cuenta siguen igual.'); }
 setTimeout(checkReminders, 2000);

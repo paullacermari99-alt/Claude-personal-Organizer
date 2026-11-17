@@ -7,13 +7,54 @@ const TOUR_KEY = 'organizador.tour';
 const SCREEN_KEY = 'organizador.tour.';
 const tour = { on: false, steps: [], step: 0, key: TOUR_KEY, main: true, layer: null, raf: 0, taskId: null, startTasks: 0, waitSince: 0 };
 
-const flag = k => { try { return localStorage.getItem(k) === '1'; } catch { return true; } };
-const setFlag = k => { try { localStorage.setItem(k, '1'); } catch { /* sin almacenamiento */ } };
+/* v49: lo ya visto se guarda en el navegador y en la cuenta (ajustes sincronizados), así no se repite
+   en otro dispositivo, al reinstalar ni al actualizar */
+function seenStore() {
+  const s = typeof state !== 'undefined' && state && state.settings;
+  if (!s) return null;
+  if (!s.seen || typeof s.seen !== 'object') s.seen = {};
+  if (!s.seen.screens || typeof s.seen.screens !== 'object') s.seen.screens = {};
+  return s.seen;
+}
+function seenInAccount(k) {
+  const sn = seenStore();
+  if (!sn) return false;
+  if (k === TOUR_KEY) return !!sn.tour;
+  if (k === OB_SEEN) return !!sn.welcome;
+  if (k.startsWith(SCREEN_KEY)) return !!sn.screens[k.slice(SCREEN_KEY.length)];
+  return false;
+}
+function setSeenInAccount(k, on) {
+  const sn = seenStore();
+  if (!sn) return false;
+  const was = JSON.stringify(sn);
+  if (k === TOUR_KEY) sn.tour = on ? 1 : 0;
+  else if (k === OB_SEEN) sn.welcome = on ? 1 : 0;
+  else if (k.startsWith(SCREEN_KEY)) { if (on) sn.screens[k.slice(SCREEN_KEY.length)] = 1; else delete sn.screens[k.slice(SCREEN_KEY.length)]; }
+  return JSON.stringify(sn) !== was;
+}
+const OB_SEEN = 'organizador.onboarded';
+const localFlag = k => { try { return localStorage.getItem(k) === '1'; } catch { return true; } };
+const flag = k => localFlag(k) || seenInAccount(k);
+const setFlag = k => {
+  try { localStorage.setItem(k, '1'); } catch { /* sin almacenamiento */ }
+  if (setSeenInAccount(k, true) && typeof save === 'function') save();
+};
+/* Lo que este dispositivo ya había visto pasa a la cuenta (para los que ya usaban la app) */
+function seenToAccount() {
+  let ch = false;
+  try { Object.keys(localStorage).filter(k => k === TOUR_KEY || k === OB_SEEN || k.startsWith(SCREEN_KEY)).forEach(k => { if (localStorage.getItem(k) === '1' && setSeenInAccount(k, true)) ch = true; }); } catch { /* sin almacenamiento */ }
+  return ch;
+}
+/* Con cuenta, hasta que no se ha mirado la cuenta en este dispositivo no se sabe si ya lo viste */
+const accountKnown = () => !(typeof getSession === 'function' && getSession()) || !!(typeof syncInfo !== 'undefined' && syncInfo.lastSync);
 function tourSeen() { return flag(TOUR_KEY); }
 function markTourSeen() { setFlag(TOUR_KEY); }
 /* Al empezar de cero se vuelven a mostrar todos los tutoriales */
 function resetTours() {
   try { Object.keys(localStorage).filter(k => k === TOUR_KEY || k.startsWith(SCREEN_KEY)).forEach(k => localStorage.removeItem(k)); } catch { /* sin almacenamiento */ }
+  const sn = seenStore();
+  if (sn) { sn.tour = 0; sn.screens = {}; if (typeof save === 'function') save(); }
 }
 
 const tourTask = () => tour.taskId && document.querySelector(`li.task[data-task="${tour.taskId}"]`);
@@ -142,7 +183,7 @@ function startTour(steps = TOUR_STEPS, key = TOUR_KEY) {
 
 /* Al entrar en una pantalla por primera vez, su repaso breve */
 function maybeScreenTour() {
-  if (tour.on || (typeof ob !== 'undefined' && ob.el) || !tourSeen()) return;
+  if (tour.on || (typeof ob !== 'undefined' && ob.el) || !tourSeen() || !accountKnown()) return;
   const page = (location.hash.replace(/^#/, '') || 'hoy').split('/')[0];
   const steps = SCREEN_TOURS[page];
   if (!steps || flag(SCREEN_KEY + page)) return;
@@ -251,6 +292,8 @@ function endTour(completed, keepPending) {
   tour.on = false;
   cancelAnimationFrame(tour.raf);
   if (!keepPending) setFlag(tour.key);
+  /* Tras el tutorial no se repite la explicación de Hoy; si lo saltas, tampoco las de las demás pantallas */
+  if (wasMain && !keepPending) [...new Set(['hoy', ...(completed ? [] : Object.keys(SCREEN_TOURS))])].forEach(k => setFlag(SCREEN_KEY + k));
   const l = tour.layer;
   tour.layer = null;
   tour.scrolled = false;

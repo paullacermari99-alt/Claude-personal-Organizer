@@ -5,8 +5,8 @@
 const OB_KEY = 'organizador.onboarded';
 const ob = { el: null, i: 0, timers: [], x0: null, dx: 0 };
 
-function onboardingSeen() { try { return localStorage.getItem(OB_KEY) === '1'; } catch { return true; } }
-function markOnboarded() { try { localStorage.setItem(OB_KEY, '1'); } catch { /* sin almacenamiento */ } }
+function onboardingSeen() { let l = true; try { l = localStorage.getItem(OB_KEY) === '1'; } catch { /* sin almacenamiento */ } return l || (typeof seenInAccount === 'function' && seenInAccount(OB_KEY)); }
+function markOnboarded() { if (typeof setFlag === 'function') setFlag(OB_KEY); else try { localStorage.setItem(OB_KEY, '1'); } catch { /* sin almacenamiento */ } }
 
 const OB_CHECK = '<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 7.4l2.6 2.6L11 4.4"/></svg>';
 const obTask = (title, meta, cls = '') => `<div class="ob-task ${cls}"><span class="ob-check">${OB_CHECK}</span><div><div class="ob-t">${title}</div>${meta ? `<div class="ob-m">${meta}</div>` : ''}</div></div>`;
@@ -288,5 +288,7 @@ function finishOnboarding() {
   document.body.classList.remove('ob-open');
   const done = () => el.remove();
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) done(); else setTimeout(done, 400);
-  if (typeof startTour === 'function' && !tourSeen()) setTimeout(() => startTour(), 500);
+  /* Si has entrado con tu cuenta, primero se mira si ya viste el tutorial en otro dispositivo */
+  if (typeof startTourIfNew === 'function') startTourIfNew(500);
+  else if (typeof startTour === 'function' && !tourSeen()) setTimeout(() => startTour(), 500);
 }
