@@ -445,6 +445,7 @@ function viewToday() {
       <a class="icon-btn round mobile-only" href="#ajustes" aria-label="Ajustes">${I.gear}</a>`,
   })}
 
+  <div data-live="syncbar">${syncBanner()}</div>
   <div class="today-grid">
     <div class="col-main">
       <div class="day-hero glass">
@@ -920,10 +921,26 @@ function agoLabel(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
   return m < 1 ? 'ahora mismo' : m < 60 ? `hace ${m} min` : `hace ${Math.round(m / 60)} h`;
 }
+/* v46: estado de la sincronización con un punto de color (verde = todo subido) */
+function syncLine() {
+  const st = syncState();
+  return st ? `<span class="sync-line grow"><span class="sync-dot ${st.tone}"></span><span>${esc(st.text)}</span></span>` : '';
+}
+/* Aviso en Hoy solo cuando algo no va bien: sin cuenta en este dispositivo, sesión cerrada o error */
+function syncBanner() {
+  const st = syncState();
+  if (!st || st.tone === 'ok' || st.tone === 'busy') return '';
+  if (st.none) { let off = false; try { off = localStorage.getItem('organizador.syncHintOff') === '1'; } catch {} if (off) return ''; }
+  if (st.tone === 'warn' && !st.none && failCount < 3) return '';
+  const msg = st.none ? 'Sin conectar a tu cuenta: lo que crees aquí no llegará a tus otros dispositivos.'
+    : st.lost ? 'Tu sesión se cerró en este dispositivo. Vuelve a entrar para que tus cambios se sincronicen.' : st.text;
+  const act = st.none || st.lost ? `<a class="btn small primary" href="#ajustes/cuenta">${st.lost ? 'Entrar' : 'Conectar'}</a>` : `<button class="btn small" data-act="sync-now">Reintentar</button>`;
+  return `<div class="sync-banner glass ${st.tone}"><span class="sync-dot ${st.tone}"></span><span class="grow">${msg}</span>${act}${st.none ? `<button class="icon-btn" data-act="sync-hint-off" aria-label="No mostrar más">${I.close}</button>` : ''}</div>`;
+}
 function syncSection() {
   let body;
   if (!cloudReady()) body = `<div class="item"><span class="muted">Aún no está activada. Cuando esté, podrás entrar con tu email y tener los mismos datos en el móvil y el ordenador.</span></div>`;
-  else if (!getSession()) body = `${syncInfo.notice ? `<div class="item"><span class="grow">${syncInfo.notice}</span></div>` : ''}
+  else if (!getSession()) body = `<div class="item">${syncLine()}</div>${syncInfo.notice ? `<div class="item"><span class="grow">${syncInfo.notice}</span></div>` : ''}
     <form class="item login" data-act="login">
       <input type="email" name="email" placeholder="Email" autocomplete="email" aria-label="Email" required>
       <input type="password" name="password" placeholder="Contraseña" autocomplete="current-password" aria-label="Contraseña" minlength="6">
@@ -933,14 +950,14 @@ function syncSection() {
     const s = getSession();
     body = `${syncInfo.needPassword ? `<form class="item login" data-act="new-password"><span class="grow">Pon tu contraseña nueva</span><input type="password" name="password" placeholder="Contraseña nueva" autocomplete="new-password" aria-label="Contraseña nueva" minlength="6" required><button class="btn small primary" type="submit">Guardar</button></form>` : ''}
       <div class="item"><span>Cuenta</span><span class="muted">${esc((s.user && s.user.email) || '…')}</span></div>
-      <div class="item" data-live="sync"><span>${syncInfo.status === 'error' ? `<span style="color:var(--red)">Error: ${esc(syncInfo.error)}</span>` : syncInfo.status === 'syncing' ? 'Sincronizando…' : `Sincronizado ${agoLabel(syncInfo.lastSync)}`}</span><button class="btn small" data-act="sync-now">Sincronizar ahora</button></div>
+      <div class="item" data-live="sync">${syncLine()}<button class="btn small" data-act="sync-now">Sincronizar ahora</button></div>
       ${CFG.vapidPublicKey ? `<div class="item"><span>Avisos con la app cerrada</span><button class="btn small ${pushActive() ? '' : 'primary'}" data-act="push-toggle">${pushActive() ? 'Desactivar' : 'Activar'}</button></div>` : ''}
       <div class="item"><span>Cerrar sesión en este dispositivo</span><button class="btn small danger" data-act="sign-out">Salir</button></div>`;
   }
   return `<div class="section">
     <div class="section-head"><h2>Cuenta y sincronización</h2></div>
     <div class="settings-group glass">${body}</div>
-    <p class="hint">${getSession() ? 'Los cambios se guardan en tu cuenta al momento y se cargan en tus otros dispositivos al abrir la app.' : 'Crea tu cuenta una vez y entra con el mismo email y contraseña en el móvil y en el ordenador. En iPhone, para recibir avisos con la app cerrada, instálala en la pantalla de inicio.'}</p>
+    <p class="hint">${getSession() ? 'Lo que creas o cambias se sube a tu cuenta en unos segundos y aparece en tus otros dispositivos al abrir la app (o en menos de un minuto si ya está abierta). Si usas dos dispositivos a la vez, se juntan los cambios de los dos: no se pierde nada.' : 'Crea tu cuenta una vez y entra con el mismo email y contraseña en el móvil y en el ordenador. En iPhone, para recibir avisos con la app cerrada, instálala en la pantalla de inicio.'}</p>
   </div>`;
 }
 
@@ -1191,8 +1208,8 @@ function settingsSummary(k) {
 function accountCard() {
   const sess = cloudReady() && getSession(), email = sess && sess.user && sess.user.email;
   const sub = !cloudReady() ? 'Tus datos se guardan en este dispositivo'
-    : !sess ? 'Entra para tener tus datos en el móvil y el ordenador'
-    : syncInfo.status === 'error' ? 'No se pudo sincronizar' : syncInfo.status === 'syncing' ? 'Sincronizando…' : `Sincronizado ${agoLabel(syncInfo.lastSync)}`;
+    : !sess ? `<span class="sync-line" data-live="acc"><span class="sync-dot ${syncState().tone}"></span>${esc(syncState().lost ? 'Sesión cerrada: entra de nuevo' : 'Entra para tener tus datos en el móvil y el ordenador')}</span>`
+    : `<span class="sync-line" data-live="acc"><span class="sync-dot ${syncState().tone}"></span>${esc(syncState().text)}</span>`;
   return `<a class="account-card glass" href="#ajustes/cuenta">
     <span class="acc-avatar">${email ? esc(email[0].toUpperCase()) : '<img src="icons/icon.svg" alt="" width="44" height="44">'}</span>
     <span class="grow"><b>${email ? esc(email) : 'Sin cuenta'}</b><span class="small muted">${sub}</span></span>
@@ -1393,6 +1410,7 @@ modal.close = function (v) {
   modal._t = setTimeout(() => { modal.classList.remove('is-closing'); if (modal.open) nativeClose.call(modal, v); }, 200);
 };
 modal.addEventListener('cancel', e => { e.preventDefault(); modal.close(); });
+modal.addEventListener('close', () => { if (syncInfo.pending && getSession()) setTimeout(() => syncNow(), 400); });
 
 function optionList(items, selected, label, emptyLabel) {
   return `<option value="">${emptyLabel}</option>` + items.map(i => `<option value="${i.id}" ${i.id === selected ? 'selected' : ''}>${esc(label(i))}</option>`).join('');
@@ -2451,6 +2469,7 @@ document.addEventListener('click', e => {
       break;
     }
     case 'sync-now': syncNow(true); return;
+    case 'sync-hint-off': try { localStorage.setItem('organizador.syncHintOff', '1'); } catch {} refreshLive(); return;
     case 'onboarding': startOnboarding(); return;
     case 'tour': startTour(); return;
     case 'tour-screens': resetTours(); setFlag(TOUR_KEY); toast('Verás de nuevo la explicación al entrar en cada pantalla'); return;
@@ -2607,7 +2626,8 @@ function onNewDayOrReturn() {
   return created || changed;
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { save(true); focusNote(true); return; }
+  /* Al salir de la app se suben ya los cambios pendientes (el iPhone la congela enseguida) */
+  if (document.visibilityState === 'hidden') { save(true); focusNote(true); if (syncInfo.pending) syncNow(); return; }
   closeFocusNote();
   { const s = getSummary(); if (s && !getTimer() && $('#focus').hidden && task(s.taskId) && Date.now() - s.at < 3 * 3600000) setTimeout(() => openFocus(s.taskId), 300); }
   if (modal.open) return;
@@ -2679,4 +2699,5 @@ if (wasReset) { save(); toast('Nueva versión: empiezas con la app vacía. Tus a
 setTimeout(checkReminders, 2000);
 refreshCalendars().then(changed => { if (changed && !modal.open) rerender(); }).catch(() => {});
 if (cameFromLogin) firstSync().then(rerender).catch(e => toast(e.message)); else syncNow();
-setInterval(() => { if (document.visibilityState === 'visible' && !modal.open) syncNow(); }, 120000);
+/* Con la app abierta se miran los cambios de tus otros dispositivos cada 30 s */
+setInterval(() => { if (document.visibilityState === 'visible' && !modal.open) syncNow(); }, 30000);

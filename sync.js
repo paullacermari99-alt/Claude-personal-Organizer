@@ -21,21 +21,44 @@ async function sb(path, opts = {}) {
     headers.Authorization = 'Bearer ' + tok;
   }
   const res = await fetch(CFG.supabaseUrl.replace(/\/$/, '') + path, { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  /* Token caducado antes de tiempo (reloj del dispositivo adelantado): se renueva y se repite una vez */
+  if (res.status === 401 && opts.auth !== false && !opts.retried) {
+    const s = getSession();
+    if (s) { s.expires_at = 0; setSession(s); return sb(path, { ...opts, retried: true }); }
+  }
   const txt = await res.text();
   const data = txt ? (() => { try { return JSON.parse(txt); } catch { return txt; } })() : null;
   if (!res.ok) throw new Error((data && (data.msg || data.message || data.error_description || data.error)) || ('Error ' + res.status));
   return data;
 }
+/* v46: una sola renovación a la vez. Antes dos peticiones podían renovar la sesión a la vez;
+   la segunda fallaba («token ya usado») y la app cerraba la sesión sin avisar: dejaba de sincronizar. */
+let refreshing = null;
 async function accessToken() {
   const s = getSession();
   if (!s) return null;
   if (s.expires_at - Date.now() > 60000) return s.access_token;
+  if (!refreshing) refreshing = refreshSession(s).finally(() => { refreshing = null; });
+  return refreshing;
+}
+async function refreshSession(s) {
   try {
     const d = await sb('/auth/v1/token?grant_type=refresh_token', { method: 'POST', auth: false, body: { refresh_token: s.refresh_token } });
     const ns = sessionFrom(d); if (!ns.user) ns.user = s.user;
     setSession(ns);
     return ns.access_token;
-  } catch (e) { if (/invalid|not found|revoked/i.test(e.message)) setSession(null); return null; }
+  } catch (e) {
+    /* Otra pestaña ya la renovó */
+    const now = getSession();
+    if (now && now.refresh_token !== s.refresh_token) return now.access_token;
+    /* Sin internet: la sesión sigue, se reintenta luego */
+    if (isNetErr(e)) throw e;
+    if (/invalid|not found|revoked|already used/i.test(e.message)) {
+      try { localStorage.setItem(LOST_KEY, (s.user && s.user.email) || '1'); } catch {}
+      setSession(null);
+    }
+    return null;
+  }
 }
 
 /* ---------- Entrar con email y contraseña ---------- */
@@ -55,6 +78,7 @@ async function signIn(email, password) {
     setSession(sessionFrom(d));
   } catch (e) { throw authError(e); }
   syncInfo.notice = '';
+  try { localStorage.removeItem(LOST_KEY); } catch {}
   await firstSync();
 }
 /* Los enlaces del email vuelven siempre a esta misma app (carpeta incluida), no a la raíz del dominio */
@@ -111,68 +135,236 @@ async function signOut() {
   try { await sb('/auth/v1/logout', { method: 'POST' }); } catch {}
   await unsubscribePush().catch(() => {});
   setSession(null);
-  syncInfo.status = 'off';
+  try { localStorage.removeItem(BASE_KEY); localStorage.removeItem(LOST_KEY); } catch {}
+  syncInfo.status = 'off'; syncInfo.pending = false;
 }
 
-/* ---------- Sincronización: el documento más reciente gana ---------- */
-async function pullRemote() {
-  const rows = await sb('/rest/v1/organizer_state?select=data,updated_at');
-  return rows && rows[0] ? rows[0].data : null;
+/* ---------- Sincronización (v46): se mezcla, nunca se pisa ----------
+   Antes ganaba el documento entero más reciente y cada dispositivo subía lo suyo sin mirar la
+   cuenta: si el ordenador guardaba cualquier cosa, borraba lo que acababas de crear en el móvil.
+   Ahora, en cada sincronización: se bajan los datos de la cuenta, se mezclan elemento a elemento
+   con los de este dispositivo (comparando con la última versión que ambos conocían) y se sube el
+   resultado solo si nadie ha escrito entre medias; si alguien escribió, se repite. Lo que creas
+   en un dispositivo nunca se pierde: si un lado borra algo que el otro cambió, se queda el cambio. */
+const BASE_KEY = 'organizador.syncBase';
+const LOST_KEY = 'organizador.sessionLost';
+const LAST_KEY = 'organizador.lastSync';
+let syncRunning = null, syncAgain = false, retryTimer = null, failCount = 0;
+syncInfo.pending = false; syncInfo.offline = false;
+try { syncInfo.lastSync = Number(localStorage.getItem(LAST_KEY)) || null; } catch { /* sin almacenamiento */ }
+
+function loadBase(u) { try { const b = JSON.parse(localStorage.getItem(BASE_KEY)); return b && b.uid === u ? b.data : null; } catch { return null; } }
+function saveBase(u, data) {
+  try { localStorage.setItem(BASE_KEY, JSON.stringify({ uid: u, data })); }
+  catch { try { localStorage.removeItem(BASE_KEY); } catch { /* sin base se mezcla sumando, sin perder nada */ } }
 }
-async function pushRemote() {
-  const s = getSession();
-  if (!s || !s.user || pushing) return;
-  pushing = true;
-  try {
-    await sb('/rest/v1/organizer_state?on_conflict=user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: { user_id: s.user.id, data: state, updated_at: new Date().toISOString() } });
-    syncInfo.lastSync = Date.now(); syncInfo.status = 'ok'; syncInfo.error = '';
-  } finally { pushing = false; }
+const clone = v => JSON.parse(JSON.stringify(v));
+const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+/* Quita los datos internos de la sincronización para comparar contenido */
+const strip = s => { if (!s) return s; const o = { ...s }; delete o.updatedAt; delete o.syncRev; return o; };
+function same(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) { if (a.length !== b.length) return false; for (let i = 0; i < a.length; i++) if (!same(a[i], b[i])) return false; return true; }
+  const ka = Object.keys(a).filter(k => a[k] !== undefined), kb = Object.keys(b).filter(k => b[k] !== undefined);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) if (!same(a[k], b[k])) return false;
+  return true;
 }
-function applyRemote(remote) {
-  state = migrate(remote);
-  generateRoutines();
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch {}
-  if (!(typeof modal !== 'undefined' && modal.open)) rerender();
-}
-async function syncNow(manual) {
-  if (!cloudReady() || !getSession()) return;
-  syncInfo.status = 'syncing';
-  try {
-    await fetchUser();
-    let remote = await pullRemote();
-    if (isOldEpoch(remote)) remote = null;
-    const local = state.updatedAt || 0, rem = (remote && remote.updatedAt) || 0;
-    if (remote && rem > local) applyRemote(remote);
-    else if (!remote || local > rem) await pushRemote();
-    syncInfo.status = 'ok'; syncInfo.lastSync = Date.now(); syncInfo.error = '';
-    if (manual) toast('Sincronizado');
-  } catch (e) {
-    syncInfo.status = 'error'; syncInfo.error = e.message;
-    if (manual) toast('No se pudo sincronizar: ' + e.message);
+const hasIds = a => Array.isArray(a) && a.every(x => isObj(x) && x.id != null);
+/* b = última versión común (o undefined), l = este dispositivo, r = la cuenta.
+   localWins solo decide cuando los dos cambiaron el mismo dato de forma distinta. */
+function merge3(b, l, r, localWins) {
+  if (same(l, r)) return l;
+  if (b !== undefined && same(l, b)) return r;
+  if (b !== undefined && same(r, b)) return l;
+  if (l === undefined) return r;
+  if (r === undefined) return l;
+  if (isObj(l) && isObj(r)) {
+    const bo = isObj(b) ? b : {}, out = {};
+    for (const k of new Set([...Object.keys(l), ...Object.keys(r)])) {
+      const v = merge3(bo[k], l[k], r[k], localWins);
+      if (v !== undefined) out[k] = v;
+    }
+    return out;
   }
-  refreshSyncUI();
+  if (Array.isArray(l) && Array.isArray(r)) {
+    if (hasIds(l) && hasIds(r)) return mergeList(hasIds(b) ? b : [], l, r, localWins);
+    if (l.some(isObj) || r.some(isObj)) {
+      /* Listas sin id (el registro de enfoque): se suman las entradas nuevas de cada lado */
+      const key = x => JSON.stringify(x), mine = new Set(l.map(key)), old = new Set((Array.isArray(b) ? b : []).map(key));
+      return [...l, ...r.filter(x => !mine.has(key(x)) && !old.has(key(x)))];
+    }
+  }
+  return localWins ? l : r;
 }
-/* Al entrar por primera vez en un dispositivo: elegir qué datos se quedan */
-async function firstSync() {
+function mergeList(b, l, r, localWins) {
+  const bm = new Map(b.map(x => [x.id, x])), rm = new Map(r.map(x => [x.id, x])), lm = new Set(l.map(x => x.id));
+  const out = [];
+  for (const x of l) { const v = merge3(bm.get(x.id), x, rm.get(x.id), localWins); if (v !== undefined) out.push(v); }
+  for (const x of r) {
+    if (lm.has(x.id)) continue;
+    const v = merge3(bm.get(x.id), undefined, x, localWins);
+    if (v !== undefined) out.push(v);
+  }
+  return out;
+}
+/* Después de mezclar: la misma diaria o la misma etiqueta creadas a la vez en dos dispositivos */
+function tidyMerged(s) {
+  const swap = new Map();
+  const daily = new Map();
+  s.tasks = (s.tasks || []).filter(t => {
+    if (!t.routineId || !t.routineDate) return true;
+    const k = t.routineId + '|' + t.routineDate, keep = daily.get(k);
+    if (!keep) { daily.set(k, t); return true; }
+    if (t.done && !keep.done) Object.assign(keep, { done: true, doneAt: t.doneAt || keep.doneAt });
+    swap.set(t.id, keep.id); return false;
+  });
+  const tags = new Map();
+  s.tags = (s.tags || []).filter(tg => {
+    const k = norm(tg.name).trim(), keep = tags.get(k);
+    if (!keep) { tags.set(k, tg); return true; }
+    swap.set(tg.id, keep.id); return false;
+  });
+  if (swap.size) {
+    const fix = v => {
+      if (Array.isArray(v)) v.forEach((x, i) => { if (typeof x === 'string' && swap.has(x)) v[i] = swap.get(x); else fix(x); });
+      else if (isObj(v)) for (const k of Object.keys(v)) { if (k === 'id') continue; const x = v[k]; if (typeof x === 'string' && swap.has(x)) v[k] = swap.get(x); else fix(x); }
+    };
+    fix(s);
+    s.tasks.forEach(t => { if (Array.isArray(t.tags)) t.tags = [...new Set(t.tags)]; });
+  }
+  return s;
+}
+const hasContent = s => !!s && ['tasks', 'events', 'routines', 'habits', 'goals', 'projects', 'templates', 'focusLog'].some(k => (s[k] || []).length)
+  || Object.keys((s && s.journal) || {}).length > 0;
+
+async function pullRow() {
+  const rows = await sb('/rest/v1/organizer_state?select=data');
+  if (!rows || !rows[0]) return { exists: false, data: null, rev: null };
+  const d = rows[0].data;
+  return { exists: true, data: d, rev: d && d.syncRev != null ? d.syncRev : null };
+}
+/* Escribe solo si la cuenta sigue como la leímos. false = otro dispositivo escribió entre medias */
+async function writeRow(u, data, row) {
+  const body = { data, updated_at: new Date().toISOString() };
+  if (!row.exists) {
+    try { await sb('/rest/v1/organizer_state', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: { user_id: u, ...body } }); return true; }
+    catch (e) { if (/duplicate|already exists|23505|409/i.test(e.message)) return false; throw e; }
+  }
+  const cond = row.rev == null ? 'data->>syncRev=is.null' : 'data->>syncRev=eq.' + encodeURIComponent(row.rev);
+  const res = await sb(`/rest/v1/organizer_state?user_id=eq.${u}&${cond}&select=user_id`, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body });
+  return Array.isArray(res) && res.length > 0;
+}
+const modalOpen = () => typeof modal !== 'undefined' && modal.open;
+function storeLocal() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch {} }
+/* Una vuelta completa. Devuelve false si hubo que dejarlo para luego (una ventana abierta) */
+async function runSync() {
+  if (modalOpen()) return false;
   await fetchUser();
-  let remote = await pullRemote();
-  if (isOldEpoch(remote)) remote = null;
-  if (remote && (remote.tasks || []).length) {
-    /* En un dispositivo nuevo solo hay datos de ejemplo: se usan directamente los de la cuenta */
-    if (syncInfo.freshDevice) { applyRemote(remote); syncInfo.freshDevice = false; syncInfo.status = 'ok'; syncInfo.lastSync = Date.now(); return; }
-    const useCloud = confirm(`En tu cuenta ya hay datos (${remote.tasks.length} tareas, ${(remote.projects || []).length} proyectos).\n\nAceptar: usar los de la cuenta en este dispositivo.\nCancelar: subir los de este dispositivo y reemplazar los de la cuenta.`);
-    if (useCloud) { applyRemote(remote); syncInfo.status = 'ok'; syncInfo.lastSync = Date.now(); return; }
+  const u = getSession() && getSession().user && getSession().user.id;
+  if (!u) throw new Error('Sesión caducada: vuelve a entrar');
+  for (let i = 0; i < 4; i++) {
+    const snap = clone(state);
+    const row = await pullRow();
+    const remote = row.data && !isOldEpoch(row.data) ? migrate(row.data) : null;
+    const base = loadBase(u);
+    let merged;
+    if (!remote) merged = clone(snap);
+    /* Dispositivo nuevo o vacío: toma la cuenta tal cual (sin duplicar las etiquetas de inicio) */
+    else if (!base && !hasContent(snap)) merged = clone(remote);
+    else merged = tidyMerged(clone(merge3(strip(base) || undefined, strip(snap), strip(remote), (snap.updatedAt || 0) >= (remote.updatedAt || 0))));
+    merged.updatedAt = Math.max(snap.updatedAt || 0, (remote && remote.updatedAt) || 0);
+    if (!remote || !same(strip(merged), strip(remote))) {
+      merged.syncRev = (Number(row.rev) || 0) + 1;
+      if (!(await writeRow(u, merged, row))) continue;
+    } else merged.syncRev = row.rev;
+    /* Mientras tanto se abrió una ventana: la cuenta ya está bien; esto se aplica al cerrarla */
+    if (modalOpen()) return false;
+    let next = merged;
+    if (!same(state, snap)) {
+      /* Cambiaste algo durante la sincronización: se conserva y se sube en la siguiente vuelta */
+      next = tidyMerged(clone(merge3(strip(snap), strip(state), strip(merged), true)));
+      next.updatedAt = Math.max(state.updatedAt || 0, merged.updatedAt);
+      next.syncRev = merged.syncRev;
+      syncAgain = true;
+    }
+    if (!same(strip(next), strip(state))) {
+      state = migrate(next);
+      if (generateRoutines()) syncAgain = true;
+      storeLocal();
+      const typing = document.activeElement && document.activeElement.matches('input:not([type=checkbox]):not([type=radio]), textarea');
+      if (typeof rerender === 'function' && !typing) rerender();
+    } else { state.syncRev = next.syncRev; storeLocal(); }
+    saveBase(u, merged);
+    return true;
   }
-  state.updatedAt = Date.now();
-  await pushRemote();
+  throw new Error('Otro dispositivo estaba guardando a la vez');
 }
+const isNetErr = e => !navigator.onLine || e instanceof TypeError || /failed to fetch|networkerror|load failed|network|internet/i.test(String(e && e.message));
+function retrySoon(ms) { clearTimeout(retryTimer); retryTimer = setTimeout(() => syncNow(), ms); }
+function syncNow(manual) {
+  if (!cloudReady() || !getSession()) { refreshSyncUI(); return Promise.resolve(); }
+  if (syncRunning) { syncAgain = true; return syncRunning; }
+  clearTimeout(syncTimer);
+  /* Con una ventana abierta se espera a que se cierre (lo que editas no se toca) */
+  if (modalOpen() && !manual) { retrySoon(2500); return Promise.resolve(); }
+  syncInfo.status = 'syncing'; refreshSyncUI();
+  syncRunning = (async () => {
+    let done = true;
+    try {
+      let n = 0;
+      do { syncAgain = false; done = await runSync(); } while (done && syncAgain && ++n < 5);
+      syncInfo.error = ''; syncInfo.offline = false; failCount = 0;
+      syncInfo.status = 'ok';
+      if (done) {
+        syncInfo.lastSync = Date.now(); syncInfo.pending = syncAgain;
+        try { localStorage.setItem(LAST_KEY, String(syncInfo.lastSync)); } catch {}
+        if (manual) toast('Todo sincronizado');
+      } else retrySoon(2500);
+    } catch (e) {
+      syncInfo.status = 'error'; syncInfo.offline = isNetErr(e);
+      syncInfo.error = syncInfo.offline ? 'Sin conexión' : e.message;
+      failCount++;
+      if (getSession()) retrySoon(Math.min(60000, 4000 * 2 ** Math.min(failCount, 4)));
+      if (manual) toast(syncInfo.offline ? 'Sin conexión: se subirá cuando vuelva internet' : 'No se pudo sincronizar: ' + e.message);
+    } finally { syncRunning = null; refreshSyncUI(); }
+    if (syncAgain && syncInfo.status === 'ok') retrySoon(800);
+  })();
+  return syncRunning;
+}
+/* Al entrar en un dispositivo: se mezcla lo de aquí con lo de la cuenta (ya no hay que elegir ni se reemplaza nada) */
+async function firstSync() {
+  try { localStorage.removeItem(LOST_KEY); } catch {}
+  await syncNow();
+  if (typeof rerender === 'function' && !modalOpen()) rerender();
+}
+const pushRemote = () => syncNow();
 /* Llamado por save(): sube los cambios al poco tiempo */
 function scheduleSync() {
+  syncInfo.pending = true;
   if (!cloudReady() || !getSession()) return;
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => pushRemote().catch(e => { syncInfo.status = 'error'; syncInfo.error = e.message; }).finally(refreshSyncUI), 1500);
+  syncTimer = setTimeout(() => syncNow(), 1200);
 }
-function refreshSyncUI() { const el = document.querySelector('[data-live="sync"]'); if (el && typeof refreshLive === 'function') refreshLive(); }
+function refreshSyncUI() { if (document.querySelector('[data-live="sync"], [data-live="syncbar"], [data-live="acc"]') && typeof refreshLive === 'function') refreshLive(); }
+/* Estado para mostrar: tono (ok, busy, warn, bad) y texto */
+function syncState() {
+  if (!cloudReady()) return null;
+  if (!getSession()) {
+    let lost = ''; try { lost = localStorage.getItem(LOST_KEY) || ''; } catch {}
+    return lost ? { tone: 'bad', lost: true, text: 'Tu sesión se cerró: vuelve a entrar para sincronizar' }
+      : { tone: 'warn', none: true, text: 'Este dispositivo no está conectado a tu cuenta' };
+  }
+  if (syncInfo.status === 'error') return syncInfo.offline ? { tone: 'warn', text: 'Sin conexión: tus cambios se subirán al volver internet' } : { tone: 'bad', text: 'No se pudo sincronizar: ' + syncInfo.error };
+  if (syncInfo.status === 'syncing') return { tone: 'busy', text: 'Sincronizando…' };
+  if (syncInfo.pending) return { tone: 'busy', text: 'Subiendo tus cambios…' };
+  if (!syncInfo.lastSync) return { tone: 'busy', text: 'Conectando con tu cuenta…' };
+  return { tone: 'ok', text: 'Todo sincronizado · ' + (typeof agoLabel === 'function' ? agoLabel(syncInfo.lastSync) : '') };
+}
+window.addEventListener('online', () => syncNow());
+{ let lastFocus = 0; window.addEventListener('focus', () => { if (Date.now() - lastFocus > 10000) { lastFocus = Date.now(); syncNow(); } }); }
 
 /* ---------- Avisos push con la app cerrada ---------- */
 function b64ToBytes(b64) {

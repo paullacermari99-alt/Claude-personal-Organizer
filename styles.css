@@ -2171,3 +2171,17 @@ button.pj-now-t { border: 0; background: none; padding: 0; text-align: left; fon
 .page-projects h1 { overflow-wrap: normal; }
 @media (max-width: 380px) { .page-projects .pj-new { width: 44px; padding: 0; } .page-projects .pj-new span { display: none; } }
 @media (min-width: 1024px) { .pj-bar .segmented { flex: 0 1 360px; } .pj-bar .pj-sort { margin-left: auto; } .pj-tabs { max-width: 480px; } }
+
+/* v46: estado de la sincronización (punto verde = todo subido a tu cuenta) */
+.sync-line { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.sync-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.sync-dot.busy { background: var(--muted); animation: sync-pulse 1.2s ease-in-out infinite; }
+.sync-dot.warn { background: var(--orange); }
+.sync-dot.bad { background: var(--red); }
+@keyframes sync-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .sync-dot.busy { animation: none; } }
+.sync-banner { display: flex; align-items: center; gap: 10px; padding: 10px 8px 10px 14px; border-radius: var(--radius-sm); margin: 0 0 16px; font-size: 14px; line-height: 1.35; }
+.sync-banner.warn { background: var(--orange-soft); }
+.sync-banner.bad { background: color-mix(in srgb, var(--red) 14%, transparent); }
+.sync-banner .btn { flex: none; }
+.sync-banner .icon-btn { flex: none; width: 32px; height: 32px; }
