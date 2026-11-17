@@ -129,7 +129,7 @@ function defaultSettings() {
 /* Sube este número para empezar de cero en todos los dispositivos (se conservan los ajustes y la cuenta) */
 const DATA_EPOCH = 2;
 function emptyState() {
-  return { version: 2, epoch: DATA_EPOCH, tasks: [], events: [], routines: [], goals: [], projects: [], tags: [], dayPlans: {}, weekPlans: {}, journal: {}, focusLog: [], notified: {}, settings: defaultSettings() };
+  return { version: 2, epoch: DATA_EPOCH, tasks: [], events: [], routines: [], habits: [], goals: [], projects: [], tags: [], dayPlans: {}, weekPlans: {}, journal: {}, focusLog: [], notified: {}, settings: defaultSettings() };
 }
 function horizonFor(due) {
   if (!due) return 'medio';

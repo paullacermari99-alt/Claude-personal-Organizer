@@ -34,11 +34,12 @@ function parseHash() {
   const [name, id, sub] = (location.hash.replace(/^#/, '') || 'hoy').split('/');
   return { name: name || 'hoy', id, sub };
 }
-const NAV_OF = { proyecto: 'proyectos', objetivo: 'objetivos' };
+const NAV_OF = { proyecto: 'proyectos', objetivo: 'objetivos', habitos: 'progreso', planificar: 'hoy' };
 function renderView() {
   const { name, id, sub } = parseHash();
   const sec = NAV_OF[name] || name;
   document.body.dataset.view = sec;
+  document.body.dataset.page = name;
   $$('[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === sec || (a.dataset.also || '').split(' ').includes(sec)));
   switch (name) {
     case 'semana': return viewWeek();
@@ -51,6 +52,8 @@ function renderView() {
     case 'objetivo': return viewGoal(id);
     case 'ajustes': return viewSettings();
     case 'progreso': return viewStats();
+    case 'habitos': return viewHabits();
+    case 'planificar': return viewPlanDay();
     default: return viewToday();
   }
 }
@@ -388,6 +391,8 @@ function viewToday() {
       ${routines.length ? collapsible('diarias', 'Diarias pendientes', totalPend, routines.map(r => routineGroup(r)).join(''),
         `<a class="btn small ghost" href="#diarias">Ver diarias</a>`) : ''}
 
+      ${habitsTodaySection(d)}
+
       <div class="section">
         <div class="section-head"><h2>Tareas</h2>${isToday && !routines.length ? `<a class="btn small ghost" href="#diarias">${I.daily}<span>Diarias</span></a>` : ''}</div>
         ${taskList(dayTasks, { star: true, hideDue: d })}
@@ -399,7 +404,7 @@ function viewToday() {
 
     <aside class="col-side">
       <div class="section">
-        <div class="section-head"><h2>Horario</h2><button class="btn small" data-act="new-event" data-date="${d}">${I.plus}<span>Añadir bloque</span></button></div>
+        <div class="section-head"><h2>Horario</h2><div class="head-btns"><a class="btn small" href="#planificar">${I.clock}<span>Planificar por horas</span></a><button class="icon-btn round" data-act="new-event" data-date="${d}" aria-label="Añadir bloque" title="Añadir bloque">${I.plus}</button></div></div>
         <div class="agenda-list">
           ${extEvs.some(e => e.allDay) ? `<div class="allday-row">${extEvs.filter(e => e.allDay).map(e => `<button class="chip ext" data-act="ext-event" data-id="${e.id}" style="--c:${e.color}">${esc(e.title)}</button>`).join('')}</div>` : ''}
           ${agenda.length ? `<div class="timeline">${agenda.map(e => blockItem(e, isToday, now)).join('')}</div>`
@@ -468,7 +473,7 @@ function viewTasks() {
     <select data-set-ui="taskFilter.tag" aria-label="Filtrar por etiqueta"><option value="">Etiqueta: todas</option>${state.tags.map(t => `<option value="${t.id}" ${f.tag === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
     <select data-set-ui="taskFilter.priority" aria-label="Filtrar por prioridad"><option value="">Prioridad: todas</option>${Object.entries(PRIORITIES).map(([k, l]) => `<option value="${k}" ${f.priority === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
   </div>
-  ${tab === 'completadas' ? '' : quickAdd({ due: tab === 'proximas' ? todayStr() : tab === 'bandeja' ? '' : '' }, tab === 'proximas' ? 'Nueva tarea para hoy' : 'Apunta algo (solo el título)')}
+  ${tab === 'completadas' ? '' : quickAdd({ due: tab === 'proximas' ? todayStr() : tab === 'bandeja' ? '' : '' }, tab === 'proximas' ? 'Nueva tarea para hoy' : 'Ej.: dentista mañana a las 10')}
   <div id="task-results" class="section-gap">${taskResults()}</div>
   </div>`;
 }
@@ -769,14 +774,16 @@ function calendarModal(c0) {
   const c = c0 || { id: uid(), name: 'Google Calendar', url: '', color: COLORS[9] };
   openModal(isNew ? 'Añadir calendario' : 'Calendario', `
     <label class="field">Nombre<input type="text" name="name" required value="${esc(c.name)}"></label>
-    <label class="field">Dirección secreta en formato iCal<input type="url" name="url" required value="${esc(c.url)}" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" autocomplete="off" spellcheck="false"></label>
+    <div class="field">Dirección secreta en formato iCal<div class="sub-add"><input type="url" name="url" required value="${esc(c.url)}" placeholder="https://calendar.google.com/…/basic.ics" autocomplete="off" spellcheck="false" aria-label="Dirección secreta en formato iCal"><button type="button" class="btn small" data-modal="paste-url">Pegar</button></div></div>
     <div class="field">Color${colorField('color', c.color)}</div>
+    ${getSession() ? '' : `<div class="linked warn-text">Antes, entra en tu cuenta en Ajustes → Cuenta y sincronización. Sin cuenta no se puede leer Google Calendar.</div>`}
     <div class="howto small">
-      <b>Dónde encontrarla en Google Calendar</b> (desde el ordenador):<br>
-      1. Abre calendar.google.com → ⚙ Configuración.<br>
-      2. A la izquierda, en «Configuración de mis calendarios», elige tu calendario.<br>
-      3. Baja hasta «Dirección secreta en formato iCal» y cópiala.<br>
-      <span class="muted">Es privada: no la compartas. Para leerla hace falta tener la sesión iniciada en Ajustes.</span>
+      <b>Cómo conseguir la dirección (una sola vez, 2 minutos)</b><br>
+      1. Toca <a href="https://calendar.google.com/calendar/r/settings" target="_blank" rel="noopener">Abrir ajustes de Google Calendar</a>. En el móvil, si te lleva a la app o no ves los ajustes, abre el menú del navegador (⋮ o «aA») y elige «Ver versión para ordenador».<br>
+      2. A la izquierda, en «Configuración de mis calendarios», toca tu calendario (suele llevar tu nombre).<br>
+      3. Baja casi hasta el final, a «Dirección secreta en formato iCal», y toca el botón de copiar.<br>
+      4. Vuelve aquí, toca «Pegar» y luego «Guardar».<br>
+      <span class="muted">Es privada: no la compartas con nadie. Tus citas se ven en Hoy, Semana y Planificar, y se actualizan solas cada media hora.</span>
     </div>`, {
     onSave: d => {
       const url = normalizeIcsUrl(d.url);
@@ -794,6 +801,13 @@ function calendarModal(c0) {
       forgetCalendar(c.id); toast('Calendario quitado');
     },
     deleteLabel: 'Quitar calendario',
+    actions: {
+      'paste-url': async () => {
+        const inp = modalForm.elements.namedItem('url');
+        try { const txt = (await navigator.clipboard.readText()).trim(); if (txt) { inp.value = txt; toast(/\/ical\/|\.ics/i.test(txt) ? 'Dirección pegada. Ahora toca Guardar.' : 'Eso no parece la dirección iCal: revisa que copiaste la «secreta en formato iCal»'); return; } } catch {}
+        inp.focus(); toast('Mantén pulsado el recuadro y elige «Pegar»');
+      },
+    },
   });
 }
 function extEventSheet(id) {
@@ -1080,6 +1094,11 @@ modalForm.addEventListener('input', e => {
   if (e.target.id === 'gsearch') { $('#gs-results', modalForm).innerHTML = searchResults(e.target.value); return; }
   const c = e.target.dataset.customFor;
   if (c) { const r = modalForm.querySelector(`input[name="${c}"][value="custom"]`); if (r) r.checked = true; }
+  if (e.target.dataset.nl) {
+    const pv = $('.nl-preview', modalForm);
+    const found = e.target.value.trim().length > 2 ? parseQuick(e.target.value).found : [];
+    if (pv) { pv.innerHTML = found.map(x => `<span class="tag">${esc(x)}</span>`).join(''); pv.classList.toggle('on', found.length > 0); }
+  }
 });
 modalForm.addEventListener('change', e => {
   if (e.target.name === 'repeat') modalForm.dataset.rep = e.target.value;
@@ -1131,6 +1150,7 @@ function newAnySheet() {
     ['Tarea', I.review, () => taskModal(ctx)],
     ['Evento o bloque', I.cal, () => eventModal(defaultEventCtx())],
     ['Diaria', I.daily, () => routineModal({ projectId: ctx.projectId || null })],
+    ['Hábito', I.repeat, () => habitModal()],
     ['Objetivo', I.target, () => goalModal({ projectId: name === 'proyecto' ? id : null })],
     ['Proyecto', I.grid, () => projectModal({})],
   ]);
@@ -1157,7 +1177,8 @@ function taskModal(t0 = {}) {
   let saved = null;
   const evs = isNew ? [] : blocksOfTask(t.id).filter(e => !e.recurrence && e.date >= todayStr());
   openModal(isNew ? 'Nueva tarea' : 'Tarea', `
-    <label class="field">Tarea<input type="text" name="title" required value="${esc(t.title)}" enterkeyhint="done" placeholder="¿Qué hay que hacer?"></label>
+    <label class="field">Tarea<input type="text" name="title" required value="${esc(t.title)}" enterkeyhint="done" placeholder="${isNew ? 'Ej.: dentista mañana a las 10' : '¿Qué hay que hacer?'}" ${isNew ? 'data-nl="1"' : ''}></label>
+    ${isNew ? '<div class="qa-preview nl-preview" aria-live="polite"></div>' : ''}
     <div class="row">
       <label class="field">Plazo<input type="date" name="due" value="${esc(t.due || '')}"></label>
       <label class="field">Duración estimada<select name="estimate"><option value="">—</option>${ESTIMATES.map(m => `<option value="${m}" ${t.estimate === m ? 'selected' : ''}>${durLabel(m)}</option>`).join('')}</select></label>
@@ -1197,7 +1218,25 @@ function taskModal(t0 = {}) {
         firstStep: d.firstStep.trim(), subtasks: subs,
         repeat: d.repUnit ? { unit: d.repUnit, n: clamp(Number(d.repN) || 1, 1, 99) } : null,
       });
+      /* v27: en una tarea nueva, «dentista mañana a las 10» rellena plazo, hora y demás (si no los has cambiado a mano) */
+      let nlTime = null;
+      if (isNew) {
+        const p = parseQuick(title);
+        if (p.found.length && p.title) {
+          obj.title = p.title;
+          if (p.due && (d.due || null) === (t0.due || null)) obj.due = p.due;
+          if (p.estimate && !d.estimate) obj.estimate = p.estimate;
+          if (p.priority && obj.priority === 'none') obj.priority = p.priority;
+          if (p.repeat && !obj.repeat) obj.repeat = p.repeat;
+          if (p.projectId && !obj.projectId) obj.projectId = p.projectId;
+          for (const name of p.newTags) { const tg = { id: uid(), name, color: COLORS[state.tags.length % COLORS.length] }; state.tags.push(tg); p.tags.push(tg.id); }
+          obj.tags = [...new Set([...obj.tags, ...p.tags])];
+          nlTime = p.time;
+          toast('Añadida · ' + p.found.join(' · '));
+        }
+      }
       if (obj.repeat && !obj.due) obj.due = todayStr();
+      if (nlTime) { if (!obj.due) obj.due = todayStr(); scheduleTask(obj, obj.due, nlTime, fmtHM(Math.min(toMin(nlTime) + (obj.estimate || 60), 24 * 60 - 1))); }
       if (isNew) state.tasks.push(obj);
       else blocksOfTask(obj.id).forEach(e => { if (e.title === oldTitle) e.title = title; });
       saved = obj;
@@ -1395,17 +1434,18 @@ function viewStats() {
   const focusW = sum(focusBy, wDays);
   const goalsDone = state.goals.filter(g => g.status === 'cumplido').length;
   const rstats = state.routines.map(r => ({ r, ...routineStats(r) })).sort((a, b) => b.streak - a.streak);
-  const bestStreak = Math.max(0, ...rstats.map(x => x.streak));
+  const bestStreak = Math.max(0, bestHabitStreak(), ...rstats.map(x => x.streak));
   const diff = tasksW - tasksPrev;
   return `
   <div class="page page-mid">
-  ${pageHead({ eyebrow: backLink('#hoy', 'Hoy'), title: 'Progreso' })}
+  ${pageHead({ eyebrow: `Semana ${weekNumber(ws)}`, title: 'Progreso', actions: `<a class="btn small" href="#habitos">🔥<span>Hábitos</span></a>` })}
   <div class="stat-tiles">
     <div class="tile glass"><b>${tasksW}</b><span>tareas hechas esta semana</span><small class="${diff >= 0 ? 'up' : 'down'}">${diff >= 0 ? '+' : ''}${diff} vs. la anterior</small></div>
     <div class="tile glass"><b>${focusW >= 60 ? (focusW / 60).toFixed(1).replace('.0', '') + ' h' : focusW + ' min'}</b><span>de enfoque esta semana</span></div>
     <div class="tile glass"><b>🔥 ${bestStreak}</b><span>mejor racha activa</span></div>
     <div class="tile glass"><b>${goalsDone}</b><span>objetivo${goalsDone === 1 ? '' : 's'} conseguido${goalsDone === 1 ? '' : 's'}</span></div>
   </div>
+  ${habitsStatsSection()}
   <div class="section"><div class="section-head"><h2>Tareas hechas · últimos 7 días</h2></div><div class="card glass">${bars(days.map(d => row(doneBy, d)), 'tareas')}</div></div>
   <div class="section"><div class="section-head"><h2>Minutos de enfoque · últimos 7 días</h2></div><div class="card glass">${bars(days.map(d => row(focusBy, d)), 'min')}</div></div>
   ${journalStats()}

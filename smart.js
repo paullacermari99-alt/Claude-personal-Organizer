@@ -8,6 +8,7 @@ const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLow
 
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const WEEKDAYS = { domingo: 0, lunes: 1, martes: 2, miercoles: 3, jueves: 4, viernes: 5, sabado: 6 };
+const NUM_WORDS = { una: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12 };
 const UNIT_WORDS = { dia: 'day', dias: 'day', semana: 'week', semanas: 'week', mes: 'month', meses: 'month', ano: 'year', anos: 'year' };
 
 function nextWeekday(from, wd, strictlyAfter) {
@@ -81,8 +82,31 @@ function parseQuick(text, today = todayStr()) {
   if (!out.estimate) take(/\s(\d)h(\d{2})(?:min)?(?=\s)/, m => { out.estimate = Number(m[1]) * 60 + Number(m[2]); });
   if (out.estimate) out.found.push('⏱ ' + durLabelShort(out.estimate));
 
-  /* Hora: 17:30, 17h, a las 5, 9am, 5 de la tarde */
+  /* Hora: 17:30, 17h, a las 5, 9am, 5 de la tarde, a las diez y media, de 5 a 7, a mediodía */
   const setTime = (h, mi) => { if (h > 23 || mi > 59) return false; out.time = pad(h) + ':' + pad(mi); };
+  /* Números en palabra tras «a las», «de», «hasta las»: «a las diez» → «a las 10» */
+  const NW = '(una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)', nw = w => NUM_WORDS[norm(w)] || w;
+  s = s.replace(new RegExp(`(\\s(?:a\\s+las?|desde\\s+las?|hasta\\s+las?)\\s+)${NW}(?=\\s)`, 'gi'), (m0, pre, w) => pre + nw(w));
+  s = s.replace(new RegExp(`(\\sde\\s+)(${NW}|\\d{1,2})(\\s+a\\s+(?:las?\\s+)?)(${NW}|\\d{1,2})(?=\\s)`, 'gi'), (m0, a, w1, x1, b, w2) => a + nw(w1) + b + nw(w2));
+  const pmGuess = (h, part) => ((part === 'tarde' || part === 'noche') && h < 12) ? h + 12 : (!part && h >= 1 && h <= 7) ? h + 12 : h;
+  const QUARTER = { 'y media': 30, 'y cuarto': 15, 'menos cuarto': -15 };
+  /* Franja: «de 5 a 7», «de 17:00 a 18:30», «desde las 9 hasta las 11» */
+  take(/\s(?:de|desde\s+las?)\s+(\d{1,2})(?:[:.](\d{2}))?\s*h?\s+(?:a|hasta)\s+(?:las?\s+)?(\d{1,2})(?:[:.](\d{2}))?\s*h?(?:\s+(?:de la|por la)\s+(manana|tarde|noche))?(?=\s)/, m => {
+    let h1 = Number(m[1]), h2 = Number(m[3]);
+    const m1 = Number(m[2] || 0), m2 = Number(m[4] || 0);
+    if (!m[2] || h1 < 8) h1 = pmGuess(h1, m[5]);
+    if (!m[4] || h2 < 8) h2 = pmGuess(h2, m[5]);
+    if (h2 * 60 + m2 <= h1 * 60 + m1 && h2 < 12) h2 += 12;
+    const dur = h2 * 60 + m2 - (h1 * 60 + m1);
+    if (dur <= 0 || dur > 16 * 60) return false;
+    if (setTime(h1, m1) === false) return false;
+    if (!out.estimate) { out.estimate = dur; out.found.push('⏱ ' + durLabelShort(dur)); }
+  }) ||
+  take(/\s(?:a|al|para)\s+(?:el\s+)?mediodia(?=\s)/, () => setTime(12, 0)) ||
+  take(/\s(?:a las?\s+)(\d{1,2})\s+(y media|y cuarto|menos cuarto)(?:\s+(?:de la|por la)\s+(manana|tarde|noche))?(?=\s)/, m => {
+    const h = pmGuess(Number(m[1]), m[3]), t = h * 60 + QUARTER[m[2]];
+    return setTime(Math.floor(t / 60), t % 60);
+  }) ||
   take(/\s(?:a las?\s+)?(\d{1,2})(?::|\.)(\d{2})\s*(am|pm|h)?(?=\s)/, m => {
     let h = Number(m[1]); if (m[3] === 'pm' && h < 12) h += 12; if (m[3] === 'am' && h === 12) h = 0;
     return setTime(h, Number(m[2]));
