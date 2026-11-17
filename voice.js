@@ -18,32 +18,51 @@ function stopListening(abort) {
   clearTimeout(r._kill);
   r._kill = setTimeout(() => { if (voiceRec === r) r._finish(); }, abort ? 0 : 1500);
 }
-/* listen({ onText(texto, final), onDone(texto), onError(mensaje) }) */
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = () => navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+const VOICE_LANG = /^es\b/i.test(navigator.language || '') ? navigator.language : 'es-ES';
+/* Qué decir cuando el dictado falla, según el error del navegador */
+function voiceErrorText(code) {
+  if (code === 'not-allowed') return isIOS
+    ? 'El iPhone no deja usar el micrófono aquí. Ve a Ajustes → Safari → Micrófono y elige «Permitir», y comprueba que Ajustes → General → Teclado → Dictado está activado.'
+    : 'El micrófono está bloqueado para la app. Toca el candado junto a la dirección (o Ajustes de Chrome → Configuración de sitios → Micrófono) y permítelo.';
+  if (code === 'service-not-allowed') return isIOS
+    ? 'El iPhone no deja dictar dentro de la app instalada. Usa el micrófono del teclado (abajo), o abre la app en Safari.'
+    : 'Este navegador no deja dictar aquí. Usa el micrófono del teclado (abajo).';
+  if (code === 'audio-capture') return 'No encuentro el micrófono. Comprueba que ninguna otra app lo está usando.';
+  if (code === 'network') return 'Para dictar hace falta conexión a internet.';
+  if (code === 'no-speech') return 'No te he oído. Pulsa el micrófono y habla justo después.';
+  if (code === 'language-not-supported') return 'El dictado en español no está disponible en este navegador. Usa el micrófono del teclado (abajo).';
+  if (code === 'silent') return 'El micrófono no ha llegado a arrancar en este navegador. Usa el micrófono del teclado (abajo): funciona igual.';
+  return 'No se ha podido dictar (' + code + '). Usa el micrófono del teclado (abajo).';
+}
+/* listen({ onText(texto), onDone(texto), onError(código), onAudio() }) */
 function listen(h) {
   if (!voiceOK) return false;
   stopListening(true);
   const rec = new SpeechRec();
-  rec.lang = 'es-ES'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
-  let heard = '', done = false;
+  rec.lang = VOICE_LANG; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+  let heard = '', done = false, audio = false, errored = false, started = false;
   rec._finish = () => {
     if (done) return;
     done = true; clearTimeout(rec._kill); clearTimeout(rec._max);
     if (voiceRec === rec) voiceRec = null;
     h.onDone && h.onDone(heard.trim());
   };
-  rec.onresult = e => { heard = Array.from(e.results).map(r => r[0].transcript).join(' '); h.onText && h.onText(heard); };
+  const gotAudio = () => { if (!audio) { audio = true; clearTimeout(rec._wait); h.onAudio && h.onAudio(); } };
+  rec.onstart = () => { started = true; };
+  rec.onaudiostart = gotAudio; rec.onspeechstart = gotAudio; rec.onsoundstart = gotAudio;
+  rec.onresult = e => { gotAudio(); heard = Array.from(e.results).map(r => r[0].transcript).join(' '); h.onText && h.onText(heard); };
   rec.onerror = e => {
-    const msg = {
-      'not-allowed': 'Para dictar, deja que la app use el micrófono (en los ajustes del navegador).',
-      'service-not-allowed': 'Aquí no se puede dictar. Escríbelo, o usa el micrófono del teclado: funciona igual.',
-      'audio-capture': 'No encuentro el micrófono.',
-      network: 'Para dictar hace falta conexión a internet.',
-    }[e.error];
-    if (msg && h.onError) h.onError(msg);
+    if (e.error === 'aborted') return;
+    errored = true;
+    h.onError && h.onError(e.error || 'desconocido');
   };
-  rec.onend = () => rec._finish();
-  try { rec.start(); } catch (_) { if (h.onError) h.onError('No se ha podido empezar a dictar.'); return false; }
+  rec.onend = () => { if (!heard && !errored && !audio && h.onError) { errored = true; h.onError(started ? 'no-speech' : 'silent'); } rec._finish(); };
+  try { rec.start(); } catch (err) { h.onError && h.onError((err && err.name) || 'start'); return false; }
   voiceRec = rec;
+  /* Si en 5 s el micrófono no ha arrancado, se dice claramente (pasa en algunas apps instaladas del iPhone) */
+  rec._wait = setTimeout(() => { if (!audio && !started && !errored && voiceRec === rec) { errored = true; h.onError && h.onError('silent'); stopListening(true); } }, 5000);
   rec._max = setTimeout(() => stopListening(false), 15000); /* nunca se queda escuchando para siempre */
   return true;
 }
@@ -62,7 +81,7 @@ function startDictation(input, btn) {
   const put = text => { input.value = (base ? base + ' ' : '') + text; input.dispatchEvent(new Event('input', { bubbles: true })); };
   const ok = listen({
     onText: put,
-    onError: msg => toast(msg),
+    onError: code => toast(voiceErrorText(code)),
     onDone: heard => {
       btn && btn.classList.remove('listening');
       input.placeholder = ph;
@@ -334,16 +353,23 @@ function vListen() {
   if (voiceRec) { stopListening(false); return; }
   vPlan = null;
   const sid = ++vSession; /* si escribes o cierras, lo que llegue de esta escucha se ignora */
-  vRender('Te escucho…', '<p class="voice-hint">Pulsa el micrófono otra vez para parar.</p>');
+  let failed = false;
+  vRender('Abriendo el micrófono…', '<p class="voice-hint">Pulsa el micrófono otra vez para parar.</p>');
   const ok = listen({
+    onAudio: () => { if (sid !== vSession) return; if (!failed && /^Abriendo/.test($('.voice-say', vEl).textContent)) $('.voice-say', vEl).textContent = 'Te escucho… habla ahora'; },
     onText: t => { if (sid !== vSession) return; $('.voice-say', vEl).textContent = '«' + cleanVoice(t) + '»'; },
-    onError: msg => { if (sid !== vSession) return; vEl.classList.remove('listening'); vRender(msg); },
+    onError: code => {
+      if (sid !== vSession) return;
+      failed = true; vEl.classList.remove('listening');
+      vRender(voiceErrorText(code), code === 'no-speech' || code === 'network' ? '' : '<p class="voice-hint">Toca «O escríbelo aquí» y pulsa el micrófono de tu teclado para dictar.</p>',
+        '<button type="button" class="btn" data-voice="kbd">Usar el teclado</button>');
+    },
     onDone: heard => {
       if (sid !== vSession) return;
       vEl.classList.remove('listening');
       if (vEl.hidden) return;
       if (heard) vShow(heard);
-      else if (!/micr|dictar|conexi/.test($('.voice-say', vEl).textContent)) vRender('No te he oído. Pulsa el micrófono y prueba otra vez.');
+      else if (!failed) vRender('No te he oído. Pulsa el micrófono y habla justo después.');
     },
   });
   if (ok) vEl.classList.add('listening');
@@ -399,6 +425,7 @@ document.addEventListener('click', e => {
   else if (k === 'mic') vListen();
   else if (k === 'do') vDo();
   else if (k === 'idle') vIdle();
+  else if (k === 'kbd') { vSession++; stopListening(true); vEl.classList.remove('listening'); vIdle(); $('.voice-type input', vEl).focus(); }
 });
 vBack.addEventListener('click', closeVoice);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !vEl.hidden) closeVoice(); });
