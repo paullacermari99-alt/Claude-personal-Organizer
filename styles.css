@@ -2386,3 +2386,16 @@ html[data-pro="free"] .fab-mic::after { position: absolute; top: -6px; right: -8
   .pro-x.counting .pro-ring-v { transition: none; }
 }
 html:has(#pro-store[open]) { overflow: hidden; }
+
+/* v55: barra de abajo con el resaltado concéntrico. La barra y la pastilla del seleccionado son
+   cápsulas y el hueco es igual por los cuatro lados, así que en los extremos la curva del resaltado
+   sigue exactamente la de la barra (radio de la pastilla = radio de la barra − hueco). */
+@media (max-width: 1023px) {
+  .nav { --nav-pad: 6px; padding: var(--nav-pad); border-radius: 999px; }
+  .nav a { border-radius: 999px; }
+  [data-skin="compacto"] .nav { --nav-pad: 5px; padding: var(--nav-pad); border-radius: 999px; }
+  [data-skin="compacto"] .nav a { border-radius: 999px; }
+}
+@media (max-width: 360px) {
+  .nav, [data-skin="compacto"] .nav { --nav-pad: 5px; padding: var(--nav-pad); }
+}
