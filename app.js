@@ -53,7 +53,7 @@ function renderView() {
     case 'objetivos': return viewGoals();
     case 'objetivo': return viewGoal(id);
     case 'ajustes': return viewSettings(id);
-    case 'progreso': return viewStats();
+    case 'progreso': return id ? viewStatDetail(id) : viewStats();
     case 'habitos': return viewHabits();
     case 'planificar': return viewPlanDay();
     default: return viewToday();
@@ -1161,7 +1161,7 @@ function journalStats() {
   const done = doneCountByDay();
   const any = days.some(d => journalOf(d));
   const tips = journalInsights();
-  return `<div class="section"><div class="section-head"><h2>Ánimo y energía · 14 días</h2></div>
+  return `<div class="section"><div class="section-head"><h2>Ánimo y energía · 14 días</h2><a class="btn small ghost" href="#progreso/animo">Gráfica</a></div>
     <div class="card glass">
       ${any ? `<div class="mood-grid">${days.map(d => { const j = journalOf(d) || {}; return `<div class="mood-day ${d === today ? 'today' : ''}" title="${esc(fmtLongDate(d))}${j.note ? ' · ' + esc(j.note) : ''}">
         <span class="md-emoji">${j.mood ? MOODS[j.mood - 1] : '·'}</span>
@@ -1758,6 +1758,7 @@ function bars(rows, unit, floor = 1) {
   </div>`).join('')}</div>`;
 }
 function viewStats() {
+  statOff = 0;
   const today = todayStr(), days = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
   const doneBy = new Map();
   state.tasks.filter(t => t.done && t.doneAt).forEach(t => { const k = dateOfTs(t.doneAt); doneBy.set(k, (doneBy.get(k) || 0) + 1); });
@@ -1777,14 +1778,15 @@ function viewStats() {
   <div class="page page-mid">
   ${pageHead({ eyebrow: `Semana ${weekNumber(ws)}`, title: 'Progreso', actions: `<a class="btn small" href="#habitos">🔥<span>Hábitos</span></a>` })}
   <div class="stat-tiles">
-    <div class="tile glass"><b>${tasksW}</b><span>tareas hechas esta semana</span><small class="${diff >= 0 ? 'up' : 'down'}">${diff >= 0 ? '+' : ''}${diff} vs. la anterior</small></div>
-    <div class="tile glass"><b>${focusW >= 60 ? (focusW / 60).toFixed(1).replace('.0', '') + ' h' : focusW + ' min'}</b><span>de enfoque esta semana</span></div>
-    <div class="tile glass"><b>🔥 ${bestStreak}</b><span>mejor racha activa</span></div>
+    <a class="tile glass" href="#progreso/tareas"><b>${tasksW}</b><span>tareas hechas esta semana</span><small class="${diff >= 0 ? 'up' : 'down'}">${diff >= 0 ? '+' : ''}${diff} vs. la anterior</small></a>
+    <a class="tile glass" href="#progreso/enfoque"><b>${focusW >= 60 ? (focusW / 60).toFixed(1).replace('.0', '') + ' h' : focusW + ' min'}</b><span>de enfoque esta semana</span></a>
+    <a class="tile glass" href="#${habits().length ? 'progreso/habitos' : 'habitos'}"><b>🔥 ${bestStreak}</b><span>mejor racha activa</span></a>
     <div class="tile glass"><b>${goalsDone}</b><span>objetivo${goalsDone === 1 ? '' : 's'} conseguido${goalsDone === 1 ? '' : 's'}</span></div>
   </div>
+  ${statsLinksSection()}
   ${habitsStatsSection()}
-  <div class="section"><div class="section-head"><h2>Tareas hechas · últimos 7 días</h2></div><div class="card glass">${bars(days.map(d => row(doneBy, d)), 'tareas', 5)}</div></div>
-  <div class="section"><div class="section-head"><h2>Minutos de enfoque · últimos 7 días</h2></div><div class="card glass">${bars(days.map(d => row(focusBy, d)), 'min', 60)}<p class="small muted bars-note">La barra llena es 1 hora de enfoque.</p></div></div>
+  <div class="section"><div class="section-head"><h2>Tareas hechas · últimos 7 días</h2><a class="btn small ghost" href="#progreso/tareas">Gráfica</a></div><div class="card glass">${bars(days.map(d => row(doneBy, d)), 'tareas', 5)}</div></div>
+  <div class="section"><div class="section-head"><h2>Minutos de enfoque · últimos 7 días</h2><a class="btn small ghost" href="#progreso/enfoque">Gráfica</a></div><div class="card glass">${bars(days.map(d => row(focusBy, d)), 'min', 60)}<p class="small muted bars-note">La barra llena es 1 hora de enfoque.</p></div></div>
   ${journalStats()}
   <div class="section"><div class="section-head"><h2>Rachas de diarias</h2><a class="btn small ghost" href="#diarias">Diarias</a></div>
     ${rstats.length ? `<div class="settings-group glass">${rstats.map(x => `<div class="item"><div class="grow"><div>${esc(x.r.title)}</div><div class="small muted">Mejor racha ${x.best}${x.rate !== null ? ` · ${x.rate}% cumplido en 30 días` : ''}${isPaused(x.r) ? ' · en pausa' : ''}</div></div><b class="streak big">🔥 ${x.streak}</b></div>`).join('')}</div>`
@@ -2531,6 +2533,8 @@ document.addEventListener('click', e => {
       save(); softSwap(); return;
     }
     case 'tasks-tab': state.settings.ui.tasksTab = el.dataset.v; save(); softSwap(); return;
+    case 'stats-period': state.settings.ui.statsPeriod = el.dataset.v; statOff = 0; save(); softSwap(); return;
+    case 'stats-nav': statOff = Math.min(0, statOff + Number(el.dataset.n)); softSwap(); return;
     case 'new-project': newProjectSheet(); return;
     case 'tpl-pick': { const t = projectTemplateById(el.dataset.id); if (t) templatePreview(t); return; }
     case 'templates': templatesSheet(el.dataset.kind, { ws: el.dataset.ws || startOfWeek(todayStr()), projectId: id || null }); return;
