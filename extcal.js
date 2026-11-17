@@ -1,4 +1,4 @@
-/* P Organizer — calendarios externos (Google Calendar, Outlook, iCloud) en modo solo lectura.
+/* Boldup — calendarios externos (Google Calendar, Outlook, iCloud) en modo solo lectura.
    Se leen con la «dirección secreta en formato iCal». Los eventos se guardan solo en este dispositivo. */
 'use strict';
 

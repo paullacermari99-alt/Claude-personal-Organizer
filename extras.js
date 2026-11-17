@@ -1,4 +1,4 @@
-/* P Organizer — papelera, reprogramar en bloque, plantillas, resumen de la mañana y revisión guiada */
+/* Boldup — papelera, reprogramar en bloque, plantillas, resumen de la mañana y revisión guiada */
 
 /* ---------- Papelera (10 días) ---------- */
 const TRASH_DAYS = 10;

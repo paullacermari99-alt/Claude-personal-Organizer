@@ -1,4 +1,4 @@
-/* P Organizer — desplegables propios: sustituyen la lista nativa del navegador (que no sigue el diseño)
+/* Boldup — desplegables propios: sustituyen la lista nativa del navegador (que no sigue el diseño)
    por una lista integrada. El <select> real sigue en el formulario, oculto, así que guardar funciona igual. */
 'use strict';
 

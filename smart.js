@@ -1,4 +1,4 @@
-/* P Organizer — escribir en lenguaje normal, tareas que se repiten, búsqueda y diario. */
+/* Boldup — escribir en lenguaje normal, tareas que se repiten, búsqueda y diario. */
 'use strict';
 
 /* Quita tildes y pasa a minúsculas para comparar */

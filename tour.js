@@ -1,4 +1,4 @@
-/* P Organizer — tutoriales guiados: oscurecen la pantalla, resaltan una zona y explican qué hacer.
+/* Boldup — tutoriales guiados: oscurecen la pantalla, resaltan una zona y explican qué hacer.
    · Primeros pasos: deja un hueco para tocar solo lo que pide y avanza cuando lo haces.
    · Por pantalla: la primera vez que entras en cada pantalla, un repaso breve (solo mirar). */
 'use strict';

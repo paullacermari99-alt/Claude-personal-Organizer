@@ -1,4 +1,4 @@
-/* P Organizer — Planificar el día por horas (v27).
+/* Boldup — Planificar el día por horas (v27).
    Arriba, las tareas del día sin hora; abajo, el horario. Se colocan arrastrando (mantener pulsado en el móvil)
    o tocando la tarea y luego la hora. Colocar crea un bloque vinculado: el plazo de la tarea no cambia. */
 'use strict';

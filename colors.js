@@ -1,4 +1,4 @@
-/* P Organizer — colores con sentido: cada tarea u objetivo toma el color de su tema según lo que dices
+/* Boldup — colores con sentido: cada tarea u objetivo toma el color de su tema según lo que dices
    («dentista» → Salud, «informe» → Trabajo), y los colores se pueden nombrar («las tareas verdes»). */
 'use strict';
 

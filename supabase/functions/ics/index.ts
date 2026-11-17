@@ -1,4 +1,4 @@
-// P Organizer — lee un calendario .ics (Google, Outlook, iCloud) para la app.
+// Boldup — lee un calendario .ics (Google, Outlook, iCloud) para la app.
 // Los navegadores no pueden leer Google Calendar directamente (CORS), así que pasa por aquí.
 // Solo para usuarios con sesión iniciada y solo hacia servidores de calendarios conocidos.
 // "Verify JWT" debe estar desactivado: la sesión se comprueba aquí dentro.

@@ -1,4 +1,4 @@
-/* P Organizer — vistas, formularios y acciones.
+/* Boldup — vistas, formularios y acciones.
    Usa core.js (datos y cálculos) y calendar.js (Semana). Los datos viven en localStorage. */
 'use strict';
 
@@ -1219,7 +1219,7 @@ function accountCard() {
 function viewSettings(sec) {
   if (!sec) return `
   <div class="page page-narrow page-settings">
-  ${pageHead({ eyebrow: 'P Organizer', title: 'Ajustes' })}
+  ${pageHead({ eyebrow: 'Boldup', title: 'Ajustes' })}
   ${accountCard()}
   <div class="settings-group glass set-menu">
     ${SET_SECTIONS.map(([k, l, c, ic]) => `<a class="item set-row" href="#ajustes/${k}"><span class="set-ic" style="--c:${c}">${ic}</span><span class="grow">${l}<span class="small muted item-sub">${esc(settingsSummary(k))}</span></span><span class="chev">${I.right}</span></a>`).join('')}
@@ -2121,7 +2121,7 @@ function updateTimerUI() {
   const layerOpen = !$('#focus').hidden;
   if (timer && timerOrphan(timer)) timer = null;
   if (!timer) {
-    document.title = 'P Organizer';
+    document.title = 'Boldup';
     pill.hidden = true;
     const el = $('#focus-time');
     const m0 = focusPlan().mode === 'long' ? focusPlan().work : focusMins || 25;
@@ -2132,7 +2132,7 @@ function updateTimerUI() {
   const left = timerLeft(timer), paused = timer.pausedLeft != null;
   if (!paused && left <= 0) { advanceTimer(timer); return; }
   const txt = mmss(left), brk = timer.phase === 'break';
-  document.title = `${paused ? '⏸ ' : brk ? '☕ ' : ''}${txt} · P Organizer`;
+  document.title = `${paused ? '⏸ ' : brk ? '☕ ' : ''}${txt} · Boldup`;
   const t = timer.taskId && task(timer.taskId);
   pill.hidden = layerOpen;
   pill.classList.toggle('is-paused', paused);

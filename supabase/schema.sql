@@ -1,4 +1,4 @@
--- P Organizer: tablas y reglas de seguridad (cada usuario solo ve lo suyo).
+-- Boldup: tablas y reglas de seguridad (cada usuario solo ve lo suyo).
 -- Pegar en Supabase → SQL Editor → Run.
 
 create table if not exists public.organizer_state (

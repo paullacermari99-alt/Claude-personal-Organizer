@@ -1,4 +1,4 @@
-/* P Organizer — bienvenida para quien abre la app por primera vez:
+/* Boldup — bienvenida para quien abre la app por primera vez:
    8 pantallas con demostraciones animadas de la app y, al final, entrar o crear cuenta. */
 'use strict';
 
@@ -14,7 +14,7 @@ const obTask = (title, meta, cls = '') => `<div class="ob-task ${cls}"><span cla
 const OB_SLIDES = [
   {
     title: 'Planifica tu día y deja de procrastinar',
-    text: 'P Organizer junta tus tareas, tu calendario y tus objetivos en un solo sitio. Te enseño lo principal en un minuto.',
+    text: 'Boldup junta tus tareas, tu calendario y tus objetivos en un solo sitio. Te enseño lo principal en un minuto.',
     demo: `<div class="demo-welcome">
       <img class="dw-icon" src="icons/icon.svg" alt="">
       <div class="dw-card dw-1">☀️ Elige lo importante</div>
@@ -123,7 +123,7 @@ function startOnboarding() {
   el.className = 'ob';
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-modal', 'true');
-  el.setAttribute('aria-label', 'Bienvenida a P Organizer');
+  el.setAttribute('aria-label', 'Bienvenida a Boldup');
   el.innerHTML = `
     <button class="ob-skip" data-ob="skip">Saltar</button>
     <div class="ob-track">

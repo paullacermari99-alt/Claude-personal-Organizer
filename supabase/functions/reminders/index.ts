@@ -1,4 +1,4 @@
-// P Organizer — envía los recordatorios aunque la app esté cerrada.
+// Boldup — envía los recordatorios aunque la app esté cerrada.
 // Se ejecuta cada minuto (supabase/cron.sql). Secretos: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, CRON_SECRET.
 // "Verify JWT" debe estar desactivado: la protege la cabecera x-cron-secret.
 import webpush from 'npm:web-push@3.6.7';

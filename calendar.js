@@ -1,4 +1,4 @@
-/* P Organizer — Semana: vistas de semana y día, horarios, arrastrar y soltar. */
+/* Boldup — Semana: vistas de semana y día, horarios, arrastrar y soltar. */
 'use strict';
 
 let weekStart = null;            /* primer día de la semana visible */

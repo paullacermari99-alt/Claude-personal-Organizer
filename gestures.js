@@ -1,4 +1,4 @@
-/* P Organizer — gestos táctiles y ventanas por encima.
+/* Boldup — gestos táctiles y ventanas por encima.
    v42: con una ventana abierta (hoja, panel de voz, enfoque, lista desplegable) lo de detrás no se toca ni se
    desplaza; tocar fuera la cierra sin pulsar lo de debajo. Los gestos del móvil (deslizar tareas, cerrar hojas
    arrastrando, cambiar de semana) usan eventos táctiles y deciden la dirección en el primer movimiento, así el

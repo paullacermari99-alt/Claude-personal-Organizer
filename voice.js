@@ -1,4 +1,4 @@
-/* P Organizer — hablar con la app (gratis, sin cuentas): el dictado lo hace el navegador y las órdenes
+/* Boldup — hablar con la app (gratis, sin cuentas): el dictado lo hace el navegador y las órdenes
    las entiende la propia app. «dentista mañana a las 10», «objetivo correr 10 km en 3 meses»,
    «mueve el informe al viernes», «he terminado la compra», «¿qué tengo hoy?», «abre la semana»…
    Siempre enseña lo que ha entendido antes de cambiar nada, y después se puede deshacer. */

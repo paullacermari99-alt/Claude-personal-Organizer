@@ -1,4 +1,4 @@
-/* P Organizer — núcleo: datos, fechas, migración, rutinas (diarias) y cálculos.
+/* Boldup — núcleo: datos, fechas, migración, rutinas (diarias) y cálculos.
    Se carga primero; las vistas viven en app.js y calendar.js. */
 'use strict';
 

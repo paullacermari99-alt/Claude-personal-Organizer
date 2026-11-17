@@ -1,4 +1,4 @@
-# P Organizer
+# Boldup
 
 Planificador personal para no procrastinar: tu **día**, tus **proyectos** y tus **objetivos**, en el móvil y en el ordenador.
 

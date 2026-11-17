@@ -1,4 +1,4 @@
-/* P Organizer — Hábitos con rachas (v27).
+/* Boldup — Hábitos con rachas (v27).
    Un hábito se marca sí/no cada día: no crea tareas ni se acumula (eso son las Diarias).
    Datos (se sincronizan con el resto): state.habits = [{ id, title, icon, color, freq: 'daily'|'days'|'weekly',
    days: [0-6], n: veces por semana, done: { 'YYYY-MM-DD': 1 }, createdAt, order }] */

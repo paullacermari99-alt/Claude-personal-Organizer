@@ -1,7 +1,7 @@
 /* Service worker: permite abrir la app sin conexión.
    Sube CACHE cuando cambien los archivos para forzar la actualización. */
-const CACHE = 'organizador-v47';
-const ASSETS = ['./', 'index.html', 'styles.css?v=47', 'config.js?v=47', 'core.js?v=47', 'smart.js?v=47', 'colors.js?v=47', 'ui.js?v=47', 'extcal.js?v=47', 'sync.js?v=47', 'onboarding.js?v=47', 'tour.js?v=47', 'calendar.js?v=47', 'gestures.js?v=47', 'extras.js?v=47', 'habits.js?v=47', 'planner.js?v=47', 'voice.js?v=47', 'app.js?v=47', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
+const CACHE = 'organizador-v48';
+const ASSETS = ['./', 'index.html', 'styles.css?v=48', 'config.js?v=48', 'core.js?v=48', 'smart.js?v=48', 'colors.js?v=48', 'ui.js?v=48', 'extcal.js?v=48', 'sync.js?v=48', 'onboarding.js?v=48', 'tour.js?v=48', 'calendar.js?v=48', 'gestures.js?v=48', 'extras.js?v=48', 'habits.js?v=48', 'planner.js?v=48', 'voice.js?v=48', 'app.js?v=48', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -36,8 +36,8 @@ self.addEventListener('fetch', e => {
 /* Avisos push (recordatorios con la app cerrada) */
 self.addEventListener('push', e => {
   let d = {};
-  try { d = e.data ? e.data.json() : {}; } catch { d = { title: 'P Organizer', body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || 'P Organizer', { body: d.body || '', tag: d.tag, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', renotify: !!d.tag, vibrate: d.tag === 'focus-live' ? [200, 100, 200] : undefined }));
+  try { d = e.data ? e.data.json() : {}; } catch { d = { title: 'Boldup', body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Boldup', { body: d.body || '', tag: d.tag, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', renotify: !!d.tag, vibrate: d.tag === 'focus-live' ? [200, 100, 200] : undefined }));
 });
 self.addEventListener('notificationclick', e => {
   e.notification.close();

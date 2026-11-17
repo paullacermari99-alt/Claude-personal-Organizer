@@ -1,4 +1,4 @@
-/* P Organizer — cuenta, sincronización entre dispositivos y avisos push (Supabase, sin librerías). */
+/* Boldup — cuenta, sincronización entre dispositivos y avisos push (Supabase, sin librerías). */
 'use strict';
 
 const CFG = window.PO_CONFIG || {};
