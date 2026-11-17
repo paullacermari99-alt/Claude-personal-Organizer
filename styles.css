@@ -1694,3 +1694,18 @@ body[data-page="planificar"] .fab { display: none; }
 .tpl-goal-h { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
 .tpl-goal-h .small { flex: none; font-weight: 400; }
 .tpl-success { margin: -2px 0 6px; }
+
+/* ---------- v30: dictar tareas ---------- */
+.mic-in { position: relative; display: block; }
+.mic-in input[type=text] { width: 100%; padding-right: 50px; }
+.mic-in .mic-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; }
+.mic-in .mic-btn:active { transform: translateY(-50%) scale(.88); }
+.mic-btn { position: relative; flex: none; }
+.mic-btn svg { width: 20px; height: 20px; }
+.mic-btn.listening { background: var(--red, #ff3b30); color: #fff; }
+.mic-btn.listening::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 2px var(--red, #ff3b30); animation: mic-pulse 1.4s ease-out infinite;
+}
+@keyframes mic-pulse { from { transform: scale(1); opacity: .7; } to { transform: scale(1.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .mic-btn.listening::after { animation: none; opacity: 0; } }

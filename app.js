@@ -218,7 +218,7 @@ function quickAdd(ctx, placeholder = 'Nueva tarea') {
   const attrs = Object.entries(ctx).filter(([, v]) => v).map(([k, v]) => `data-${k}="${esc(v)}"`).join(' ');
   return `<form class="quick-add glass" data-act="quick-add" ${attrs}>
     <input type="text" name="title" placeholder="${placeholder}" autocomplete="off" enterkeyhint="done" aria-label="${placeholder}" data-input="quick">
-    <button class="icon-btn round" type="submit" aria-label="Añadir tarea">${I.plus}</button>
+    ${micBtn()}<button class="icon-btn round" type="submit" aria-label="Añadir tarea">${I.plus}</button>
   </form><div class="qa-preview" aria-live="polite"></div>`;
 }
 function collapsible(key, title, count, body, extra = '') {
@@ -1185,6 +1185,7 @@ function newAnySheet() {
   const ctx = name === 'hoy' ? { due: viewDate } : name === 'proyecto' ? { projectId: id } : name === 'objetivo' ? { goalId: id } : {};
   actionSheet('Crear', [
     ['Tarea', I.review, () => taskModal(ctx)],
+    ...(voiceOK ? [['Dictar una tarea', I.mic, () => { taskModal(ctx); startDictation(modalForm.elements.title, $('.mic-btn', modalForm)); }]] : []),
     ['Evento o bloque', I.cal, () => eventModal(defaultEventCtx())],
     ['Diaria', I.daily, () => routineModal({ projectId: ctx.projectId || null })],
     ['Hábito', I.repeat, () => habitModal()],
@@ -1214,7 +1215,7 @@ function taskModal(t0 = {}) {
   let saved = null;
   const evs = isNew ? [] : blocksOfTask(t.id).filter(e => !e.recurrence && e.date >= todayStr());
   openModal(isNew ? 'Nueva tarea' : 'Tarea', `
-    <label class="field">Tarea<input type="text" name="title" required value="${esc(t.title)}" enterkeyhint="done" placeholder="${isNew ? 'Ej.: dentista mañana a las 10' : '¿Qué hay que hacer?'}" ${isNew ? 'data-nl="1"' : ''}></label>
+    <label class="field">Tarea${isNew && voiceOK ? '<div class="mic-in">' : ''}<input type="text" name="title" required value="${esc(t.title)}" enterkeyhint="done" placeholder="${isNew ? 'Ej.: dentista mañana a las 10' : '¿Qué hay que hacer?'}" ${isNew ? 'data-nl="1"' : ''}>${isNew && voiceOK ? micBtn() + '</div>' : ''}</label>
     ${isNew ? '<div class="qa-preview nl-preview" aria-live="polite"></div>' : ''}
     <div class="row">
       <label class="field">Plazo<input type="date" name="due" value="${esc(t.due || '')}"></label>
@@ -1257,6 +1258,7 @@ function taskModal(t0 = {}) {
       });
       /* v27: en una tarea nueva, «dentista mañana a las 10» rellena plazo, hora y demás (si no los has cambiado a mano) */
       let nlTime = null;
+      const voiced = isNew && !!modalForm.elements.title.dataset.voiced;
       if (isNew) {
         const p = parseQuick(title);
         if (p.found.length && p.title) {
@@ -1269,8 +1271,9 @@ function taskModal(t0 = {}) {
           for (const name of p.newTags) { const tg = { id: uid(), name, color: COLORS[state.tags.length % COLORS.length] }; state.tags.push(tg); p.tags.push(tg.id); }
           obj.tags = [...new Set([...obj.tags, ...p.tags])];
           nlTime = p.time;
-          toast('Añadida · ' + p.found.join(' · '));
+          if (!voiced) toast('Añadida · ' + p.found.join(' · '));
         }
+        if (voiced) voiceSavedToast(obj, p.found);
       }
       if (obj.repeat && !obj.due) obj.due = todayStr();
       if (nlTime) { if (!obj.due) obj.due = todayStr(); scheduleTask(obj, obj.due, nlTime, fmtHM(Math.min(toMin(nlTime) + (obj.estimate || 60), 24 * 60 - 1))); }
@@ -2270,7 +2273,8 @@ document.addEventListener('submit', e => {
   const t = addParsedTask(title, { due: f.dataset.due || null, projectId: f.dataset.project || null, goalId: f.dataset.goal || null });
   if (!t) return;
   save(); rerender();
-  if (parsed.found.length) toast('Añadida · ' + parsed.found.join(' · '));
+  if (input.dataset.voiced) { delete input.dataset.voiced; voiceSavedToast(t, parsed.found); }
+  else if (parsed.found.length) toast('Añadida · ' + parsed.found.join(' · '));
   const sel = Object.keys(f.dataset).filter(k => k !== 'act').map(k => `[data-${k}="${f.dataset[k]}"]`).join('');
   const again = $(`form[data-act="quick-add"]${sel} input[name=title]`);
   if (again) again.focus();
