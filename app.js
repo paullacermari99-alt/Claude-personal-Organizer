@@ -150,6 +150,7 @@ window.addEventListener('hashchange', () => {
 function pageHead({ eyebrow = '', title, actions = '', dot = '' }) {
   return `<header class="page-head">
     <button class="ph-search mobile-only" data-act="search" aria-label="Buscar">${I.search}</button>
+    ${typeof proPill === 'function' ? proPill() : ''}
     <div class="ph-text">
       <div class="eyebrow">${eyebrow || '&nbsp;'}</div>
       <h1>${dot ? `<span class="title-dot" style="--c:${dot}"></span>` : ''}${title}</h1>
@@ -1190,6 +1191,7 @@ const SET_SECTIONS = [
   ['etiquetas', 'Etiquetas', '#ff9f0a', I.flag],
   ['datos', 'Tus datos', '#8e8e93', I.archive],
   ['ayuda', 'Ayuda e instalación', '#30b0c7', I.review],
+  ['pro', 'Boldup Pro (prueba)', '#f5a524', svg('<path d="M12 3.5l2.4 5.1 5.6.6-4.2 3.8 1.2 5.5L12 15.7l-5 2.8 1.2-5.5L4 9.2l5.6-.6z"/>')],
 ];
 function settingsSummary(k) {
   const s = state.settings, r = s.reminders;
@@ -1202,6 +1204,7 @@ function settingsSummary(k) {
     case 'etiquetas': return `${state.tags.length} etiqueta${state.tags.length === 1 ? '' : 's'}`;
     case 'datos': return 'Papelera, copias y plantillas';
     case 'ayuda': return 'Instalar la app y tutoriales';
+    case 'pro': return typeof proSettingsSummary === 'function' ? proSettingsSummary() : '';
   }
   return '';
 }
@@ -1240,6 +1243,7 @@ function settingsBody(sec) {
   const sel = (path, opts, cur, num) => `<select data-set="${path}" ${num ? 'data-num' : ''}>${opts.map(([v, l]) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   if (sec === 'cuenta') return syncSection();
   if (sec === 'apariencia') return appearanceSection();
+  if (sec === 'pro') return proSettingsSection();
   if (sec === 'calendarios') return calendarsSection();
   if (sec === 'avisos') return `
   <div class="section">
