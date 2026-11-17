@@ -315,6 +315,7 @@ document.addEventListener('click', e => {
     const on = !openDays.set.has(d);
     on ? openDays.set.add(d) : openDays.set.delete(d);
     sec.classList.toggle('open', on);
+    sec.classList.toggle('just-opened', on);
     el.setAttribute('aria-expanded', String(on));
     haptic(6);
   } else if (act === 'ptray') {

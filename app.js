@@ -88,9 +88,13 @@ function softSwap(fn = route) {
   fn();
   window.scrollTo(0, y);
   if (reduceMotion()) return;
-  [...pageOf().children].forEach((n, i) => {
-    if (n.outerHTML === before[i] || n.matches('.page-head, .toolbar, .segmented') || n.querySelector('.segmented')) return;
-    if (n.animate) n.animate([{ opacity: .15 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' });
+  /* v59: lo que ya estaba (filtros, «Añadir», listas, avisos…) cambia en el sitio, sin fundido:
+     antes todo lo que cambiaba bajaba a casi transparente y volvía (parpadeo). Solo aparece con
+     un fundido corto un bloque que antes no existía (p. ej. el aviso de «no hay nada»). */
+  const had = new Set(before.map(kindOf));
+  [...pageOf().children].forEach(n => {
+    if (had.has(kindOf(n.outerHTML)) || !n.animate) return;
+    n.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' });
   });
   $$('.segmented:not(.seg-slide)', app).forEach((sg, i) => {
     const from = segs[i], on = sg.querySelector('button.on');
@@ -103,6 +107,14 @@ function softSwap(fn = route) {
     const end = () => { g.remove(); sg.classList.remove('seg-moving'); };
     a.finished.then(end, end);
   });
+}
+/* Tipo de bloque: etiqueta + clases + id de su primera etiqueta (sin estados como «on» u «open») */
+function kindOf(html) {
+  const m = /^<([a-z0-9-]+)([^>]*)>/i.exec(html || '');
+  if (!m) return '';
+  const attr = k => (new RegExp(`\\s${k}="([^"]*)"`).exec(m[2]) || [])[1] || '';
+  const cls = attr('class').split(/\s+/).filter(c => c && !/^(on|open|active|is-|has-|just-|in-)/.test(c)).sort().join('.');
+  return `${m[1]}#${attr('id')}.${cls}`;
 }
 /* v23: en el móvil la pantalla nueva entra con un fundido corto (solo el contenido, el fondo no cambia: sin parpadeo) */
 function pageEnter() {

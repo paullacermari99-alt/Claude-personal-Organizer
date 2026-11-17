@@ -864,7 +864,9 @@ body.focus-open { overflow: hidden; }
 .wk-dots { display: flex; gap: 4px; min-height: 6px; }
 .wk-dots i { width: 18px; height: 5px; border-radius: 3px; background: var(--c); }
 .wk-body { display: none; flex-direction: column; gap: 6px; padding: 0 12px 12px 68px; }
-.wk-day.open .wk-body { display: flex; animation: fade .2s; }
+.wk-day.open .wk-body { display: flex; }
+/* v59: el fundido solo al abrir el día con el dedo, no cada vez que se repinta la pantalla */
+.wk-day.open.just-opened .wk-body { animation: fade .2s; }
 .wk-ev { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 12px; cursor: pointer;
   background: color-mix(in srgb, var(--c) 18%, transparent); box-shadow: inset 3px 0 0 var(--c); }
 .wk-ev.clash { outline: 1.5px solid var(--orange); outline-offset: -1.5px; }
