@@ -36,7 +36,7 @@ function parseHash() {
   const [name, id, sub] = (location.hash.replace(/^#/, '') || 'hoy').split('/');
   return { name: name || 'hoy', id, sub };
 }
-const NAV_OF = { proyecto: 'proyectos', objetivo: 'objetivos', habitos: 'progreso', planificar: 'hoy' };
+const NAV_OF = { proyecto: 'proyectos', equipo: 'proyectos', amigos: 'proyectos', objetivo: 'objetivos', habitos: 'progreso', planificar: 'hoy' };
 function renderView() {
   const { name, id, sub } = parseHash();
   const sec = NAV_OF[name] || name;
@@ -50,6 +50,8 @@ function renderView() {
     case 'revision': return viewReview();
     case 'proyectos': return viewProjects();
     case 'proyecto': return viewProject(id, sub);
+    case 'equipo': return viewTeam(id, sub);
+    case 'amigos': return viewFriends();
     case 'objetivos': return viewGoals();
     case 'objetivo': return viewGoal(id);
     case 'ajustes': return viewSettings(id);
@@ -510,6 +512,7 @@ function viewToday() {
       </div>
       ${routines.length ? collapsible('diarias', 'Diarias pendientes', totalPend, routines.map(r => routineGroup(r)).join(''),
         `<a class="btn small ghost" href="#diarias">Ver diarias</a>`) : ''}
+      ${typeof teamTodaySection === 'function' ? teamTodaySection(d) : ''}
       ${habitsTodaySection(d)}
       ${journalCard(d)}
     </div>
@@ -841,10 +844,26 @@ function viewProjects() {
   const ui = state.settings.ui, list = sortedProjects();
   const nArch = state.projects.filter(p => p.archived).length, nAct = state.projects.length - nArch;
   const sortName = (PROJ_SORTS.find(([v]) => v === (ui.projectsSort || 'manual')) || PROJ_SORTS[0])[1];
+  /* v69: «Míos» (los de siempre, solo tuyos) y «Con amigos» (tableros compartidos, social.js) */
+  const shared = !!ui.projectsShared && typeof viewSharedProjects === 'function';
+  const nTeams = typeof SOC !== 'undefined' && SOC.teams ? SOC.teams.filter(p => !p.archived_at).length : 0;
+  const inc = typeof SOC !== 'undefined' && SOC.friends ? SOC.friends.incoming.length : 0;
+  const switcher = typeof viewSharedProjects === 'function' ? `<div class="segmented pj-scope" role="tablist">
+    <button role="tab" class="${!shared ? 'on' : ''}" data-sact="shared-tab" data-v="">Míos${nAct ? ' · ' + nAct : ''}</button>
+    <button role="tab" class="${shared ? 'on' : ''}" data-sact="shared-tab" data-v="1">Con amigos${nTeams ? ' · ' + nTeams : ''}${inc ? '<span class="soc-dot sm"></span>' : ''}</button>
+  </div>` : '';
+  if (shared) return `
+  <div class="page page-projects page-shared">
+  ${pageHead({ eyebrow: 'Proyectos en equipo', title: 'Proyectos', actions: socOn() && SOC.profile ? `
+    <button class="btn primary pj-new" data-sact="team-new" aria-label="Nuevo proyecto con amigos">${I.plus}<span>Nuevo</span></button>` : '' })}
+  ${switcher}
+  ${viewSharedProjects()}
+  </div>`;
   return `
   <div class="page page-projects">
   ${pageHead({ eyebrow: nAct ? `${nAct} en marcha` : 'Lo que estás construyendo', title: 'Proyectos', actions: `
     <button class="btn primary pj-new" data-act="new-project" aria-label="Nuevo proyecto">${I.plus}<span>Nuevo</span></button>` })}
+  ${switcher}
   <div class="pj-bar">
     <div class="segmented compact" role="tablist">
       <button role="tab" class="${!ui.projectsArchived ? 'on' : ''}" data-act="set-ui" data-k="projectsArchived" data-v="">Activos${nAct ? ' · ' + nAct : ''}</button>
@@ -979,7 +998,7 @@ function syncSection() {
   if (!cloudReady()) body = `<div class="item"><span class="muted">Aún no está activada. Cuando esté, podrás entrar con tu email y tener los mismos datos en el móvil y el ordenador.</span></div>`;
   else if (!getSession()) body = `<div class="item">${syncLine()}</div>${syncInfo.notice ? `<div class="item"><span class="grow">${syncInfo.notice}</span></div>` : ''}
     <form class="item login" data-act="login">
-      <input type="email" name="email" placeholder="Email" autocomplete="email" aria-label="Email" required>
+      <input type="text" inputmode="email" name="email" placeholder="Email (o tu nick para entrar)" autocomplete="username" autocapitalize="none" spellcheck="false" aria-label="Email o nick" required>
       <input type="password" name="password" placeholder="Contraseña" autocomplete="current-password" aria-label="Contraseña" minlength="6">
       <div class="login-actions"><button class="btn small primary" type="submit" value="in">Entrar</button><button class="btn small" type="submit" value="up">Crear cuenta</button><button class="btn small ghost" type="submit" value="reset" formnovalidate>¿Olvidaste la contraseña?</button></div>
     </form>`;
@@ -987,6 +1006,8 @@ function syncSection() {
     const s = getSession();
     body = `${syncInfo.needPassword ? `<form class="item login" data-act="new-password"><span class="grow">Pon tu contraseña nueva</span><input type="password" name="password" placeholder="Contraseña nueva" autocomplete="new-password" aria-label="Contraseña nueva" minlength="6" required><button class="btn small primary" type="submit">Guardar</button></form>` : ''}
       <div class="item"><span>Cuenta</span><span class="muted">${esc((s.user && s.user.email) || '…')}</span></div>
+      ${typeof SOC !== 'undefined' && SOC.profile ? `<div class="item"><span>Nick</span><span class="soc-acc"><span class="muted">@${esc(SOC.profile.username)} · ${esc(SOC.profile.friend_code)}</span><button class="btn small" data-sact="edit-profile">Editar</button></span></div>`
+        : typeof SOC !== 'undefined' && SOC.profileLoaded && SOC.backend ? `<div class="item"><span>Nick</span><button class="btn small primary" data-sact="nick">Elegir mi nick</button></div>` : ''}
       <div class="item" data-live="sync">${syncLine()}<button class="btn small" data-act="sync-now">Sincronizar ahora</button></div>
       ${CFG.vapidPublicKey ? `<div class="item"><span>Avisos con la app cerrada</span><button class="btn small ${pushActive() ? '' : 'primary'}" data-act="push-toggle">${pushActive() ? 'Desactivar' : 'Activar'}</button></div>` : ''}
       <div class="item"><span>Cerrar sesión en este dispositivo</span><button class="btn small danger" data-act="sign-out">Salir</button></div>`;
@@ -2629,6 +2650,7 @@ document.addEventListener('submit', e => {
     if (f.dataset.act === 'new-password') job = setNewPassword(pass).then(() => toast('Contraseña cambiada'));
     else if (how === 'reset') job = email ? sendPasswordReset(email) : Promise.reject(new Error('Escribe tu email arriba'));
     else if (pass.length < 6) job = Promise.reject(new Error('La contraseña debe tener al menos 6 caracteres'));
+    else if (how === 'up' && !email.includes('@')) job = Promise.reject(new Error('Para crear la cuenta escribe tu email (el nick lo eliges después)'));
     else if (how === 'up') job = signUp(email, pass).then(ok => toast(ok ? '¡Cuenta creada! Tus datos ya se sincronizan.' : 'Mira tu email para confirmar la cuenta'));
     else job = signIn(email, pass).then(() => toast('¡Dentro! Tus datos ya se sincronizan.'));
     job.then(() => rerender(), err => { toast(err.message); btns.forEach(x => { x.disabled = false; }); });
@@ -2821,5 +2843,7 @@ if (wasReset) { save(); toast('Nueva versión: empiezas con la app vacía. Tus a
 setTimeout(checkReminders, 2000);
 refreshCalendars().then(changed => { if (changed && !modal.open) rerender(); }).catch(() => {});
 if (cameFromLogin) firstSync().then(rerender).catch(e => toast(e.message)); else syncNow();
+/* v69: nick y amigos (social.js). Si ya tienes cuenta y aún no tienes nick, se te pide una vez */
+if (typeof socAfterLogin === 'function' && !cameFromLogin && getSession()) setTimeout(() => socAfterLogin(), 2500);
 /* Con la app abierta se miran los cambios de tus otros dispositivos cada 30 s */
 setInterval(() => { if (document.visibilityState === 'visible' && !modal.open) syncNow(); }, 30000);

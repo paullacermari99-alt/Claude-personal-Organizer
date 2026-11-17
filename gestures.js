@@ -38,8 +38,8 @@ function markOpened(el) { if (el) el._openedAt = Date.now(); }
 
 function overlayOpen() {
   const m = document.getElementById('modal'), v = document.getElementById('voice'), f = document.getElementById('focus');
-  const ps = document.getElementById('pro-store'), pw = document.getElementById('pro-welcome');
-  return !!((m && m.open) || (ps && ps.open) || (pw && pw.open) || (v && !v.hidden) || (f && !f.hidden) || document.querySelector('.sel-pop'));
+  const ps = document.getElementById('pro-store'), pw = document.getElementById('pro-welcome'), nk = document.getElementById('soc-dlg');
+  return !!((m && m.open) || (ps && ps.open) || (pw && pw.open) || (nk && nk.open) || (v && !v.hidden) || (f && !f.hidden) || document.querySelector('.sel-pop'));
 }
 /* ¿Puede algo entre `el` y `stop` desplazarse en esa dirección? (dy > 0 = el dedo baja) */
 function canScroll(el, stop, dx, dy) {

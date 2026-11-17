@@ -74,20 +74,34 @@ const authError = e => { const m = (AUTH_ERRORS.find(([re]) => re.test(e.message
 
 async function signIn(email, password) {
   try {
-    const d = await sb('/auth/v1/token?grant_type=password', { method: 'POST', auth: false, body: { email, password } });
+    /* v69: también se puede entrar con el nick (función del servidor «login»: el email nunca sale de allí) */
+    const nick = !email.includes('@') && email.trim().toLowerCase().replace(/^@/, '');
+    const d = nick ? await signInNick(nick, password) : await sb('/auth/v1/token?grant_type=password', { method: 'POST', auth: false, body: { email, password } });
     setSession(sessionFrom(d));
   } catch (e) { throw authError(e); }
   syncInfo.notice = '';
   try { localStorage.removeItem(LOST_KEY); } catch {}
   await firstSync();
 }
+async function signInNick(nick, password) {
+  if (!/^[a-z0-9][a-z0-9_.]{2,19}$/.test(nick)) throw new Error('Escribe tu email o tu nick');
+  let res;
+  try { res = await fetch(CFG.supabaseUrl.replace(/\/$/, '') + '/functions/v1/login', { method: 'POST', headers: { apikey: CFG.supabaseKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ nick, password }) }); }
+  catch (e) { throw new Error('Sin conexión'); }
+  if (res.status === 404) throw new Error('Aún no se puede entrar con el nick: usa tu email');
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(/not confirmed/i.test(d.error_description || '') ? 'Email not confirmed' : res.status === 429 ? 'Too many requests' : 'Nick o contraseña incorrectos');
+  return d;
+}
 /* Los enlaces del email vuelven siempre a esta misma app (carpeta incluida), no a la raíz del dominio */
 const APP_URL = location.origin + location.pathname.replace(/[^/]*$/, '');
 const backHere = () => '?redirect_to=' + encodeURIComponent(APP_URL);
 /* Devuelve true si ya ha entrado; false si tiene que confirmar el email primero */
-async function signUp(email, password) {
+async function signUp(email, password, username) {
   let d;
-  try { d = await sb('/auth/v1/signup' + backHere(), { method: 'POST', auth: false, body: { email, password } }); }
+  /* v69: el nick elegido al registrarse viaja en la cuenta y se reserva al entrar por primera vez */
+  if (username) try { localStorage.setItem('boldup.pendingNick', username); } catch {}
+  try { d = await sb('/auth/v1/signup' + backHere(), { method: 'POST', auth: false, body: { email, password, ...(username ? { data: { username } } : {}) } }); }
   catch (e) { throw authError(e); }
   const u = d && (d.user || d);
   if (u && Array.isArray(u.identities) && !u.identities.length) throw new Error('Ya tienes una cuenta con ese email. Pulsa «Entrar» o, si no recuerdas la contraseña, «¿Olvidaste la contraseña?»');
@@ -136,6 +150,7 @@ async function signOut() {
   await unsubscribePush().catch(() => {});
   setSession(null);
   try { localStorage.removeItem(BASE_KEY); localStorage.removeItem(LOST_KEY); } catch {}
+  if (typeof socReset === 'function') socReset();
   syncInfo.status = 'off'; syncInfo.pending = false;
 }
 
@@ -339,6 +354,7 @@ async function firstSync() {
   try { localStorage.removeItem(LOST_KEY); } catch {}
   await syncNow();
   if (typeof rerender === 'function' && !modalOpen()) rerender();
+  if (typeof socAfterLogin === 'function') socAfterLogin();
 }
 const pushRemote = () => syncNow();
 /* Llamado por save(): sube los cambios al poco tiempo */

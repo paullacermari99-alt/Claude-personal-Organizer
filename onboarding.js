@@ -99,13 +99,16 @@ function obLoginSlide() {
       <img class="ob-logo" src="icons/icon.svg" alt="">
       <h2>${ready ? 'Crea tu cuenta o entra' : '¡Listo para empezar!'}</h2>
       <p>${ready ? 'Con tu cuenta tendrás los mismos datos en el móvil y en el ordenador, y avisos aunque la app esté cerrada.' : 'Tus datos se guardan en este dispositivo.'}</p>
-      ${ready ? `<form class="ob-form" data-act="ob-login" novalidate>
-        <input type="email" name="email" placeholder="Email" autocomplete="email" aria-label="Email" required>
-        <input type="password" name="password" placeholder="Contraseña (mínimo 6)" autocomplete="current-password" aria-label="Contraseña" minlength="6">
+      ${ready ? `<form class="ob-form" data-act="ob-login" data-mode="up" novalidate>
+        <label class="ob-nick only-up"><span>@</span><input name="nick" placeholder="Tu nick (para tus amigos)" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="20" aria-label="Nick"></label>
+        <div class="ob-nick-msg only-up" aria-live="polite"></div>
+        <input type="text" inputmode="email" name="email" placeholder="Email" autocomplete="email" autocapitalize="none" spellcheck="false" aria-label="Email" required>
+        <input type="password" name="password" placeholder="Contraseña (mínimo 6)" autocomplete="new-password" aria-label="Contraseña" minlength="6">
         <div class="ob-msg" role="status" aria-live="polite"></div>
-        <button class="btn primary wide" type="submit" value="up">Crear cuenta</button>
-        <button class="btn wide" type="submit" value="in">Ya tengo cuenta: entrar</button>
-        <button class="btn ghost small" type="submit" value="reset">¿Olvidaste la contraseña?</button>
+        <button class="btn primary wide only-up" type="submit" value="up">Crear cuenta</button>
+        <button class="btn primary wide only-in" type="submit" value="in">Entrar</button>
+        <button class="btn ghost small only-in" type="submit" value="reset">¿Olvidaste la contraseña?</button>
+        <button class="ob-switch" type="button" data-ob-mode>${'<span class="only-up">¿Ya tienes cuenta? <b>Entra</b></span><span class="only-in">¿Eres nuevo? <b>Crea tu cuenta</b></span>'}</button>
       </form>
       <button class="ob-later" data-ob="finish">Usar sin cuenta por ahora</button>`
       : `<button class="btn primary wide" data-ob="finish">Empezar</button>`}
@@ -258,18 +261,23 @@ function obSubmit(e) {
   if (f.dataset.act !== 'ob-login') return;
   e.preventDefault();
   e.stopPropagation();
-  const how = (e.submitter && e.submitter.value) || 'up';
+  const how = (e.submitter && e.submitter.value) || (f.dataset.mode === 'in' ? 'in' : 'up');
   const email = f.elements.email.value.trim(), pass = f.elements.password.value;
+  const nick = f.elements.nick ? f.elements.nick.value.trim().toLowerCase().replace(/^@/, '') : '';
   const msg = f.querySelector('.ob-msg');
   const say = (t, bad) => { msg.innerHTML = t; msg.classList.toggle('bad', !!bad); };
-  if (!/^\S+@\S+\.\S+$/.test(email)) { say('Escribe tu email', true); f.elements.email.focus(); return; }
+  /* v69: para entrar vale el email o el nick; para crear la cuenta, email + nick */
+  const isNick = how === 'in' && !email.includes('@') && /^@?[a-z0-9][a-z0-9_.]{2,19}$/i.test(email);
+  if (!isNick && !/^\S+@\S+\.\S+$/.test(email)) { say(how === 'in' ? 'Escribe tu email o tu nick' : 'Escribe tu email', true); f.elements.email.focus(); return; }
+  if (how === 'reset' && !email.includes('@')) { say('Para recuperar la contraseña escribe tu email', true); f.elements.email.focus(); return; }
+  if (how === 'up' && nick && f.dataset.nickOk !== nick) { say('Comprobando tu nick…'); obNickCheck(f, true); return; }
   if (how !== 'reset' && pass.length < 6) { say('La contraseña debe tener al menos 6 caracteres', true); f.elements.password.focus(); return; }
   const btns = [...f.querySelectorAll('button')];
   btns.forEach(x => { x.disabled = true; });
   say('Un momento…');
   const job = how === 'reset' ? sendPasswordReset(email).then(() => 'reset')
     : how === 'in' ? signIn(email, pass).then(() => 'in')
-    : signUp(email, pass).then(ok => ok ? 'in' : 'mail');
+    : signUp(email, pass, nick || null).then(ok => ok ? 'in' : 'mail');
   job.then(r => {
     if (r === 'in') { finishOnboarding(); toast('¡Dentro! Tus datos ya se sincronizan.'); rerender(); return; }
     say(syncInfo.notice || 'Revisa tu email');
@@ -277,6 +285,43 @@ function obSubmit(e) {
     if (r === 'mail') f.classList.add('sent');
   }, err => { say(esc(err.message), true); btns.forEach(x => { x.disabled = false; }); });
 }
+
+/* Nick al crear la cuenta: se comprueba en la base de datos mientras escribes */
+let obNickT = 0, obNickSeq = 0;
+function obNickCheck(f, now) {
+  const inp = f.elements.nick, out = f.querySelector('.ob-nick-msg');
+  const v = inp.value.trim().toLowerCase().replace(/^@/, '');
+  if (inp.value !== v) inp.value = v;
+  f.dataset.nickOk = '';
+  const say = (t, k) => { out.textContent = t; out.className = 'ob-nick-msg only-up ' + (k || ''); };
+  clearTimeout(obNickT);
+  if (!v) { say(''); f.dataset.nickOk = ''; return; }
+  if (!/^[a-z0-9][a-z0-9_.]{2,19}$/.test(v)) { say(v.length < 3 ? 'Mínimo 3 caracteres' : 'Solo minúsculas, números, punto y guion bajo', 'bad'); return; }
+  say('Comprobando…');
+  const my = ++obNickSeq;
+  obNickT = setTimeout(async () => {
+    try {
+      const st = await sb('/rest/v1/rpc/username_status', { method: 'POST', auth: false, body: { name: v } });
+      if (my !== obNickSeq) return;
+      if (st === 'ok') { f.dataset.nickOk = v; say('✓ @' + v + ' está libre', 'ok'); if (now) f.requestSubmit(f.querySelector('button[value=up]')); }
+      else say(st === 'taken' ? '@' + v + ' ya está cogido' : st === 'reserved' ? 'Ese nick está reservado' : 'Nick no válido', 'bad');
+    } catch (e) {
+      if (my !== obNickSeq) return;
+      /* Sin esa parte en el servidor todavía: se guarda y se reserva más tarde */
+      f.dataset.nickOk = v; say(''); if (now) f.requestSubmit(f.querySelector('button[value=up]'));
+    }
+  }, now ? 0 : 350);
+}
+document.addEventListener('input', e => { const f = e.target.form; if (f && f.dataset.act === 'ob-login' && e.target.name === 'nick') obNickCheck(f); });
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-ob-mode]'); if (!b) return;
+  const f = b.form, inMode = f.dataset.mode !== 'in';
+  f.dataset.mode = inMode ? 'in' : 'up';
+  f.elements.email.placeholder = inMode ? 'Email o nick' : 'Email';
+  f.elements.email.setAttribute('autocomplete', inMode ? 'username' : 'email');
+  f.elements.password.setAttribute('autocomplete', inMode ? 'current-password' : 'new-password');
+  f.querySelector('.ob-msg').textContent = '';
+});
 
 function finishOnboarding() {
   markOnboarded();
