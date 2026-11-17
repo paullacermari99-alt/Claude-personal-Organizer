@@ -297,6 +297,8 @@ function askNickSoon(initial = '', tries = 0) {
   openNickDialog({ initial: initial || nickSuggestions((getSession().user && getSession().user.email || '').split('@')[0])[0] || '' });
 }
 function socAfterProfile() {
+  let pend = ''; try { pend = localStorage.getItem(PENDING_FRIEND) || ''; } catch {}
+  if (pend && parseHash().name !== 'amigos') setTimeout(() => { location.hash = '#amigos'; }, 400);
   loadFriends().then(() => { socBadge(); }).catch(() => {});
   loadMyTasks().then(() => { if (parseHash().name === 'hoy') socRefresh(); }).catch(() => {});
 }
@@ -307,7 +309,11 @@ function socBadge() {
 }
 
 /* ---------- Proyectos → «Con amigos» ---------- */
+const seenKey = pid => 'boldup.seen.' + pid;
+function seenAct(pid) { try { return Number(localStorage.getItem(seenKey(pid))) || 0; } catch { return 0; } }
+function markSeen(pid, id) { try { if (id > seenAct(pid)) localStorage.setItem(seenKey(pid), String(id)); } catch {} }
 function teamCard(p) {
+  const fresh = p.last_act && p.last_act > seenAct(p.id) && p.last_kind;
   const left = (p.total || 0) - (p.done || 0), pct = p.total ? Math.round(p.done / p.total * 100) : 0;
   const st = p.archived_at ? { k: 'arch', txt: 'Archivado' } : !p.total ? { k: 'idle', txt: 'Tablero vacío' } : !left ? { k: 'ok', txt: '¡Todo hecho!' }
     : p.late ? { k: 'warn', txt: `${p.late} atrasada${p.late === 1 ? '' : 's'}` } : p.mine ? { k: 'soon', txt: `${p.mine} para ti` } : { k: 'go', txt: `En marcha · ${left} pendiente${left === 1 ? '' : 's'}` };
@@ -318,6 +324,7 @@ function teamCard(p) {
       <span class="pj-text"><span class="pj-name">${esc(p.name)}</span>${stateLine(st)}<span class="pj-sub">${sub}</span></span>
       ${projRing({ done: p.done || 0, total: p.total || 0, pct })}
     </a>
+    ${fresh ? `<a class="tm-new" href="#equipo/${p.id}/actividad"><i></i><span><b>${esc(dispName((p.members || []).find(m => m.id === p.last_kind.user)))}</b> ${actText({ members: p.members || [] }, { ...p.last_kind, user_id: p.last_kind.user, detail: p.last_kind.detail || {} })}</span></a>` : ''}
     <div class="tm-foot">${avStack(p.members || [], 5)}<span class="tm-upd">${p.updated_at ? 'Actividad ' + agoShort(p.updated_at) : ''}</span></div>
   </article>`;
 }
@@ -381,9 +388,18 @@ function foundCard() {
     : `<button class="btn small primary" data-sact="fr-add" data-id="${u.id}">${I.plus}<span>Añadir</span></button>`;
   return `<div class="fr-found glass">${avatar(u, 'md')}<span class="fr-t"><b>${esc(dispName(u))}</b><span>@${esc(u.username)} · ${esc(u.friend_code)}</span></span>${act}</div>`;
 }
-function viewFriends() {
+const PENDING_FRIEND = 'boldup.pendingFriend';
+function viewFriends(code) {
   const back = backLink('#proyectos', 'Proyectos');
+  if (code) {
+    code = decodeURIComponent(code);
+    try { localStorage.setItem(PENDING_FRIEND, code); } catch {}
+  }
   const gate = socGate();
+  if (!gate) {
+    let pend = ''; try { pend = localStorage.getItem(PENDING_FRIEND) || ''; } catch {}
+    if (pend && (!SOC.found || SOC.found.q !== pend)) { try { localStorage.removeItem(PENDING_FRIEND); } catch {} setTimeout(() => findFriend(pend), 0); }
+  }
   if (gate) return `<div class="page page-narrow page-friends">${pageHead({ eyebrow: back, title: 'Amigos' })}${gate}</div>`;
   if (!SOC.friends) refreshShared();
   const F = SOC.friends || { list: [], incoming: [], outgoing: [] };
@@ -457,11 +473,12 @@ function dueChip(t) {
 }
 function tbCard(S, t) {
   const who = memberOf(S, t.assignee), g = t.goal_id && S.goals.find(x => x.id === t.goal_id);
+  const cl = Array.isArray(t.checklist) ? t.checklist : [], clDone = cl.filter(x => x.done).length;
   return `<div class="tb-card ${t.done_at ? 'done' : ''} ${isMine(t) ? 'mine' : ''} prio-${t.priority || 0}" data-tid="${t.id}" tabindex="0" role="button" aria-label="${esc(t.title)}">
     <button class="tb-check ${t.done_at ? 'on' : ''}" data-sact="t-done" data-id="${t.id}" aria-label="${t.done_at ? 'Marcar como pendiente' : 'Completar'} ${esc(t.title)}">${I.check}</button>
     <div class="tb-body">
       <div class="tb-title">${t.priority ? `<span class="tb-prio">${t.priority === 2 ? 'Urgente' : 'Importante'}</span>` : ''}${esc(t.title)}</div>
-      ${(t.due || g || t.comments || t.notes) ? `<div class="tb-meta">${dueChip(t)}${g ? `<span class="tb-goal">◎ ${esc(g.title)}</span>` : ''}${t.notes ? '<span class="tb-ic" title="Tiene notas">≡</span>' : ''}${t.comments ? `<span class="tb-ic">💬 ${t.comments}</span>` : ''}</div>` : ''}
+      ${(t.due || g || t.comments || t.notes || cl.length) ? `<div class="tb-meta">${dueChip(t)}${cl.length ? `<span class="tb-cl ${clDone === cl.length ? 'all' : ''}">☑ ${clDone}/${cl.length}</span>` : ''}${g ? `<span class="tb-goal">◎ ${esc(g.title)}</span>` : ''}${t.notes ? '<span class="tb-ic" title="Tiene notas">≡</span>' : ''}${t.comments ? `<span class="tb-ic">💬 ${t.comments}</span>` : ''}</div>` : ''}
     </div>
     ${who ? avatar(who, 'sm') : ''}
   </div>`;
@@ -558,7 +575,7 @@ const ACT_TXT = {
   task_reopened: a => `reabrió «${esc(a.title)}»`,
   task_moved: a => `movió «${esc(a.title)}» a ${esc((a.detail && a.detail.column) || 'otra lista')}`,
   task_deleted: a => `borró «${esc(a.title)}»`,
-  task_due: a => `puso plazo a «${esc(a.title)}»: ${esc(relDay(a.detail.due).toLowerCase())}`,
+  task_due: a => `puso plazo a «${esc(a.title)}»${a.detail && a.detail.due ? ": " + esc(relDay(a.detail.due).toLowerCase()) : ""}`,
   goal_created: a => `creó el objetivo «${esc(a.title)}»`,
   goal_done: a => `consiguió el objetivo «${esc(a.title)}» 🏁`,
   goal_deleted: a => `borró el objetivo «${esc(a.title)}»`,
@@ -598,6 +615,7 @@ function viewTeam(pid, sub) {
   }
   if (!S) return `<div class="page">${pageHead({ eyebrow: back, title: 'No encontrado' })}${emptyBox('Este proyecto ya no existe o ya no eres miembro.')}</div>`;
   const p = S.project, tab = TEAM_TABS.some(([v]) => v === sub) ? sub : 'tablero';
+  if (S.activity[0]) markSeen(pid, S.activity[0].id);
   const total = S.tasks.length, done = S.tasks.filter(t => t.done_at).length, left = total - done;
   const mine = S.tasks.filter(t => isMine(t) && !t.done_at), late = S.tasks.filter(lateTask).length;
   const pct = total ? Math.round(done / total * 100) : 0;
@@ -667,6 +685,8 @@ function cardSheet(pid, tid) {
     <div class="field">Prioridad<div class="chips-row">${PRIO.map(([v, l]) => radio('priority', v, t.priority || 0, l)).join('')}</div></div>
     ${S.goals.length ? `<div class="field">Ayuda al objetivo<div class="chips-row wrap">${radio('goal', '', t.goal_id, 'Ninguno')}${S.goals.map(g => radio('goal', g.id, t.goal_id, '◎ ' + esc(g.title))).join('')}</div></div>` : ''}
     <div class="field">Notas<textarea name="notes" rows="3" maxlength="5000" placeholder="Detalles, enlaces, lo que haga falta saber…">${esc(t.notes || '')}</textarea></div>
+    <div class="field">Pasos<div class="tb-cl-list" id="tb-cl">${checklistHTML(t)}</div>
+      <div class="tb-cbox"><input type="text" id="tb-clin" placeholder="Añadir un paso…" maxlength="200" data-enter="cl-add" aria-label="Nuevo paso"><button type="button" class="btn small" data-modal="cl-add">Añadir</button></div></div>
     <div class="field">Comentarios<div class="tb-comments" id="tb-comments"><div class="muted small">Cargando…</div></div>
       <div class="tb-cbox"><input type="text" id="tb-cin" placeholder="Escribe un comentario…" maxlength="2000" data-enter="comment" aria-label="Comentario"><button type="button" class="btn small" data-modal="comment">Enviar</button></div></div>
     <p class="hint">Creada ${by ? `por ${esc(dispName(by))} ` : ''}${agoShort(t.created_at)}${t.updated_at && t.updated_by ? ` · último cambio de ${esc(dispName(memberOf(S, t.updated_by)))} ${agoShort(t.updated_at)}` : ''}</p>`, {
@@ -696,9 +716,35 @@ function cardSheet(pid, tid) {
       }, () => {});
     },
     deleteLabel: 'Borrar tarjeta',
-    actions: { comment: () => postComment(pid, tid) },
+    actions: {
+      comment: () => postComment(pid, tid),
+      'cl-add': () => { const inp = $('#tb-clin'), v = inp.value.trim(); if (!v) return; inp.value = ''; setChecklist(pid, tid, l => [...l, { id: newId().slice(0, 8), text: v.slice(0, 200), done: false }]); inp.focus(); },
+      'cl-del': el => setChecklist(pid, tid, l => l.filter(x => x.id !== el.dataset.cl)),
+    },
   });
+  modalForm.addEventListener('change', clToggle);
+  function clToggle(e) {
+    if (!e.target.matches('input[data-cl]')) return;
+    if (!modal.open) { modalForm.removeEventListener('change', clToggle); return; }
+    const id = e.target.dataset.cl, on = e.target.checked;
+    setChecklist(pid, tid, l => l.map(x => x.id === id ? { ...x, done: on } : x));
+  }
+  modal.addEventListener('close', () => modalForm.removeEventListener('change', clToggle), { once: true });
   loadComments(pid, tid);
+}
+function checklistHTML(t) {
+  const l = Array.isArray(t.checklist) ? t.checklist : [];
+  if (!l.length) return '<div class="muted small">Divide la tarjeta en pasos pequeños: se ve el avance en el tablero.</div>';
+  const d = l.filter(x => x.done).length;
+  return `<div class="tb-cl-bar">${progressBar(Math.round(d / l.length * 100))}<span class="small muted">${d}/${l.length}</span></div>` + l.map(x => `<label class="tb-cl-row ${x.done ? 'done' : ''}"><input type="checkbox" class="check" data-cl="${esc(x.id)}" ${x.done ? 'checked' : ''}><span>${esc(x.text)}</span><button type="button" class="tb-c-del" data-modal="cl-del" data-cl="${esc(x.id)}" aria-label="Quitar paso">${I.close}</button></label>`).join('');
+}
+function setChecklist(pid, tid, fn) {
+  const S = snapOf(pid), t = S && S.tasks.find(x => x.id === tid); if (!t) return;
+  const next = fn(Array.isArray(t.checklist) ? t.checklist : []).slice(0, 50);
+  t.checklist = next;
+  const box = $('#tb-cl'); if (box) box.innerHTML = checklistHTML(t);
+  haptic(6);
+  rest(`team_tasks?id=eq.${tid}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: { checklist: next } }).then(() => socRefresh(), e => toast(niceErr(e)));
 }
 async function loadComments(pid, tid) {
   const box = $('#tb-comments'); if (!box) return;
@@ -954,9 +1000,10 @@ document.addEventListener('click', e => {
     case 'team-new': if (!SOC.friends) loadFriends().then(() => teamSheet(null), () => teamSheet(null)); else teamSheet(null); return;
     case 'copy-code': copyText(SOC.profile.friend_code, `ID copiado: ${SOC.profile.friend_code}`); return;
     case 'share-code': {
-      const p = SOC.profile, txt = `Añádeme en Boldup para hacer proyectos juntos: mi nick es @${p.username} (ID ${p.friend_code}).`;
-      if (navigator.share) navigator.share({ title: 'Boldup', text: txt, url: location.origin + location.pathname }).catch(() => {});
-      else copyText(txt, 'Copiado: pégalo en un mensaje');
+      const p = SOC.profile, url = `${location.origin}${location.pathname}#amigos/${p.friend_code}`;
+      const txt = `Añádeme en Boldup para hacer proyectos juntos: mi nick es @${p.username} (ID ${p.friend_code}).`;
+      if (navigator.share) navigator.share({ title: 'Boldup', text: txt, url }).catch(() => {});
+      else copyText(`${txt} ${url}`, 'Copiado: pégalo en un mensaje');
       return;
     }
     case 'edit-profile': profileSheet(); return;

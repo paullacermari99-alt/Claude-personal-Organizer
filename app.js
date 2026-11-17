@@ -51,7 +51,7 @@ function renderView() {
     case 'proyectos': return viewProjects();
     case 'proyecto': return viewProject(id, sub);
     case 'equipo': return viewTeam(id, sub);
-    case 'amigos': return viewFriends();
+    case 'amigos': return viewFriends(id);
     case 'objetivos': return viewGoals();
     case 'objetivo': return viewGoal(id);
     case 'ajustes': return viewSettings(id);

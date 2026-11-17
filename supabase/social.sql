@@ -98,6 +98,7 @@ create table if not exists public.team_tasks (
   start_date date,
   due date,
   priority smallint not null default 0 check (priority between 0 and 2),
+  checklist jsonb not null default '[]'::jsonb,
   position double precision not null default 0,
   done_at timestamptz,
   created_by uuid references public.profiles(id) on delete set null default auth.uid(),
@@ -107,6 +108,11 @@ create table if not exists public.team_tasks (
   constraint team_tasks_dates check (start_date is null or due is null or start_date <= due)
 );
 create index if not exists team_tasks_project_idx on public.team_tasks (project_id);
+-- (para quien instaló una versión anterior de este archivo)
+alter table public.team_tasks add column if not exists checklist jsonb not null default '[]'::jsonb;
+do $$ begin
+  alter table public.team_tasks add constraint team_tasks_checklist_ok check (jsonb_typeof(checklist) = 'array' and jsonb_array_length(checklist) <= 50 and pg_column_size(checklist) < 16000);
+exception when duplicate_object then null; end $$;
 create index if not exists team_tasks_assignee_idx on public.team_tasks (assignee) where done_at is null;
 create table if not exists public.team_comments (
   id uuid primary key default gen_random_uuid(),
@@ -260,7 +266,8 @@ begin
     perform public.team_log(new.project_id, 'task_due', new.id, new.title, jsonb_build_object('due', new.due));
   end if;
   if new.title is distinct from old.title or new.notes is distinct from old.notes or new.goal_id is distinct from old.goal_id
-    or new.start_date is distinct from old.start_date or new.priority is distinct from old.priority or new.position is distinct from old.position then
+    or new.start_date is distinct from old.start_date or new.priority is distinct from old.priority or new.position is distinct from old.position
+    or new.checklist is distinct from old.checklist then
     update public.team_projects set updated_at = now() where id = new.project_id;
   end if;
   return new;
@@ -501,7 +508,9 @@ language sql stable security definer set search_path = '' as $$
       'done', (select count(*) from public.team_tasks t where t.project_id = p.id and t.done_at is not null),
       'mine', (select count(*) from public.team_tasks t where t.project_id = p.id and t.done_at is null and t.assignee = auth.uid()),
       'late', (select count(*) from public.team_tasks t where t.project_id = p.id and t.done_at is null and t.due < current_date),
-      'next_due', (select min(t.due) from public.team_tasks t where t.project_id = p.id and t.done_at is null and t.due >= current_date)
+      'next_due', (select min(t.due) from public.team_tasks t where t.project_id = p.id and t.done_at is null and t.due >= current_date),
+      'last_act', (select max(a.id) from public.team_activity a where a.project_id = p.id and a.user_id is distinct from auth.uid()),
+      'last_kind', (select jsonb_build_object('kind', a.kind, 'title', a.title, 'user', a.user_id, 'at', a.created_at, 'detail', a.detail) from public.team_activity a where a.project_id = p.id and a.user_id is distinct from auth.uid() order by a.id desc limit 1)
     ) as x
     from public.team_projects p join public.team_members me on me.project_id = p.id and me.user_id = auth.uid()
   ) s
