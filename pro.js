@@ -12,15 +12,17 @@ const PRO_FREE_TEMPLATES = 1, PRO_FREE_HABITS = 3;
 const PRO_SCREENS = { progreso: 'stats', revision: 'stats', 'ajustes/calendarios': 'calendars' };
 const PRO_GAP = 3 * 60 * 1000;
 
+/* Lo que incluye Pro: [id, icono, nombre, detalle]. Corto para que la tienda se entienda de un vistazo y quepa sin scroll */
+const PRO_IC = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const PRO_FEATURES = [
-  ['assistant', '✨', 'Asistente inteligente', 'Planifica tu día por ti, reparte las tareas en tus huecos y divide las grandes en pasos.', 'Próximamente'],
-  ['stats', '📊', 'Estadísticas avanzadas', 'Tus meses de un vistazo: horas de enfoque, rachas, ánimo y energía y qué te frena.', ''],
-  ['styles', '🎨', 'Estilos de interfaz', 'Sereno, Vivo y Compacto, además de Cristal.', ''],
-  ['voice', '🎙️', 'Hablar con la app', 'Crea tareas y pregunta «¿qué tengo hoy?» con la voz.', ''],
-  ['calendars', '📅', 'Google Calendar y otros', 'Ve tus citas de otros calendarios junto a tu plan.', ''],
-  ['templates', '📋', 'Plantillas propias ilimitadas', `Guarda tus proyectos y semanas para repetirlos (gratis: ${PRO_FREE_TEMPLATES}).`, ''],
-  ['habits', '🔥', 'Hábitos ilimitados', `Todos los hábitos que quieras con sus rachas (gratis: ${PRO_FREE_HABITS}).`, ''],
+  ['assistant', PRO_IC('<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>'), 'Asistente IA', 'Próximamente'],
+  ['stats', PRO_IC('<path d="M4 20V11M10 20V5M16 20v-6M21 20H3"/>'), 'Estadísticas', 'Meses, rachas y energía'],
+  ['styles', PRO_IC('<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 000 17z" fill="currentColor"/>'), '3 estilos más', 'Sereno, Vivo, Compacto'],
+  ['voice', PRO_IC('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21"/>'), 'Hablar con la app', 'Crea y pregunta con la voz'],
+  ['calendars', PRO_IC('<rect x="3.5" y="4.5" width="17" height="16" rx="3.5"/><path d="M3.5 9.5h17M8 2.8v3.4M16 2.8v3.4"/>'), 'Google Calendar', 'Tus citas junto a tu plan'],
+  ['unlimited', PRO_IC('<path d="M7.5 8.5c-2 0-3.5 1.6-3.5 3.5s1.5 3.5 3.5 3.5c3 0 6-7 9-7 2 0 3.5 1.6 3.5 3.5s-1.5 3.5-3.5 3.5c-3 0-6-7-9-7z"/>'), 'Sin límites', 'Hábitos y plantillas'],
 ];
+const PRO_FOCUS = { templates: 'unlimited', habits: 'unlimited' };
 
 const proLS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { return null; } };
 const proPreview = () => proLS(PRO_KEY) === '1';
@@ -30,7 +32,18 @@ const proLocked = () => proPreview() && !proUnlocked();
 function proApply() {
   const el = document.documentElement;
   if (!proPreview()) el.removeAttribute('data-pro'); else el.setAttribute('data-pro', proUnlocked() ? 'pro' : 'free');
+  proMarks();
 }
+/* Cuando ya usas lo que da la versión gratis, «Nuevo hábito» y «Crear plantilla» llevan también la marca PRO */
+function proMarks() {
+  const el = document.documentElement, st = typeof state === 'object' && state;
+  const on = (k, full) => full ? el.setAttribute(k, '') : el.removeAttribute(k);
+  on('data-pro-hab', st && (st.habits || []).length >= PRO_FREE_HABITS);
+  on('data-pro-tpl', st && (st.templates || []).length >= PRO_FREE_TEMPLATES);
+}
+document.addEventListener('click', () => setTimeout(proMarks, 60));
+window.addEventListener('hashchange', proMarks);
+window.addEventListener('load', proMarks);
 proApply();
 
 const PRO_STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.8l2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6-4.5-4.2 6.1-.7z"/></svg>';
@@ -54,7 +67,7 @@ function proEnsureDialog() {
     else if (a === 'plan') {
       proPlan = b.dataset.v;
       proDlg.querySelectorAll('.pro-plan').forEach(p => { const on = p.dataset.v === proPlan; p.classList.toggle('on', on); p.setAttribute('aria-checked', on); });
-      const c = proDlg.querySelector('.pro-cta span'); if (c) c.textContent = proCtaText();
+      const c = proDlg.querySelector('.pro-sub'); if (c) c.textContent = proSubText();
     }
     else if (a === 'buy') {
       proLS(PRO_DEMO_KEY, '1'); proApply(); proClose(true);
@@ -65,30 +78,34 @@ function proEnsureDialog() {
   });
   return proDlg;
 }
-const proCtaText = () => `Empezar ${PRO_PRICE.trial} días gratis · luego ${proPlan === 'year' ? PRO_PRICE.year + '/año' : PRO_PRICE.month + '/mes'}`;
+const proSubText = () => `Después ${proPlan === 'year' ? PRO_PRICE.year + '/año' : PRO_PRICE.month + '/mes'} · cancela cuando quieras`;
 function proStoreHTML(focus) {
-  const has = proUnlocked();
-  const feats = [...PRO_FEATURES].sort((a, b) => (b[0] === focus) - (a[0] === focus));
+  const has = proUnlocked(); focus = PRO_FOCUS[focus] || focus;
   return `<div class="pro-wrap">
-    <button type="button" class="pro-x ${has ? 'ready' : ''}" data-pro="close" aria-label="${has ? 'Cerrar' : `Podrás cerrar en ${PRO_WAIT} segundos`}" ${has ? '' : 'aria-disabled="true"'}>
-      <svg class="pro-ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16"/><circle class="pro-ring-v" cx="18" cy="18" r="16" pathLength="100"/></svg>
-      <span class="pro-n" aria-hidden="true">${PRO_WAIT}</span>
-      <svg class="pro-xi" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>
-    </button>
-    <div class="pro-scroll" tabindex="-1" autofocus>
+    <div class="pro-top">
+      <span class="pro-chip">${PRO_STAR}PRO</span>
+      <button type="button" class="pro-x ${has ? 'ready' : ''}" data-pro="close" aria-label="${has ? 'Cerrar' : `Podrás cerrar en ${PRO_WAIT} segundos`}" ${has ? '' : 'aria-disabled="true"'}>
+        <svg class="pro-ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16"/><circle class="pro-ring-v" cx="18" cy="18" r="16" pathLength="100"/></svg>
+        <span class="pro-n" aria-hidden="true">${PRO_WAIT}</span>
+        <svg class="pro-xi" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>
+      </button>
+    </div>
+    <div class="pro-body" tabindex="-1" autofocus>
       <div class="pro-hero">
-        <span class="pro-badge">${PRO_STAR}</span>
         <h2>Boldup <b>Pro</b></h2>
-        <p>${has ? 'Tienes Pro activado (simulado, sin cobros).' : 'Todo lo que necesitas para dejar de procrastinar y ser tu mejor versión.'}</p>
+        <p>${has ? 'Tienes Pro activado (simulado, sin cobros).' : 'Haz más, sin límites y sin procrastinar.'}</p>
       </div>
-      <ul class="pro-feats">${feats.map(([id, ic, t, d, soon]) => `<li class="${id === focus ? 'hit' : ''}"><span class="pf-ic">${ic}</span><span class="grow"><b>${t}${soon ? ` <em>${soon}</em>` : ''}</b><span>${d}</span></span>${has ? '<span class="pf-ok">✓</span>' : ''}</li>`).join('')}</ul>
-      ${has ? `<button type="button" class="btn wide pro-free" data-pro="free">Volver a la versión gratis</button>` : `
-      <div class="pro-plans" role="radiogroup" aria-label="Plan">
-        <button type="button" role="radio" class="pro-plan ${proPlan === 'year' ? 'on' : ''}" aria-checked="${proPlan === 'year'}" data-pro="plan" data-v="year"><span class="pp-tag">Ahorras ${PRO_PRICE.save}</span><b>Anual</b><span class="pp-price">${PRO_PRICE.year}<small>/año</small></span><span class="pp-sub">${PRO_PRICE.yearMonth} al mes</span></button>
-        <button type="button" role="radio" class="pro-plan ${proPlan === 'month' ? 'on' : ''}" aria-checked="${proPlan === 'month'}" data-pro="plan" data-v="month"><b>Mensual</b><span class="pp-price">${PRO_PRICE.month}<small>/mes</small></span><span class="pp-sub">Cancela cuando quieras</span></button>
-      </div>
-      <button type="button" class="btn primary wide pro-cta" data-pro="buy"><span>${proCtaText()}</span></button>
-      <p class="pro-note">Vista de prueba: no se cobra nada. Este botón solo desbloquea Pro en este dispositivo para que veas cómo queda.</p>`}
+      <ul class="pro-grid">${PRO_FEATURES.map(([id, ic, t, d]) => `<li class="${id === focus ? 'hit' : ''}"><span class="pg-ic">${ic}</span><b>${t}</b><span>${d}</span></li>`).join('')}</ul>
+      ${has ? `<div class="pro-actions"><button type="button" class="btn wide pro-free" data-pro="free">Volver a la versión gratis</button></div>` : `
+      <div class="pro-actions">
+        <div class="pro-plans" role="radiogroup" aria-label="Plan">
+          <button type="button" role="radio" class="pro-plan ${proPlan === 'year' ? 'on' : ''}" aria-checked="${proPlan === 'year'}" data-pro="plan" data-v="year"><span class="pp-tag">−${PRO_PRICE.save}</span><span class="pp-name">Anual</span><span class="pp-price">${PRO_PRICE.yearMonth}<small>/mes</small></span></button>
+          <button type="button" role="radio" class="pro-plan ${proPlan === 'month' ? 'on' : ''}" aria-checked="${proPlan === 'month'}" data-pro="plan" data-v="month"><span class="pp-name">Mensual</span><span class="pp-price">${PRO_PRICE.month}<small>/mes</small></span></button>
+        </div>
+        <button type="button" class="btn wide pro-cta" data-pro="buy">Probar ${PRO_PRICE.trial} días gratis</button>
+        <p class="pro-sub">${proSubText()}</p>
+        <p class="pro-note">Vista de prueba: no se cobra nada</p>
+      </div>`}
     </div>
   </div>`;
 }
@@ -102,7 +119,7 @@ function proOpen(focus, auto) {
   if (auto) proLastAuto = Date.now();
   d.showModal();
   if (typeof markOpened === 'function') markOpened(d);
-  const sc = d.querySelector('.pro-scroll'); if (sc) sc.scrollTop = 0;
+  
   if (proUnlocked()) return;
   /* Cuenta atrás: el aro se vacía en 5 s y el número baja; luego aparece la ✕ */
   const x = d.querySelector('.pro-x'), n = d.querySelector('.pro-n');
