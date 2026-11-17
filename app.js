@@ -74,6 +74,34 @@ function navigate(fn) {
     [vt.ready, vt.finished, vt.updateCallbackDone].forEach(pr => pr && pr.catch(() => {}));
   } else { fn(); if (!reduceMotion()) pageEnter(); }
 }
+/* v28: cambios dentro de la misma pantalla (pestañas, Activos/Archivados, día anterior/siguiente…):
+   la cabecera y las pestañas se quedan quietas, la pastilla se desliza a la opción nueva y solo
+   lo que cambia aparece con un fundido corto. Antes toda la pantalla bajaba y subía (temblor). */
+function softSwap(fn = route) {
+  const app = $('#app'), y = window.scrollY;
+  const pageOf = () => app.querySelector(':scope > .page') || app;
+  const before = [...pageOf().children].map(n => n.outerHTML);
+  const segs = $$('.segmented:not(.seg-slide)', app).map(sg => { const on = sg.querySelector('button.on'); return on ? { x: on.offsetLeft, w: on.offsetWidth } : null; });
+  clearTimeout(pageEnter.t); app.classList.remove('page-enter');
+  fn();
+  window.scrollTo(0, y);
+  if (reduceMotion()) return;
+  [...pageOf().children].forEach((n, i) => {
+    if (n.outerHTML === before[i] || n.matches('.page-head, .toolbar, .segmented') || n.querySelector('.segmented')) return;
+    if (n.animate) n.animate([{ opacity: .15 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' });
+  });
+  $$('.segmented:not(.seg-slide)', app).forEach((sg, i) => {
+    const from = segs[i], on = sg.querySelector('button.on');
+    if (!from || !on || !sg.animate || (from.x === on.offsetLeft && from.w === on.offsetWidth)) return;
+    const g = document.createElement('span');
+    g.className = 'seg-ghost';
+    g.style.cssText = `left:${on.offsetLeft}px;top:${on.offsetTop}px;width:${on.offsetWidth}px;height:${on.offsetHeight}px`;
+    sg.prepend(g); sg.classList.add('seg-moving');
+    const a = g.animate([{ transform: `translateX(${from.x - on.offsetLeft}px)`, width: from.w + 'px' }, { transform: 'none', width: on.offsetWidth + 'px' }], { duration: 300, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    const end = () => { g.remove(); sg.classList.remove('seg-moving'); };
+    a.finished.then(end, end);
+  });
+}
 /* v23: en el móvil la pantalla nueva entra con un fundido corto (solo el contenido, el fondo no cambia: sin parpadeo) */
 function pageEnter() {
   const app = $('#app');
@@ -106,7 +134,14 @@ document.addEventListener('click', e => {
   viewDate = todayStr();
   if (location.hash.startsWith('#hoy')) { e.preventDefault(); navigate(() => route()); }
 });
-window.addEventListener('hashchange', () => { if (shortcutHash()) return; navigate(() => { route(); window.scrollTo(0, 0); }); maybeScreenTour(); });
+let lastRoute = parseHash();
+window.addEventListener('hashchange', () => {
+  if (shortcutHash()) return;
+  const r = parseHash(), same = r.name === lastRoute.name && r.id === lastRoute.id && r.id;
+  lastRoute = r;
+  if (same) { softSwap(); return; }
+  navigate(() => { route(); window.scrollTo(0, 0); }); maybeScreenTour();
+});
 
 /* ---------- Piezas comunes ---------- */
 
@@ -1412,8 +1447,9 @@ function planDaySheet() {
 
 /* ---------- Vista: Progreso ---------- */
 
-function bars(rows, unit) {
-  const max = Math.max(1, ...rows.map(r => r.v));
+/* floor: escala mínima. Así 15 min de enfoque no llenan la barra entera: la barra llena es 1 h (o más si un día pasas de ahí) */
+function bars(rows, unit, floor = 1) {
+  const max = Math.max(floor, ...rows.map(r => r.v));
   return `<div class="bars">${rows.map(r => `<div class="bar-col ${r.today ? 'today' : ''}" title="${esc(r.label)}: ${r.v} ${unit}">
     <span class="bar-val">${r.v || ''}</span>
     <div class="bar-track"><div class="bar" style="height:${Math.round(r.v / max * 100)}%"></div></div>
@@ -1446,8 +1482,8 @@ function viewStats() {
     <div class="tile glass"><b>${goalsDone}</b><span>objetivo${goalsDone === 1 ? '' : 's'} conseguido${goalsDone === 1 ? '' : 's'}</span></div>
   </div>
   ${habitsStatsSection()}
-  <div class="section"><div class="section-head"><h2>Tareas hechas · últimos 7 días</h2></div><div class="card glass">${bars(days.map(d => row(doneBy, d)), 'tareas')}</div></div>
-  <div class="section"><div class="section-head"><h2>Minutos de enfoque · últimos 7 días</h2></div><div class="card glass">${bars(days.map(d => row(focusBy, d)), 'min')}</div></div>
+  <div class="section"><div class="section-head"><h2>Tareas hechas · últimos 7 días</h2></div><div class="card glass">${bars(days.map(d => row(doneBy, d)), 'tareas', 5)}</div></div>
+  <div class="section"><div class="section-head"><h2>Minutos de enfoque · últimos 7 días</h2></div><div class="card glass">${bars(days.map(d => row(focusBy, d)), 'min', 60)}<p class="small muted bars-note">La barra llena es 1 hora de enfoque.</p></div></div>
   ${journalStats()}
   <div class="section"><div class="section-head"><h2>Rachas de diarias</h2><a class="btn small ghost" href="#diarias">Diarias</a></div>
     ${rstats.length ? `<div class="settings-group glass">${rstats.map(x => `<div class="item"><div class="grow"><div>${esc(x.r.title)}</div><div class="small muted">Mejor racha ${x.best}${x.rate !== null ? ` · ${x.rate}% cumplido en 30 días` : ''}${isPaused(x.r) ? ' · en pausa' : ''}</div></div><b class="streak big">🔥 ${x.streak}</b></div>`).join('')}</div>`
@@ -1590,6 +1626,11 @@ const clockAt = ms => dtf('es-ES', { timeZone: state.settings.timezone || undefi
 const sessionEnd = tm => timerSchedule(tm).slice(-1)[0].at;
 const phaseLabel = tm => tm.mode !== 'long' ? '' : tm.phase === 'break' ? `Descanso · ronda ${tm.round} de ${tm.rounds}` : `Ronda ${tm.round} de ${tm.rounds}`;
 const RING = 2 * Math.PI * 38;
+/* v28: el reloj de enfoque representa una hora entera (como un temporizador de cocina):
+   lo coloreado es el tiempo que queda. 15 min = un cuarto del círculo, 60 min = el círculo entero. */
+const ringOffset = ms => RING * (1 - Math.min(1, Math.max(0, ms / 3600000)));
+const RING_TICKS = [0, 1, 2, 3].map(k => { const a = k * Math.PI / 2, c = Math.cos(a), s = Math.sin(a); return `<line class="tick" x1="${(42 + c * 30).toFixed(1)}" y1="${(42 + s * 30).toFixed(1)}" x2="${(42 + c * 27).toFixed(1)}" y2="${(42 + s * 27).toFixed(1)}"/>`; }).join('');
+let celebratedAt = null;
 
 /* Aviso fijo con el tiempo que queda, visible fuera de la app (pantalla de bloqueo y bandeja).
    Se muestra al salir de la app y se quita al volver. */
@@ -1685,7 +1726,7 @@ function morphFocus(card, prev) {
   const h = card.offsetHeight;
   if (Math.abs(h - prev.h) > 2) card.animate([{ height: prev.h + 'px', overflow: 'hidden' }, { height: h + 'px', overflow: 'hidden' }], { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' });
 }
-const chips = (act, vals, cur, suffix = ' min') => `<div class="chips-row">${vals.map(v => `<button class="chip-btn ${v === cur ? 'on' : ''}" data-act="${act}" data-v="${v}">${v}${suffix}</button>`).join('')}</div>`;
+const chips = (act, vals, cur, suffix = ' min', stack = false) => `<div class="chips-row even">${vals.map(v => `<button class="chip-btn ${v === cur ? 'on' : ''} ${stack ? 'stack' : ''}" data-act="${act}" data-v="${v}" aria-label="${v}${suffix}">${stack ? `<b>${v}</b><small>${suffix.trim()}</small>` : v + suffix}</button>`).join('')}</div>`;
 /* Resumen de la última sesión terminada (se enseña una vez al volver) */
 const SUMMARY_KEY = 'organizador.focusSummary';
 function getSummary() { try { return JSON.parse(localStorage.getItem(SUMMARY_KEY)) || null; } catch { return null; } }
@@ -1694,6 +1735,7 @@ function summaryHTML(s, t) {
   const faces = [[1, '😣', 'Mal'], [2, '😐', 'Regular'], [3, '🙂', 'Bien'], [4, '🤩', 'Genial']];
   const ds = (s.distractions || []).map(task).filter(Boolean);
   return `<div class="focus-summary">
+    <div class="done-badge" aria-hidden="true"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="23"/><path d="M15.5 27l7 7L37 19.5"/></svg></div>
     <div class="sum-big">${s.minutes} min</div>
     <div class="muted">de enfoque${s.rounds > 1 ? ` · ${s.rounds} rondas` : ''}${t.subtasks.length ? ` · ${t.subtasks.filter(x => x.done).length}/${t.subtasks.length} pasos` : ''}</div>
     ${ds.length ? `<div class="sum-dis"><div class="small muted">Apuntaste para después:</div><ul class="plain small">${ds.map(x => `<li>${esc(x.title)}</li>`).join('')}</ul></div>` : ''}
@@ -1705,6 +1747,7 @@ function renderFocus(noMorph) {
   const t = task(focusTaskId);
   if (!t) { closeFocus(); return; }
   const layer = $('#focus'), prevCard = layer.hidden ? null : layer.querySelector('.focus-card');
+  const prevRing = prevCard && $('#focus-ring') ? $('#focus-ring').style.strokeDashoffset || $('#focus-ring').getAttribute('stroke-dashoffset') : null;
   const prev = prevCard && { h: prevCard.offsetHeight, mode: prevCard.dataset.mode, i: prevCard.querySelector('.focus-mode') ? prevCard.querySelector('.focus-mode').style.getPropertyValue('--i') : null };
   const sum = getSummary(), showSum = sum && sum.taskId === t.id && !getTimer();
   const full = $('#focus').classList.contains('focus-full');
@@ -1716,7 +1759,7 @@ function renderFocus(noMorph) {
         <button role="tab" class="${plan.mode === 'single' ? 'on' : ''}" data-act="focus-mode" data-v="single">Sesión única</button>
         <button role="tab" class="${plan.mode === 'long' ? 'on' : ''}" data-act="focus-mode" data-v="long">Con descansos</button>
       </div>
-      ${plan.mode === 'single' ? chips('focus-min', SINGLE_MINS, focusMins) : `
+      ${plan.mode === 'single' ? chips('focus-min', SINGLE_MINS, focusMins, ' min', true) : `
       <div class="focus-plan">
         <span>Trabajo</span>${chips('focus-plan-work', LONG_OPTS.work, plan.work)}
         <span>Descanso</span>${chips('focus-plan-brk', LONG_OPTS.brk, plan.brk)}
@@ -1726,7 +1769,7 @@ function renderFocus(noMorph) {
     : mine ? (timer.mode === 'long' ? `${timer.phase === 'break' ? `Vuelves a las ${clockAt(timer.endAt)}` : timer.round < timer.rounds ? `Descanso a las ${clockAt(timer.endAt)}` : `Termina a las ${clockAt(timer.endAt)}`}. Puedes salir de la app: te avisaré.` : `Termina a las ${clockAt(timer.endAt)}. Puedes salir de la app: te avisaré.`)
     : other ? 'Hay otro temporizador en marcha; si empiezas este, lo sustituye.'
     : plan.mode === 'long' ? `${plan.rounds} rondas de ${plan.work} min con ${plan.brk} min de descanso: ${total >= 60 ? Math.floor(total / 60) + ' h ' + (total % 60 ? total % 60 + ' min' : '') : total + ' min'} en total.`
-    : 'Una sola sesión, sin descansos. El temporizador es opcional.';
+    : 'Una sola sesión, sin descansos. El círculo es una hora: lo de color es el tiempo de tu sesión.';
   const startMins = plan.mode === 'long' ? plan.work : focusMins;
   layer.innerHTML = `<div class="focus-card glass ${showSum ? 'is-summary' : ''} ${mine ? 'is-running' : ''} ${prevCard ? 'no-pop' : ''}" data-mode="${mine ? 'run' : showSum ? 'sum' : plan.mode}" role="dialog" aria-label="Enfoque">
     <button class="icon-btn round focus-close" data-act="focus-close" aria-label="Cerrar">${I.close}</button>
@@ -1740,7 +1783,7 @@ function renderFocus(noMorph) {
     <div class="focus-timer ${paused ? 'is-paused' : ''} ${mine && timer.phase === 'break' ? 'is-break' : ''} ${showSum ? 'is-hidden' : ''}">
       ${mine && timer.mode === 'long' ? `<div class="focus-phase">${timer.phase === 'break' ? 'Descanso' : 'Trabajo'}<span>${timer.round}/${timer.rounds}</span></div>` : ''}
       <div class="ring big" aria-hidden="true">
-        <svg viewBox="0 0 84 84"><circle class="track" cx="42" cy="42" r="38"/><circle class="bar" id="focus-ring" cx="42" cy="42" r="38" stroke-dasharray="${RING}" stroke-dashoffset="0"/></svg>
+        <svg viewBox="0 0 84 84"><circle class="track" cx="42" cy="42" r="38"/>${RING_TICKS}<circle class="bar" id="focus-ring" cx="42" cy="42" r="38" stroke-dasharray="${RING}" stroke-dashoffset="${prevRing != null ? prevRing : ringOffset((mine ? timerLeft(timer) : startMins * 60000))}"/></svg>
         <div class="time" id="focus-time">${pad(startMins)}:00</div>
       </div>
       ${setup}
@@ -1754,12 +1797,19 @@ function renderFocus(noMorph) {
       ${mine ? `<button class="btn" data-act="focus-reset">${I.reset}<span>Reiniciar</span></button>
         <button class="btn" data-act="${paused ? 'focus-resume' : 'focus-pause'}">${paused ? I.play + '<span>Seguir</span>' : I.pause + '<span>Pausar</span>'}</button>`
       : showSum ? `<button class="btn" data-act="focus-again">${I.repeat}<span>Otra sesión</span></button>`
-      : `<button class="btn" data-act="focus-start">${I.play}<span>${plan.mode === 'long' ? 'Empezar' : `Empezar ${focusMins} min`}</span></button>`}
+      : `<button class="btn" data-act="focus-start">${I.play}<span>Empezar</span></button>`}
       <button class="btn primary" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar tarea'}</button>
     </div>
   </div>`;
   if (prev && !noMorph) morphFocus(layer.querySelector('.focus-card'), prev);
+  /* El círculo pasa suave de la duración anterior a la nueva */
+  if ($('#focus-ring')) $('#focus-ring').getBoundingClientRect();
   updateTimerUI();
+  if (showSum && sum.at && celebratedAt !== sum.at) {
+    celebratedAt = sum.at;
+    const badge = layer.querySelector('.done-badge');
+    if (badge && !reduceMotion()) { badge.classList.add('play'); setTimeout(() => checkBurst(badge, true), 780); }
+  }
 }
 /* Minutos de trabajo hechos en la fase actual (lo de rondas anteriores ya está apuntado) */
 function workedNow(tm) { return tm.phase === 'break' ? 0 : Math.floor((tm.minutes * 60000 - timerLeft(tm)) / 60000); }
@@ -1808,7 +1858,8 @@ function updateTimerUI() {
     document.title = 'P Organizer';
     pill.hidden = true;
     const el = $('#focus-time');
-    if (el) { el.textContent = pad(focusPlan().mode === 'long' ? focusPlan().work : focusMins || 25) + ':00'; $('#focus-ring').style.strokeDashoffset = 0; }
+    const m0 = focusPlan().mode === 'long' ? focusPlan().work : focusMins || 25;
+    if (el) { el.textContent = pad(m0) + ':00'; $('#focus-ring').style.strokeDashoffset = ringOffset(m0 * 60000); }
     closeFocusNote();
     return;
   }
@@ -1823,7 +1874,7 @@ function updateTimerUI() {
   const el = $('#focus-time');
   if (el && timer.taskId === focusTaskId) {
     el.textContent = txt;
-    $('#focus-ring').style.strokeDashoffset = RING * (1 - left / (timer.minutes * 60000));
+    $('#focus-ring').style.strokeDashoffset = ringOffset(left);
   }
   if (document.visibilityState !== 'visible') focusNote();
 }
@@ -1942,6 +1993,7 @@ function toggleTask(id, checkbox, { silent = false } = {}) {
     /* Pequeña animación al marcar (solo transformaciones: la fila no cambia de tamaño) */
     if (t.done) { li.classList.remove('just-done'); void li.offsetWidth; li.classList.add('just-done'); setTimeout(() => li.classList.remove('just-done'), 700); }
   });
+  if (t.done) checkBurst(checkbox && checkbox.closest ? checkbox : $(`[data-task="${id}"] .check`));
   refreshLive();
   haptic();
   if (silent) return;
@@ -1949,6 +2001,21 @@ function toggleTask(id, checkbox, { silent = false } = {}) {
     const msg = t.routineId ? `Hecha la del ${fmtShortDate(t.routineDate)}` : next ? `¡Hecho! La próxima: ${relDay(next.due).toLowerCase()}` : pick(['¡Hecho!', '¡Una menos!', '¡Bien! Sigue así.', '¡Genial!']);
     toast(msg, { action: 'Deshacer', onAction: () => toggleTask(id, null, { silent: true }) });
   }
+}
+/* v28: al completar, una onda y unas chispas salen del círculo. Va por encima de todo (posición fija),
+   así que no mueve ni cambia de tamaño nada de la pantalla. Con «Reducir movimiento» no aparece. */
+function checkBurst(anchor, big = false) {
+  if (!anchor || reduceMotion()) return;
+  const r = anchor.getBoundingClientRect();
+  if (!r.width || r.bottom < 0 || r.top > innerHeight) return;
+  const n = big ? 10 : 8, r0 = big ? 30 : 10, r1 = big ? 64 : 24;
+  const b = document.createElement('div');
+  b.className = 'chk-burst' + (big ? ' big' : '');
+  b.setAttribute('aria-hidden', 'true');
+  b.style.left = (r.left + r.width / 2) + 'px'; b.style.top = (r.top + r.height / 2) + 'px';
+  b.innerHTML = '<i class="ring-w"></i>' + Array.from({ length: n }, (_, i) => `<i class="spark" style="--a:${Math.round(i * 360 / n + 12)}deg;--r0:${r0}px;--r1:${i % 2 ? r1 * .8 : r1}px"></i>`).join('');
+  document.body.appendChild(b);
+  setTimeout(() => b.remove(), 900);
 }
 function setPath(obj, path, v) {
   const ks = path.split('.');
@@ -1983,7 +2050,7 @@ document.addEventListener('click', e => {
     case 'focus-done': {
       const t = task(id);
       const tm = getTimer(); if (tm && tm.taskId === id) cancelTimer(true);
-      if (!t.done) toggleTask(id, null);
+      if (!t.done) { checkBurst(el, true); toggleTask(id, null); }
       closeFocus(); rerender(); return;
     }
     case 'sub-toggle': { const t = task(id), s = t && t.subtasks.find(x => x.id === el.dataset.sub); if (s) { s.done = el.checked; save(); } return; }
@@ -2036,7 +2103,7 @@ document.addEventListener('click', e => {
     case 'rt-one': {
       const t = pendingOfRoutine(id)[0];
       if (!t) return;
-      t.done = true; t.doneAt = Date.now(); save(); refreshLive(); haptic();
+      t.done = true; t.doneAt = Date.now(); save(); refreshLive(); haptic(); checkBurst(el);
       const left = pendingOfRoutine(id).length;
       toast(`Hecha la del ${fmtShortDate(t.routineDate)} · quedan ${left}`, { action: 'Deshacer', onAction: () => { t.done = false; t.doneAt = null; save(); refreshLive(); } });
       return;
@@ -2070,26 +2137,26 @@ document.addEventListener('click', e => {
     case 'day': {
       const n = Number(el.dataset.n);
       viewDate = n === 0 ? todayStr() : addDays(viewDate, n);
-      navigate(() => route()); return;
+      softSwap(); return;
     }
     case 'week': {
       const n = Number(el.dataset.n), mode = state.settings.ui.weekMode || '7';
       if (mode === '1') { viewDate = n === 0 ? todayStr() : addDays(viewDate, n); weekStart = startOfWeek(viewDate); }
       else { weekStart = n === 0 ? startOfWeek(todayStr()) : addDays(weekStart, 7 * n); if (n === 0) viewDate = todayStr(); }
-      navigate(() => route()); return;
+      softSwap(); return;
     }
     case 'week-mode': {
       const v = el.dataset.v;
       if (v === '1' && !weekDays(weekStart).includes(viewDate)) viewDate = weekDays(weekStart).includes(todayStr()) ? todayStr() : weekStart;
-      state.settings.ui.weekMode = v; save(); route(); return;
+      state.settings.ui.weekMode = v; save(); softSwap(); return;
     }
     case 'theme': setTheme(el.dataset.v, el.closest('.theme-seg')); return;
     case 'set-ui': {
       const k = el.dataset.k, v = el.dataset.v;
       state.settings.ui[k] = k === 'projectsArchived' ? !!v : v;
-      save(); navigate(() => route()); return;
+      save(); softSwap(); return;
     }
-    case 'tasks-tab': state.settings.ui.tasksTab = el.dataset.v; save(); navigate(() => route()); return;
+    case 'tasks-tab': state.settings.ui.tasksTab = el.dataset.v; save(); softSwap(); return;
     case 'new-project': newProjectSheet(); return;
     case 'tpl-pick': { const t = projectTemplateById(el.dataset.id); if (t) templatePreview(t); return; }
     case 'templates': templatesSheet(el.dataset.kind, { ws: el.dataset.ws || startOfWeek(todayStr()), projectId: id || null }); return;

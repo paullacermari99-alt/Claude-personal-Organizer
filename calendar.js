@@ -180,7 +180,7 @@ document.addEventListener('click', e => {
   }
   const open = e.target.closest('[data-act="open-day"]');
   if (open) {
-    if (location.hash.startsWith('#semana') && isPhone()) { phoneDate = open.dataset.date; state.settings.ui.weekModeMobile = '1'; save(); navigate(() => route()); return; }
+    if (location.hash.startsWith('#semana') && isPhone()) { phoneDate = open.dataset.date; state.settings.ui.weekModeMobile = '1'; save(); softSwap(); return; }
     viewDate = open.dataset.date;
     if (location.hash.startsWith('#semana')) { state.settings.ui.weekMode = '1'; save(); route(); } else location.hash = '#hoy';
   }
@@ -309,7 +309,7 @@ document.addEventListener('click', e => {
   } else if (act === 'pweek-mode') {
     const v = el.dataset.v, ds = phoneDays(), today = todayStr();
     if (v !== '7') phoneDate = ds.includes(today) ? today : ds[0];
-    state.settings.ui.weekModeMobile = v; save(); navigate(() => route());
+    state.settings.ui.weekModeMobile = v; save(); softSwap();
   } else if (act === 'wk-day') {
     const d = el.dataset.date, sec = el.closest('.wk-day');
     const on = !openDays.set.has(d);
