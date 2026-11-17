@@ -99,7 +99,7 @@ const SCREEN_TOURS = {
   ],
   diarias: [
     { target: () => firstVisible('.page [data-act="new-routine"]'), title: 'Hábitos diarios', text: 'Crea tareas que se repiten los días que elijas, como beber agua o leer.' },
-    { target: () => firstVisible('.page .hint.intro') || firstVisible('.page .routine'), title: 'No se pierden', text: 'Si un día no la haces, se acumula en un contador. «Completar una» marca la más antigua y tu racha sigue.' },
+    { target: () => firstVisible('.page .hint.intro') || firstVisible('.page .routine'), title: 'No se pierden', text: 'Si un día no la haces, se acumula en un contador. «Hecha» marca la más antigua y tu racha sigue.' },
   ],
   progreso: [
     { target: () => firstVisible('.page .stat-tiles'), title: 'Tu progreso', text: 'Tareas hechas, minutos de enfoque, tu mejor racha y objetivos conseguidos esta semana.' },

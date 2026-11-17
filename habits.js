@@ -153,7 +153,7 @@ function viewHabits() {
   return `
   <div class="page page-mid page-habits">
   ${pageHead({ eyebrow: backLink('#progreso', 'Progreso'), title: 'Hábitos', actions: `<button class="btn primary" data-act="habit-new">${I.plus}<span>Nuevo</span></button>` })}
-  <p class="hint intro">Marca cada día lo que haces. Si lo repites sin fallar, tu racha 🔥 crece. No crean tareas ni se acumulan: para eso están las Diarias.</p>
+  <p class="hint intro">Márcalos cada día y tu racha 🔥 crece. No crean tareas ni se acumulan.</p>
   ${list.length ? `<div class="section day-prog">${statRow('habits-today', due.length ? Math.round(done / due.length * 100) : 0, due.length ? `Hoy ${done} de ${due.length}` : 'Hoy no toca ninguno')}</div>
     <div class="habit-cards">${list.map(habitCard).join('')}</div>
     <p class="hint">Toca un día de la semana para marcarlo si se te olvidó. Toca el nombre para cambiarlo.</p>`

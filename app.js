@@ -52,7 +52,7 @@ function renderView() {
     case 'proyecto': return viewProject(id, sub);
     case 'objetivos': return viewGoals();
     case 'objetivo': return viewGoal(id);
-    case 'ajustes': return viewSettings();
+    case 'ajustes': return viewSettings(id);
     case 'progreso': return viewStats();
     case 'habitos': return viewHabits();
     case 'planificar': return viewPlanDay();
@@ -193,10 +193,10 @@ function taskMeta(t, opts = {}) {
 /* v38: en Hoy, cada tarea enseña solo lo útil en una línea: de qué es (color), cuánto dura, cuándo tiene hueco y si es urgente */
 function taskMetaLite(t, opts = {}) {
   const out = [];
-  if (t.due && opts.hideDue !== t.due) out.push(dueTag(t));
-  const tg = (t.tags || []).map(tag).filter(Boolean)[0], p = projectOfTask(t), g = t.goalId && goal(t.goalId);
+  const tg = (t.tags || []).map(tag).filter(Boolean)[0], p = !opts.hideProject && projectOfTask(t), g = !opts.hideGoal && t.goalId && goal(t.goalId);
   const ctx = p ? { color: p.color, name: `${p.icon ? p.icon + ' ' : ''}${p.name}` } : g ? { color: g.color, name: g.title } : tg ? { color: tg.color, name: tg.name } : null;
-  if (ctx) out.push(`<span class="tag dot" style="--c:${ctx.color}">${esc(ctx.name)}</span>`);
+  if (ctx) out.push(`<span class="tag dot" style="--c:${ctx.color}"><span class="tn">${esc(ctx.name)}</span></span>`);
+  if (t.due && opts.hideDue !== t.due) out.push(dueTag(t));
   if (t.priority === 'high') out.push(`<span class="tag pri-high">Alta</span>`);
   if (t.estimate) out.push(`<span class="tag">${I.clock}${durLabel(t.estimate)}</span>`);
   const ev = blocksOfTask(t.id).filter(e => !e.recurrence && e.date >= todayStr()).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))[0];
@@ -205,7 +205,7 @@ function taskMetaLite(t, opts = {}) {
   return out.join('');
 }
 function taskItem(t, opts = {}) {
-  const meta = opts.lite ? taskMetaLite(t, opts) : taskMeta(t, opts);
+  const meta = opts.lite === false ? taskMeta(t, opts) : taskMetaLite(t, opts); /* v39: una sola línea de datos en todas las listas */
   const isPrio = opts.star && dayPriorities(viewDate).includes(t.id);
   return `<li class="task ${t.done ? 'done' : ''} ${opts.firstStep ? 'prio' : ''}" data-task="${t.id}" data-drag="task" data-id="${t.id}">
     <div class="swipe-act done-act" aria-hidden="true">✓ Hecha</div>
@@ -214,7 +214,7 @@ function taskItem(t, opts = {}) {
       <input type="checkbox" class="check" data-act="toggle-task" data-id="${t.id}" ${t.done ? 'checked' : ''} aria-label="Completar ${esc(t.title)}">
       <div class="body" data-act="edit-task" data-id="${t.id}">
         <div class="title">${esc(t.title)}</div>
-        ${meta ? `<div class="meta">${meta}</div>` : ''}
+        ${meta ? `<div class="meta ${opts.lite === false ? '' : 'lite'}">${meta}</div>` : ''}
         ${opts.firstStep ? `<label class="step-line">${opts.lite ? `<span class="step-ic" aria-hidden="true">→</span><span class="sr-only">Primer paso</span>` : '<span>Para empezar</span>'}<input type="text" class="step-input" data-input="first-step" data-id="${t.id}" value="${esc(t.firstStep)}" placeholder="${opts.lite ? 'Primer paso (ej.: abrir el documento)' : 'Ej.: abrir el documento…'}" enterkeyhint="done"></label>` : ''}
       </div>
       ${opts.moveToday ? `<button class="btn small" data-act="move-today" data-id="${t.id}">A hoy</button>` : ''}
@@ -528,9 +528,9 @@ function taskResults() {
     const groups = new Map();
     const bulk = tab === 'vencidas' ? `<div class="bulk-bar"><span class="muted small">${list.length} con el plazo pasado</span><button class="btn small" data-act="bulk-resched">${I.resched}<span>Reprogramar todas</span></button></div>` : '';
     list.forEach(t => { if (!groups.has(t.due)) groups.set(t.due, []); groups.get(t.due).push(t); });
-    return bulk + [...groups].map(([d, ts]) => `<div class="day-group"><h3 class="group-title">${esc(relDay(d))} <span class="muted">· ${esc(fmtShortDate(d))}</span></h3>${taskList(ts, { hideDue: d })}</div>`).join('');
+    return bulk + [...groups].map(([d, ts]) => `<div class="day-group"><h3 class="group-title">${esc(relDay(d))} <span class="muted">· ${esc(fmtShortDate(d))}</span></h3>${taskList(ts, { hideDue: d, lite: true })}</div>`).join('');
   }
-  return taskList(list, {});
+  return taskList(list, { lite: true });
 }
 function viewTasks() {
   const ui = state.settings.ui, tab = ui.tasksTab || 'bandeja', f = ui.taskFilter || {};
@@ -538,14 +538,16 @@ function viewTasks() {
   const activeProjects = state.projects.filter(p => !p.archived);
   return `
   <div class="page page-mid">
-  ${pageHead({ eyebrow: 'Todo lo que tienes entre manos', title: 'Tareas', actions: `<a class="btn small" href="#diarias">${I.daily}<span>Diarias</span></a>
+  ${pageHead({ eyebrow: (n => n ? `${n} pendiente${n === 1 ? '' : 's'}` : 'Nada pendiente')(state.tasks.filter(t => !isRoutineTask(t) && !t.done).length), title: 'Tareas', actions: `<a class="btn small" href="#diarias">${I.daily}<span>Diarias</span></a>
     <button class="btn primary" data-act="new-task">${I.plus}<span>Nueva</span></button>` })}
   <div class="segmented" role="tablist" data-live="task-tabs">${TASK_TABS.map(([k, l]) => `<button role="tab" class="${tab === k ? 'on' : ''}" data-act="tasks-tab" data-v="${k}">${l}${k !== 'completadas' && counts[k] ? ` <span class="seg-count ${k === 'vencidas' ? 'warn' : ''}">${counts[k]}</span>` : ''}</button>`).join('')}</div>
   <div class="filters">
     <label class="search glass">${I.search}<input type="search" data-input="task-search" value="${esc(taskQuery)}" placeholder="Buscar tareas" aria-label="Buscar tareas"></label>
+    <div class="filter-row">
     <select data-set-ui="taskFilter.project" aria-label="Filtrar por proyecto"><option value="">Proyecto: todos</option>${activeProjects.map(p => `<option value="${p.id}" ${f.project === p.id ? 'selected' : ''}>${esc(p.icon)} ${esc(p.name)}</option>`).join('')}</select>
     <select data-set-ui="taskFilter.tag" aria-label="Filtrar por etiqueta"><option value="">Etiqueta: todas</option>${state.tags.map(t => `<option value="${t.id}" ${f.tag === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
     <select data-set-ui="taskFilter.priority" aria-label="Filtrar por prioridad"><option value="">Prioridad: todas</option>${Object.entries(PRIORITIES).map(([k, l]) => `<option value="${k}" ${f.priority === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    </div>
   </div>
   ${tab === 'completadas' ? '' : quickAdd({ due: tab === 'proximas' ? todayStr() : tab === 'bandeja' ? '' : '' }, tab === 'proximas' ? 'Nueva tarea para hoy' : 'Ej.: dentista mañana a las 10')}
   <div id="task-results" class="section-gap">${taskResults()}</div>
@@ -559,7 +561,7 @@ function viewRoutines() {
   return `
   <div class="page page-mid">
   ${pageHead({ eyebrow: backLink('#tareas', 'Tareas'), title: 'Diarias', actions: `<button class="btn primary" data-act="new-routine">${I.plus}<span>Nueva</span></button>` })}
-  <p class="hint intro">Cada día programado crea una tarea, aunque no abras la app. Las que no hagas se acumulan bajo un contador: «Completar una» marca la más antigua.</p>
+  <p class="hint intro">Cada día programado crea una tarea, aunque no abras la app. Las que no hagas se acumulan bajo un contador: «Hecha» marca la más antigua.</p>
   ${list.length ? `<div class="routine-list">${list.map(r => routineGroup(r, { manage: true })).join('')}</div>`
     : emptyBox('Crea una diaria para lo que quieres hacer cada día o ciertos días: leer, beber agua, repasar…')}
   </div>`;
@@ -592,7 +594,7 @@ function viewReview() {
   </div>
 
   <div class="section step">
-    <div class="step-head"><span class="step-num">3</span><div class="grow"><h3>Elige tus prioridades</h3><p class="muted small">Lo que de verdad quieres sacar esta semana (hasta 5).</p></div><button class="btn small" data-act="propose-plan">${I.star}<span>Proponme un plan</span></button></div>
+    <div class="step-head wrap"><span class="step-num">3</span><div class="grow"><h3>Elige tus prioridades</h3><p class="muted small">Lo que de verdad quieres sacar esta semana (hasta 5).</p></div><button class="btn small" data-act="propose-plan">${I.star}<span>Proponme un plan</span></button></div>
     <div class="pick-chips">
       ${prios.map(t => `<button class="pick-chip on" data-act="week-prio" data-id="${t.id}" style="--c:${colorOfTask(t)}">★ ${esc(t.title)}</button>`).join('')}
       ${cands.map(t => `<button class="pick-chip" data-act="week-prio" data-id="${t.id}" style="--c:${colorOfTask(t)}">${esc(t.title)}${t.due ? ` <span class="muted">· ${esc(relDay(t.due))}</span>` : ''}</button>`).join('')}
@@ -631,11 +633,13 @@ function statusBadge(st) { return `<span class="tag st-${st}">${STATUS_LABEL[st]
 function goalCard(g) {
   const st = goalStatus(g), pct = goalProgress(g), next = st !== 'cumplido' && nextTaskOfGoal(g);
   const p = g.projectId && project(g.projectId);
-  return `<a class="card glass item-card" href="#objetivo/${g.id}" style="--c:${g.color}">
-    <div class="top"><div class="swatch">${I.target}</div><div class="name">${esc(g.title)}</div></div>
-    <div class="meta">${statusBadge(st)}${deadlineTag(g)}${p ? projTag(p) : ''}</div>
+  const n = g.due && st !== 'cumplido' ? daysUntil(g.due) : null;
+  const when = n === null ? '' : n < 0 ? `Venció hace ${-n} d` : n === 0 ? 'Vence hoy' : n === 1 ? 'Queda 1 día' : `Quedan ${n} días`;
+  const sub = [when && `<span class="${n !== null && n <= 7 ? 'warn-text' : ''}">${when}</span>`, p && esc(`${p.icon ? p.icon + ' ' : ''}${p.name}`)].filter(Boolean).join(' · ');
+  return `<a class="card glass item-card lite" href="#objetivo/${g.id}" style="--c:${g.color}">
+    <div class="top"><div class="swatch">${I.target}</div><div class="name">${esc(g.title)}${sub || st !== 'activo' ? `<span class="ic-sub">${st !== 'activo' ? statusBadge(st) + ' ' : ''}${sub}</span>` : ''}</div></div>
     <div class="stat-row">${progressBar(pct)}<span class="count">${pct}%${g.progressMode === 'manual' ? ' · manual' : ''}</span></div>
-    <div class="small muted one-line">${st === 'cumplido' ? `Conseguido el ${esc(fmtShortDate(g.achievedAt || todayStr()))}` : next ? 'Siguiente: ' + esc(next.title) : 'Sin próxima tarea'}</div>
+    <div class="ic-next one-line">${st === 'cumplido' ? `Conseguido el ${esc(fmtShortDate(g.achievedAt || todayStr()))}` : next ? `<span class="step-ic">→</span>${esc(next.title)}` : '<span class="muted">Sin próxima tarea</span>'}</div>
   </a>`;
 }
 function goalMatches(g, ui) {
@@ -650,7 +654,7 @@ function viewGoals() {
   const groups = hs.map(h => [h, list.filter(g => g.horizon === h)]).filter(([, gs]) => gs.length);
   return `
   <div class="page">
-  ${pageHead({ eyebrow: 'Hacia dónde vas y para qué', title: 'Objetivos', actions: `<button class="btn primary" data-act="new-goal">${I.plus}<span>Nuevo</span></button>` })}
+  ${pageHead({ eyebrow: (n => n ? `${n} en marcha` : 'Hacia dónde vas')(state.goals.filter(g => goalStatus(g) !== 'cumplido').length), title: 'Objetivos', actions: `<button class="btn primary" data-act="new-goal">${I.plus}<span>Nuevo</span></button>` })}
   <div class="toolbar">
     <div class="segmented compact" role="tablist">${[['todos', 'Todos'], ['corto', 'Corto'], ['medio', 'Medio'], ['largo', 'Largo']].map(([v, l]) => `<button role="tab" class="${ui.goalsHorizon === v ? 'on' : ''}" data-act="set-ui" data-k="goalsHorizon" data-v="${v}">${l}</button>`).join('')}</div>
     <select data-set-ui="goalsProject" aria-label="Proyecto"><option value="">Proyecto: todos</option>${state.projects.map(p => `<option value="${p.id}" ${ui.goalsProject === p.id ? 'selected' : ''}>${esc(p.icon)} ${esc(p.name)}</option>`).join('')}</select>
@@ -667,7 +671,7 @@ function viewGoal(id) {
   const pr = progressOf(tasks), next = nextTaskOfGoal(g), p = g.projectId && project(g.projectId);
   const nextEv = next && blocksOfTask(next.id).filter(e => e.date >= todayStr()).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start))[0];
   return `
-  <div class="page">
+  <div class="page page-project page-goal">
   ${pageHead({ eyebrow: backLink(p ? '#proyecto/' + p.id + '/objetivos' : '#objetivos', p ? esc(p.name) : 'Objetivos'), title: esc(g.title), dot: g.color, actions: `
       ${st === 'cumplido' ? `<button class="btn" data-act="goal-reopen" data-id="${g.id}">Reabrir</button>` : `<button class="btn" data-act="goal-done" data-id="${g.id}">Conseguido</button>`}
       <button class="btn" data-act="edit-goal" data-id="${g.id}">Editar</button>` })}
@@ -721,11 +725,11 @@ function projectStats(p) {
 function favBtn(p) { return `<button class="icon-btn fav ${p.favorite ? 'on' : ''}" data-act="project-fav" data-id="${p.id}" aria-label="${p.favorite ? 'Quitar de favoritos' : 'Marcar como favorito'}">${p.favorite ? I.starFill : I.star}</button>`; }
 function projectCard(p) {
   const { pr, goals, next } = projectStats(p);
-  return `<a class="card glass item-card" href="#proyecto/${p.id}" style="--c:${p.color}">
-    <div class="top"><div class="swatch emoji">${esc(p.icon || '📁')}</div><div class="name">${esc(p.name)}</div>${favBtn(p)}</div>
-    <div class="meta"><span class="tag">${goals.length} objetivo${goals.length === 1 ? '' : 's'}</span><span class="tag">${pr.total - pr.done} pendiente${pr.total - pr.done === 1 ? '' : 's'}</span>${p.archived ? '<span class="tag">Archivado</span>' : ''}</div>
-    <div class="stat-row">${progressBar(pr.pct)}<span class="count">${pr.total ? pr.pct + ' %' : '–'}</span></div>
-    <div class="small muted one-line">${next ? 'Siguiente: ' + esc(next.title) : pr.total ? '¡Todo hecho!' : 'Sin tareas todavía'}</div>
+  const left = pr.total - pr.done;
+  return `<a class="card glass item-card lite" href="#proyecto/${p.id}" style="--c:${p.color}">
+    <div class="top"><div class="swatch emoji">${esc(p.icon || '📁')}</div><div class="name">${esc(p.name)}<span class="ic-sub">${goals.length} objetivo${goals.length === 1 ? '' : 's'} · ${left} pendiente${left === 1 ? '' : 's'}${p.archived ? ' · Archivado' : ''}</span></div>${favBtn(p)}</div>
+    <div class="stat-row">${progressBar(pr.pct)}<span class="count">${pr.total ? pr.pct + '%' : '–'}</span></div>
+    <div class="ic-next one-line">${next ? `<span class="step-ic">→</span>${esc(next.title)}` : `<span class="muted">${pr.total ? '¡Todo hecho!' : 'Sin tareas todavía'}</span>`}</div>
   </a>`;
 }
 function projectRow(p) {
@@ -742,7 +746,7 @@ function viewProjects() {
   const nArch = state.projects.filter(p => p.archived).length;
   return `
   <div class="page page-projects">
-  ${pageHead({ eyebrow: 'Lo que estás construyendo, paso a paso', title: 'Proyectos', actions: `
+  ${pageHead({ eyebrow: (n => n ? `${n} en marcha` : 'Lo que estás construyendo')(state.projects.filter(p => !p.archived).length), title: 'Proyectos', actions: `
     <button class="btn primary" data-act="new-project">${I.plus}<span>Nuevo</span></button>` })}
   <div class="toolbar">
     <div class="segmented compact" role="tablist">
@@ -850,7 +854,7 @@ function calendarModal(c0) {
     <label class="field">Nombre<input type="text" name="name" required value="${esc(c.name)}"></label>
     <div class="field">Dirección secreta en formato iCal<div class="sub-add"><input type="url" name="url" required value="${esc(c.url)}" placeholder="https://calendar.google.com/…/basic.ics" autocomplete="off" spellcheck="false" aria-label="Dirección secreta en formato iCal"><button type="button" class="btn small" data-modal="paste-url">Pegar</button></div></div>
     <div class="field">Color${colorField('color', c.color)}</div>
-    ${getSession() ? '' : `<div class="linked warn-text">Antes, entra en tu cuenta en Ajustes → Cuenta y sincronización. Sin cuenta no se puede leer Google Calendar.</div>`}
+    ${getSession() ? '' : `<div class="linked warn-text">Antes, entra en tu cuenta en Ajustes → Cuenta. Sin cuenta no se puede leer Google Calendar.</div>`}
     <div class="howto small">
       <b>Cómo conseguir la dirección (una sola vez, 2 minutos)</b><br>
       1. Toca <a href="https://calendar.google.com/calendar/r/settings" target="_blank" rel="noopener">Abrir ajustes de Google Calendar</a>. En el móvil, si te lleva a la app o no ves los ajustes, abre el menú del navegador (⋮ o «aA») y elige «Ver versión para ordenador».<br>
@@ -1045,19 +1049,71 @@ function setTheme(v, seg) {
   }
 }
 
-function viewSettings() {
+/* v39: Ajustes como en el iPhone: una lista corta de apartados; cada uno abre su propia pantalla */
+const SET_ICON = {
+  apariencia: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 000 17z" fill="currentColor"/>'),
+  avisos: svg('<path d="M6 16.5V11a6 6 0 0112 0v5.5l1.5 2h-15zM10 20.5a2.2 2.2 0 004 0"/>'),
+};
+const SET_SECTIONS = [
+  ['apariencia', 'Apariencia', '#7c6cf0', SET_ICON.apariencia],
+  ['avisos', 'Recordatorios', '#ff6b5e', SET_ICON.avisos],
+  ['calendario', 'Calendario y jornada', '#4a72cf', I.cal],
+  ['calendarios', 'Google Calendar y otros', '#34a853', I.copy],
+  ['etiquetas', 'Etiquetas', '#ff9f0a', I.flag],
+  ['datos', 'Tus datos', '#8e8e93', I.archive],
+  ['ayuda', 'Ayuda e instalación', '#30b0c7', I.review],
+];
+function settingsSummary(k) {
+  const s = state.settings, r = s.reminders;
+  const perm = 'Notification' in window ? Notification.permission : 'unsupported';
+  switch (k) {
+    case 'apariencia': { const t = window.themePref ? themePref() : 'auto', sk = window.skinPref ? skinPref() : ''; return `${(THEMES.find(([v]) => v === t) || THEMES[0])[1]} · ${(SKINS.find(([v]) => v === sk) || SKINS[0])[1]}`; }
+    case 'avisos': return r.enabled && perm === 'granted' ? 'Activados' : 'Desactivados';
+    case 'calendario': return `Jornada de ${s.dayStart || '08:00'} a ${s.dayEnd || '21:00'}`;
+    case 'calendarios': { const n = (s.calendars || []).length; return n ? `${n} conectado${n === 1 ? '' : 's'}` : 'Ver tus citas en la app'; }
+    case 'etiquetas': return `${state.tags.length} etiqueta${state.tags.length === 1 ? '' : 's'}`;
+    case 'datos': return 'Papelera, copias y plantillas';
+    case 'ayuda': return 'Instalar la app y tutoriales';
+  }
+  return '';
+}
+function accountCard() {
+  const sess = cloudReady() && getSession(), email = sess && sess.user && sess.user.email;
+  const sub = !cloudReady() ? 'Tus datos se guardan en este dispositivo'
+    : !sess ? 'Entra para tener tus datos en el móvil y el ordenador'
+    : syncInfo.status === 'error' ? 'No se pudo sincronizar' : syncInfo.status === 'syncing' ? 'Sincronizando…' : `Sincronizado ${agoLabel(syncInfo.lastSync)}`;
+  return `<a class="account-card glass" href="#ajustes/cuenta">
+    <span class="acc-avatar">${email ? esc(email[0].toUpperCase()) : '<img src="icons/icon.svg" alt="" width="44" height="44">'}</span>
+    <span class="grow"><b>${email ? esc(email) : 'Sin cuenta'}</b><span class="small muted">${sub}</span></span>
+    <span class="chev">${I.right}</span>
+  </a>`;
+}
+function viewSettings(sec) {
+  if (!sec) return `
+  <div class="page page-narrow page-settings">
+  ${pageHead({ eyebrow: 'P Organizer', title: 'Ajustes' })}
+  ${accountCard()}
+  <div class="settings-group glass set-menu">
+    ${SET_SECTIONS.map(([k, l, c, ic]) => `<a class="item set-row" href="#ajustes/${k}"><span class="set-ic" style="--c:${c}">${ic}</span><span class="grow">${l}<span class="small muted item-sub">${esc(settingsSummary(k))}</span></span><span class="chev">${I.right}</span></a>`).join('')}
+  </div>
+  <p class="hint">${state.tasks.filter(t => !isRoutineTask(t)).length} tareas · ${state.projects.length} proyectos · ${state.goals.length} objetivos</p>
+  </div>`;
+  const title = sec === 'cuenta' ? 'Cuenta' : ((SET_SECTIONS.find(([k]) => k === sec) || [])[1] || 'Ajustes');
+  return `<div class="page page-narrow page-settings settings-sub">
+  ${pageHead({ eyebrow: backLink('#ajustes', 'Ajustes'), title })}
+  ${settingsBody(sec)}
+  </div>`;
+}
+function settingsBody(sec) {
   const s = state.settings, r = s.reminders;
   const perm = 'Notification' in window ? Notification.permission : 'unsupported';
   let tzs = [s.timezone];
   try { tzs = Intl.supportedValuesOf('timeZone'); if (!tzs.includes(s.timezone)) tzs.unshift(s.timezone); } catch {}
   const sel = (path, opts, cur, num) => `<select data-set="${path}" ${num ? 'data-num' : ''}>${opts.map(([v, l]) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
-  return `
-  <div class="page page-narrow">
-  ${pageHead({ eyebrow: `${state.tasks.filter(t => !isRoutineTask(t)).length} tareas · ${state.projects.length} proyectos · ${state.goals.length} objetivos`, title: 'Ajustes' })}
-  ${syncSection()}
-
-  ${appearanceSection()}
-
+  if (sec === 'cuenta') return syncSection();
+  if (sec === 'apariencia') return appearanceSection();
+  if (sec === 'calendarios') return calendarsSection();
+  if (sec === 'avisos') return `
   <div class="section">
     <div class="section-head"><h2>Recordatorios</h2></div>
     <div class="settings-group glass">
@@ -1069,8 +1125,8 @@ function viewSettings() {
       <div class="item"><span>Horas de silencio</span><div class="inline"><input type="time" data-set="reminders.quietFrom" value="${esc(r.quietFrom)}" aria-label="Desde"><span class="muted">a</span><input type="time" data-set="reminders.quietTo" value="${esc(r.quietTo)}" aria-label="Hasta"></div></div>
     </div>
     <p class="hint">${perm === 'unsupported' ? 'Este navegador no admite notificaciones. En iPhone, instala la app en la pantalla de inicio.' : perm === 'denied' ? 'Las notificaciones están bloqueadas en el navegador; actívalas en sus ajustes.' : 'Los avisos llegan mientras la app está abierta o en segundo plano. En silencio no se avisa.'}</p>
-  </div>
-
+  </div>`;
+  if (sec === 'calendario') return `
   <div class="section">
     <div class="section-head"><h2>Calendario</h2></div>
     <div class="settings-group glass">
@@ -1079,10 +1135,8 @@ function viewSettings() {
       <div class="item"><span>Tu jornada</span><div class="inline"><input type="time" data-set="dayStart" value="${esc(s.dayStart || '08:00')}" aria-label="Empieza"><span class="muted">a</span><input type="time" data-set="dayEnd" value="${esc(s.dayEnd || '21:00')}" aria-label="Termina"></div></div>
       <div class="item"><span>Temporizador de enfoque</span>${sel('focusMinutes', SINGLE_MINS.map(m => [m, m + ' min']), s.focusMinutes, true)}</div>
     </div>
-  </div>
-
-  ${calendarsSection()}
-
+  </div>`;
+  if (sec === 'etiquetas') return `
   <div class="section">
     <div class="section-head"><h2>Etiquetas</h2></div>
     <div class="settings-group glass">
@@ -1098,8 +1152,8 @@ function viewSettings() {
       </form>
     </div>
     <p class="hint">Un bloque usa su propio color; si no tiene, el de su etiqueta; si no, el de su proyecto. Cambiar un color actualiza todo lo que lo hereda.</p>
-  </div>
-
+  </div>`;
+  if (sec === 'datos') return `
   <div class="section">
     <div class="section-head"><h2>Tus datos</h2></div>
     <div class="settings-group glass">
@@ -1110,8 +1164,8 @@ function viewSettings() {
       <div class="item"><span style="color:var(--red)">Borrar todo</span><button class="btn small danger" data-act="reset">Borrar</button></div>
     </div>
     <p class="hint">Se guarda solo en este dispositivo, al instante. Exporta aquí e importa en el otro para pasar tus datos.</p>
-  </div>
-
+  </div>`;
+  if (sec === 'ayuda') return `
   <div class="section">
     <div class="section-head"><h2>Instalar</h2></div>
     <div class="settings-group glass">
@@ -1129,8 +1183,8 @@ function viewSettings() {
       <div class="item"><span>Volver a ver la explicación de cada pantalla</span><button class="btn small" data-act="tour-screens">Activar</button></div>
       ${deferredInstall ? `<div class="item"><span>Instalar en este dispositivo</span><button class="btn small primary" data-act="install">Instalar</button></div>` : ''}
     </div>
-  </div>
   </div>`;
+  return emptyBox('Este apartado no existe.');
 }
 
 /* ---------- Hojas modales ---------- */
