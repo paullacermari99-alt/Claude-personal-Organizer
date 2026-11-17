@@ -822,6 +822,15 @@ function teamMenu(pid) {
     }]] : []),
   ]);
 }
+/* Plantillas para no empezar con el tablero vacío */
+const TEAM_TPLS = [
+  { k: '', n: 'Vacío', i: '🚀' },
+  { k: 'viaje', n: 'Viaje', i: '✈️', goals: ['Todo reservado'], cards: ['Elegir fechas', 'Reservar vuelos', 'Reservar alojamiento', 'Hacer presupuesto común', 'Lista de qué ver', 'Seguro de viaje', 'Hacer la maleta'] },
+  { k: 'clase', n: 'Trabajo de clase', i: '📚', goals: ['Entregar el trabajo'], cards: ['Leer el enunciado juntos', 'Repartir apartados', 'Buscar fuentes', 'Primer borrador', 'Revisar y unir', 'Preparar la presentación'] },
+  { k: 'evento', n: 'Evento o fiesta', i: '🎉', goals: ['Día del evento'], cards: ['Fecha y lugar', 'Lista de invitados', 'Enviar invitaciones', 'Comida y bebida', 'Música', 'Decoración'] },
+  { k: 'casa', n: 'Mudanza o piso', i: '🏠', goals: ['Mudanza hecha'], cards: ['Conseguir cajas', 'Dar de alta luz e internet', 'Empaquetar cocina', 'Empaquetar ropa', 'Contratar furgoneta', 'Limpieza final'] },
+  { k: 'negocio', n: 'Proyecto o negocio', i: '💼', goals: ['Primera versión lista'], cards: ['Definir la idea en una frase', 'Investigar competencia', 'Nombre y logo', 'Primer prototipo', 'Enseñarlo a 5 personas', 'Decidir siguientes pasos'] },
+];
 const TEAM_ICONS = ['🚀', '🎯', '🏠', '✈️', '🎉', '💼', '📚', '🎨', '🏋️', '🎵', '🌱', '💡'];
 function teamSheet(S) {
   const p = (S && S.project) || {};
@@ -831,6 +840,7 @@ function teamSheet(S) {
     <div class="field">Icono<div class="chips-row wrap">${TEAM_ICONS.map((e, i) => `<label class="chip-radio"><input type="radio" name="icon" value="${e}" ${(p.icon || TEAM_ICONS[0]) === e ? 'checked' : ''}><span>${e}</span></label>`).join('')}</div></div>
     <div class="field">Color${colorField('color', p.color || COLORS[0])}</div>
     <div class="field">De qué va<textarea name="description" rows="2" maxlength="2000" placeholder="La meta del equipo en una frase">${esc(p.description || '')}</textarea></div>
+    ${p.id ? '' : `<div class="field">Empezar con<div class="chips-row wrap">${TEAM_TPLS.map((t, i) => `<label class="chip-radio"><input type="radio" name="tpl" value="${t.k}" data-icon="${t.i}" ${i === 0 ? 'checked' : ''}><span>${t.i} ${esc(t.n)}</span></label>`).join('')}</div><span class="hint">Las plantillas añaden unas tarjetas de ejemplo que podéis cambiar.</span></div>`}
     ${p.id ? '' : `<div class="field">¿Con quién?${friends.length ? `<div class="chips-row wrap">${friends.map(f => `<label class="chip-radio with-av"><input type="checkbox" name="member" value="${f.user.id}"><span>${avatar(f.user, 'xs')} ${esc(dispName(f.user))}</span></label>`).join('')}</div>`
       : `<p class="hint">Aún no tienes amigos añadidos. Puedes crear el proyecto ahora e invitarles después desde <a href="#amigos">Amigos</a>.</p>`}</div>`}`, {
     saveLabel: p.id ? 'Guardar' : 'Crear',
@@ -840,7 +850,18 @@ function teamSheet(S) {
       if (p.id) { mutate(p.id, S2 => Object.assign(S2.project, body), () => rest(`team_projects?id=eq.${p.id}`, { method: 'PATCH', body })).then(() => { SOC.teams = null; }, () => {}); return; }
       const btn = $('button[type=submit]', modalForm); if (btn) btn.disabled = true;
       rpc('create_team_project', { p_name: body.name, p_icon: body.icon, p_color: body.color, p_description: body.description, p_members: fd.getAll('member') })
-        .then(pid => { modal.close(); SOC.teams = null; haptic(14); location.hash = `#equipo/${pid}`; toast('¡Proyecto creado! Añadid la primera tarjeta.'); },
+        .then(async pid => {
+          const tpl = TEAM_TPLS.find(t => t.k === d.tpl);
+          if (tpl && tpl.cards) {
+            try {
+              const snap = await rpc('team_snapshot', { pid }), col = snap && snap.columns.find(c => !c.is_done);
+              if (col) await rest('team_tasks', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: tpl.cards.map((title, i) => ({ id: newId(), project_id: pid, column_id: col.id, title, position: i + 1 })) });
+              if (tpl.goals) await rest('team_goals', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: tpl.goals.map((title, i) => ({ id: newId(), project_id: pid, title, position: i + 1 })) });
+            } catch (e) { /* el proyecto ya está creado: las tarjetas de ejemplo son un extra */ }
+          }
+          modal.close(); SOC.teams = null; haptic(14); location.hash = `#equipo/${pid}`;
+          toast(tpl && tpl.cards ? '¡Proyecto creado! Repartid las tarjetas.' : '¡Proyecto creado! Añadid la primera tarjeta.');
+        },
           e => { toast(niceErr(e)); if (btn) btn.disabled = false; });
       return false;
     },
@@ -1098,3 +1119,11 @@ teamTimer = setInterval(() => socTick(false), 10000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(() => socTick(true), 600); });
 window.addEventListener('hashchange', () => setTimeout(() => socTick(true), 50));
 socLoadCache();
+/* Al elegir plantilla se elige también su icono */
+document.addEventListener('change', e => {
+  if (!e.target.matches('#modal input[name="tpl"]')) return;
+  const ic = e.target.dataset.icon, r = ic && $(`#modal input[name="icon"][value="${ic}"]`);
+  if (r) r.checked = true;
+  const n = $('#modal input[name="name"]');
+  if (n && !n.value.trim() && e.target.value) { const t = TEAM_TPLS.find(x => x.k === e.target.value); if (t) n.placeholder = t.n; }
+});

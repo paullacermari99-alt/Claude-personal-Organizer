@@ -138,6 +138,16 @@ const SCREEN_TOURS = {
     { target: () => firstVisible('.page [data-act="new-project"]'), title: 'Tus proyectos', text: 'Agrupa tareas, objetivos y bloques de algo grande, como un trabajo o una asignatura.' },
     { target: () => firstVisible('.page .pj-card') || firstVisible('.page .pj-bar'), title: 'De un vistazo', text: 'Cada proyecto te dice cómo va y qué toca ahora. Marca el paso con el círculo o empiézalo con ▶.' },
     { target: () => firstVisible('.page .pj-sort'), title: 'Cómo verlos', text: 'En tarjetas o en lista y ordenados como prefieras. Los archivados, en su pestaña.' },
+    { target: () => firstVisible('.page .pj-scope'), title: 'Con amigos', text: 'Aquí tienes los proyectos que compartes con tus amigos: un tablero común donde cada uno ve qué hace el resto.' },
+  ],
+  equipo: [
+    { target: () => firstVisible('.page .tb-board'), title: 'El tablero del equipo', text: 'Cada lista es una fase. Arrastra las tarjetas (en el móvil, mantén pulsado) y toca una para ver quién la hace, sus fechas, sus pasos y los comentarios.' },
+    { target: () => firstVisible('.page .tb-filters'), title: 'Lo tuyo primero', text: 'Filtra para ver solo tus tarjetas, las que nadie ha cogido o las de un compañero.' },
+    { target: () => firstVisible('.page .tm-tabs'), title: 'Objetivos, calendario y actividad', text: 'Las metas del equipo, los plazos en un calendario con su cronología y todo lo que ha ido haciendo cada uno.' },
+  ],
+  amigos: [
+    { target: () => firstVisible('.page .soc-me'), title: 'Tu nick y tu ID', text: 'Tus amigos te encuentran por tu nick o por este ID. Tócalo para copiarlo.' },
+    { target: () => firstVisible('.page .fr-search'), title: 'Añade amigos', text: 'Escribe su nick o su ID. Cuando acepten, podréis crear proyectos juntos.' },
   ],
   diarias: [
     { target: () => firstVisible('.page [data-act="new-routine"]'), title: 'Hábitos diarios', text: 'Crea tareas que se repiten los días que elijas, como beber agua o leer.' },
