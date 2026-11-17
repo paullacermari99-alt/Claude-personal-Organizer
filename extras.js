@@ -166,23 +166,129 @@ function morningSummary(d = todayStr()) {
 
 /* ---------- Plantillas ---------- */
 function templatesList() { if (!Array.isArray(state.templates)) state.templates = []; return state.templates; }
-function saveProjectTemplate(pid) {
+/* Abre otra hoja justo después de que se cierre la actual (submitModal cierra después de onSave) */
+const thenOpen = fn => { if (fn) setTimeout(fn, 0); };
+/* Copia un proyecto a datos de plantilla: fechas en días desde hoy */
+function projectToTemplateData(pid) {
   const p = project(pid);
-  if (!p) return;
+  if (!p) return null;
   const today = todayStr();
   const goals = state.goals.filter(g => g.projectId === pid);
-  const off = d => d ? daysBetween(today, d) : null;
+  const off = d => d ? Math.max(0, daysBetween(today, d)) : null;
   const tasks = state.tasks.filter(t => !isRoutineTask(t) && (t.projectId === pid || goals.some(g => g.id === t.goalId)));
-  const data = {
+  return {
     project: { name: p.name, icon: p.icon, color: p.color, defaultView: p.defaultView, notes: p.notes },
     goals: goals.map(g => ({ ref: g.id, title: g.title, horizon: g.horizon, dueOff: off(g.due), description: g.description, success: g.success, progressMode: g.progressMode, color: g.color })),
     tasks: tasks.map(t => ({ title: t.title, notes: t.notes, priority: t.priority, estimate: t.estimate, firstStep: t.firstStep, tags: t.tags, goalRef: t.goalId, dueOff: off(t.due), subtasks: (t.subtasks || []).map(s => s.title) })),
   };
-  const name = prompt('Nombre de la plantilla', p.name);
-  if (name === null) return;
-  templatesList().push({ id: uid(), kind: 'project', name: name.trim() || p.name, data, createdAt: Date.now() });
-  save();
-  toast(`Plantilla guardada: ${data.goals.length} objetivo${data.goals.length === 1 ? '' : 's'} y ${data.tasks.length} tarea${data.tasks.length === 1 ? '' : 's'}`);
+}
+/* Guardar un proyecto como plantilla: abre el editor con todo ya puesto para revisarlo */
+function saveProjectTemplate(pid, after) {
+  const data = projectToTemplateData(pid);
+  if (!data) return;
+  templateEditor({ name: data.project.name, data }, { after, fromProject: true });
+}
+/* Elegir cómo crear una plantilla: de cero o copiando un proyecto */
+function newTemplateFlow(after) {
+  const ps = state.projects.filter(p => !p.archived);
+  if (!ps.length) { templateEditor(null, { after }); return; }
+  actionSheet('Crear plantilla', [
+    ['Empezar de cero', I.plus, () => templateEditor(null, { after })],
+    ...ps.map(p => [`Copiar «${esc(p.name)}»`, `<span class="swatch emoji sm" style="--c:${p.color}">${esc(p.icon || '📁')}</span>`, () => saveProjectTemplate(p.id, after)]),
+  ], 'O copia uno de tus proyectos: se guardan sus objetivos y tareas, y las fechas pasan a contar desde el día que la uses.');
+}
+/* Editor de plantilla de proyecto: nombre, icono, color, objetivos con sus tareas y plazos en días */
+function templateEditor(src, opts = {}) {
+  const d = src ? src.data : { project: { name: '', icon: '📁', color: COLORS[templatesList().length % COLORS.length], defaultView: 'resumen', notes: '' }, goals: [], tasks: [] };
+  const srcGoals = d.goals.slice(), srcTasks = d.tasks.slice();
+  const icons = PROJECT_ICONS.includes(d.project.icon || '📁') ? PROJECT_ICONS : [d.project.icon, ...PROJECT_ICONS];
+  const icon = d.project.icon || '📁';
+  const num = v => v == null ? '' : v;
+  const taskRow = (t, k) => `<div class="tpl-ed-line t" ${k != null ? `data-k="${k}"` : ''}>
+      <input type="text" class="t-title" value="${esc(t ? t.title : '')}" placeholder="Tarea" maxlength="120" data-enter="next" enterkeyhint="next" aria-label="Tarea">
+      <label class="tpl-ed-days"><input type="number" class="t-days" value="${t ? num(t.dueOff) : ''}" min="0" max="999" inputmode="numeric" placeholder="–" aria-label="Días hasta el plazo"><span>días</span></label>
+      <button type="button" class="icon-btn" data-modal="rm" aria-label="Quitar">${I.close}</button></div>`;
+  const goalBlock = (g, k) => {
+    const ts = g ? srcTasks.map((t, i) => [t, i]).filter(([t]) => t.goalRef === g.ref) : [];
+    return `<div class="tpl-ed-goal" ${k != null ? `data-k="${k}"` : ''}>
+      <div class="tpl-ed-line g"><span class="tpl-ed-mark">◎</span>
+        <input type="text" class="g-title" value="${esc(g ? g.title : '')}" placeholder="Objetivo (algo que puedas comprobar)" maxlength="120" data-enter="next" enterkeyhint="next" aria-label="Objetivo">
+        <label class="tpl-ed-days"><input type="number" class="g-days" value="${g ? num(g.dueOff) : ''}" min="1" max="999" inputmode="numeric" placeholder="30" aria-label="Días hasta el plazo del objetivo"><span>días</span></label>
+        <button type="button" class="icon-btn" data-modal="rm-goal" aria-label="Quitar objetivo">${I.close}</button></div>
+      <div class="tpl-ed-tasks">${ts.map(([t, i]) => taskRow(t, i)).join('')}</div>
+      <button type="button" class="btn small tpl-ed-add" data-modal="add-task">${I.plus}<span>Tarea</span></button></div>`;
+  };
+  const loose = srcTasks.map((t, i) => [t, i]).filter(([t]) => !t.goalRef || !srcGoals.some(g => g.ref === t.goalRef));
+  const editing = opts.existing;
+  openModal(editing ? 'Editar plantilla' : 'Nueva plantilla', `
+    <p class="sheet-sub">Los días cuentan desde el día en que uses la plantilla. Pon cada tarea antes del plazo de su objetivo.</p>
+    <label class="field">Nombre<input type="text" name="name" value="${esc(src ? src.name : '')}" maxlength="80" required placeholder="Ej.: Preparar una oposición"></label>
+    <div class="field">Icono<div class="icon-pick">${icons.map(ic => `<label><input type="radio" name="icon" value="${esc(ic)}" ${ic === icon ? 'checked' : ''}><span>${esc(ic)}</span></label>`).join('')}</div></div>
+    <div class="field">Color${colorField('color', d.project.color || COLORS[0])}</div>
+    <div class="tpl-h">Objetivos y tareas</div>
+    <div class="tpl-ed">
+      ${srcGoals.map((g, i) => goalBlock(g, i)).join('')}
+      ${!srcGoals.length && !src ? goalBlock(null) : ''}
+      <div class="tpl-ed-goal loose"><div class="tpl-ed-line g"><span class="tpl-ed-mark">•</span><span class="grow small muted">Tareas sin objetivo</span></div>
+        <div class="tpl-ed-tasks">${loose.map(([t, i]) => taskRow(t, i)).join('')}</div>
+        <button type="button" class="btn small tpl-ed-add" data-modal="add-task">${I.plus}<span>Tarea</span></button></div>
+    </div>
+    <button type="button" class="btn wide" data-modal="add-goal">${I.target || I.plus}<span>Añadir objetivo</span></button>`, {
+    saveLabel: 'Guardar',
+    actions: {
+      'add-task': b => { const box = b.closest('.tpl-ed-goal').querySelector('.tpl-ed-tasks'); box.insertAdjacentHTML('beforeend', taskRow(null)); box.lastElementChild.querySelector('input').focus(); },
+      'add-goal': () => { const lo = modalForm.querySelector('.tpl-ed-goal.loose'); lo.insertAdjacentHTML('beforebegin', goalBlock(null)); lo.previousElementSibling.querySelector('.g-title').focus(); },
+      rm: b => b.closest('.tpl-ed-line').remove(),
+      'rm-goal': b => {
+        const gEl = b.closest('.tpl-ed-goal'), rows = gEl.querySelectorAll('.tpl-ed-line.t');
+        /* Sus tareas no se pierden: pasan a «sin objetivo» */
+        const lo = modalForm.querySelector('.tpl-ed-goal.loose .tpl-ed-tasks');
+        rows.forEach(r => { if (r.querySelector('.t-title').value.trim()) lo.appendChild(r); });
+        gEl.remove();
+      },
+      /* Intro en un título: salta a la siguiente fila o crea una tarea nueva */
+      next: inp => {
+        const gEl = inp.closest('.tpl-ed-goal');
+        const row = inp.closest('.tpl-ed-line');
+        const nextRow = row.classList.contains('g') ? gEl.querySelector('.tpl-ed-line.t') : row.nextElementSibling;
+        if (nextRow) { nextRow.querySelector('input').focus(); return; }
+        if (!inp.value.trim()) { inp.blur(); return; }
+        const box = gEl.querySelector('.tpl-ed-tasks');
+        box.insertAdjacentHTML('beforeend', taskRow(null)); box.lastElementChild.querySelector('input').focus();
+      },
+    },
+    onSave: f => {
+      const days = (el, min) => { const v = el.value.trim(); if (v === '') return null; const n = Math.round(+v); return Number.isFinite(n) ? Math.min(999, Math.max(min, n)) : null; };
+      const goals = [], tasks = [];
+      const readTasks = (gEl, ref) => gEl.querySelectorAll('.tpl-ed-line.t').forEach(r => {
+        const title = r.querySelector('.t-title').value.trim();
+        if (!title) return;
+        const old = r.dataset.k != null ? srcTasks[+r.dataset.k] : null;
+        tasks.push({ notes: '', priority: 'none', estimate: null, firstStep: '', tags: [], subtasks: [], ...(old || {}), title, goalRef: ref, dueOff: days(r.querySelector('.t-days'), 0) });
+      });
+      modalForm.querySelectorAll('.tpl-ed-goal').forEach((gEl, i) => {
+        if (gEl.classList.contains('loose')) { readTasks(gEl, null); return; }
+        const title = gEl.querySelector('.g-title').value.trim();
+        if (!title) { readTasks(gEl, null); return; }
+        const old = gEl.dataset.k != null ? srcGoals[+gEl.dataset.k] : null;
+        const ref = (old && old.ref) || 'g' + i + '-' + uid();
+        const before = tasks.length;
+        readTasks(gEl, ref);
+        /* Coherencia: el objetivo no puede vencer antes que sus tareas */
+        const latest = Math.max(0, ...tasks.slice(before).map(t => t.dueOff || 0));
+        const dueOff = Math.max(days(gEl.querySelector('.g-days'), 1) || 30, latest || 1);
+        goals.push({ description: '', success: '', progressMode: 'auto', ...(old || {}), ref, title, dueOff, horizon: horizonForDays(dueOff), color: (old && old.color) || readColor(f, 'color') || d.project.color });
+      });
+      if (!goals.length && !tasks.length) { toast('Añade al menos un objetivo o una tarea'); return false; }
+      const name = (f.name || '').trim() || 'Mi plantilla';
+      const data = { project: { ...d.project, name, icon: f.icon || '📁', color: readColor(f, 'color') || d.project.color || COLORS[0] }, goals, tasks };
+      let saved;
+      if (editing) { saved = templatesList().find(x => x.id === editing.id); if (saved) Object.assign(saved, { name, data, updatedAt: Date.now() }); }
+      if (!saved) { saved = { id: uid(), kind: 'project', name, data, createdAt: Date.now() }; templatesList().push(saved); }
+      toast(`Plantilla ${editing ? 'actualizada' : 'guardada'}: ${tplCount(saved)}`);
+      thenOpen(opts.after && (() => opts.after(saved)));
+    },
+  });
 }
 function useProjectTemplate(tpl, name) {
   const today = todayStr(), d = tpl.data;
@@ -191,7 +297,8 @@ function useProjectTemplate(tpl, name) {
   state.projects.push(p);
   const gmap = {};
   d.goals.forEach(g => {
-    const n = { id: uid(), status: 'activo', achievedAt: null, createdAt: Date.now(), progress: 0, projectId: p.id, title: g.title, horizon: g.horizon, due: due(g.dueOff) || addDays(today, 30), description: g.description || '', success: g.success || '', progressMode: g.progressMode || 'auto', color: g.color };
+    const gd = due(g.dueOff) || addDays(today, 30);
+    const n = { id: uid(), status: 'activo', achievedAt: null, createdAt: Date.now(), progress: 0, projectId: p.id, title: g.title, horizon: horizonFor(gd), due: gd, description: g.description || '', success: g.success || '', progressMode: g.progressMode || 'auto', color: g.color || p.color };
     gmap[g.ref] = n.id; state.goals.push(n);
   });
   d.tasks.forEach(t => state.tasks.push(newTask({ title: t.title, notes: t.notes || '', priority: t.priority || 'none', estimate: t.estimate || null, firstStep: t.firstStep || '', tags: (t.tags || []).filter(id => tag(id)), projectId: p.id, goalId: gmap[t.goalRef] || null, due: due(t.dueOff), subtasks: (t.subtasks || []).map(title => ({ id: uid(), title, done: false })) })));
@@ -204,16 +311,21 @@ function useProjectTemplate(tpl, name) {
     save(); location.hash = '#proyectos';
   } });
 }
-function saveWeekTemplate(ws) {
+function saveWeekTemplate(ws, after) {
   const we = addDays(ws, 6);
   const evs = state.events.filter(e => !e.recurrence && e.date >= ws && e.date <= we);
   if (!evs.length) { toast('Esta semana no tiene bloques para guardar (los que se repiten ya aparecen solos)'); return; }
-  const name = prompt('Nombre de la plantilla de semana', 'Semana tipo');
-  if (name === null) return;
-  const data = { events: evs.map(e => ({ day: daysBetween(ws, e.date), start: e.start, end: e.end, title: e.title, color: e.color, tagId: e.tagId, projectId: e.projectId, goalId: e.goalId, notes: e.notes || '' })) };
-  templatesList().push({ id: uid(), kind: 'week', name: name.trim() || 'Semana tipo', data, createdAt: Date.now() });
-  save();
-  toast(`Plantilla guardada con ${evs.length} bloque${evs.length === 1 ? '' : 's'}`);
+  openModal('Guardar semana', `
+    <p class="sheet-sub">Se guardan ${evs.length} bloque${evs.length === 1 ? '' : 's'} de la semana del ${esc(fmtShortDate(ws))} para ponerlos en otra semana de un toque.</p>
+    <label class="field">Nombre de la plantilla<input type="text" name="name" value="Semana tipo" maxlength="80" required></label>`, {
+    saveLabel: 'Guardar',
+    onSave: f => {
+      const data = { events: evs.map(e => ({ day: daysBetween(ws, e.date), start: e.start, end: e.end, title: e.title, color: e.color, tagId: e.tagId, projectId: e.projectId, goalId: e.goalId, notes: e.notes || '' })) };
+      templatesList().push({ id: uid(), kind: 'week', name: (f.name || '').trim() || 'Semana tipo', data, createdAt: Date.now() });
+      toast(`Plantilla guardada con ${evs.length} bloque${evs.length === 1 ? '' : 's'}`);
+      thenOpen(after);
+    },
+  });
 }
 function useWeekTemplate(tpl, ws) {
   const added = [];
@@ -229,22 +341,26 @@ function useWeekTemplate(tpl, ws) {
 }
 function templatesSheet(kind, ctx = {}) {
   const list = templatesList().filter(t => t.kind === kind);
-  const count = t => kind === 'week' ? `${t.data.events.length} bloques` : `${t.data.goals.length} objetivos · ${t.data.tasks.length} tareas`;
+  const count = t => kind === 'week' ? `${t.data.events.length} bloques` : tplCount(t);
   const title = kind === 'week' ? 'Plantillas de semana' : 'Plantillas de proyecto';
+  const reopen = () => templatesSheet(kind, ctx);
   openModal(title, `
     <p class="sheet-sub">${kind === 'week' ? `Guarda los bloques de una semana tipo y ponlos en otra de un toque. Se aplican a la semana del ${esc(fmtShortDate(ctx.ws))}.` : 'Guarda un proyecto con sus objetivos y tareas para empezar otro igual. Las fechas se ajustan a partir de hoy.'}</p>
     ${list.length ? `<div class="settings-group glass">${list.map(t => `<div class="item">
       <div class="grow"><div>${esc(t.name)}</div><div class="small muted">${count(t)}</div></div>
       <button type="button" class="btn small primary" data-modal="use" data-id="${t.id}">${kind === 'week' ? 'Aplicar' : 'Usar'}</button>
+      ${kind === 'week' ? '' : `<button type="button" class="btn small" data-modal="edit" data-id="${t.id}">Editar</button>`}
       <button type="button" class="icon-btn" data-modal="del" data-id="${t.id}" aria-label="Eliminar plantilla">${I.close}</button>
     </div>`).join('')}</div>` : `<div class="empty">Aún no tienes plantillas${kind === 'week' ? ' de semana' : ' de proyecto'}.</div>`}
     ${kind === 'week' ? `<button type="button" class="btn wide" data-modal="save">${I.plus}<span>Guardar esta semana como plantilla</span></button>`
       : ctx.projectId ? `<button type="button" class="btn wide" data-modal="save">${I.plus}<span>Guardar este proyecto como plantilla</span></button>`
-      : '<p class="hint">Para crear una, abre un proyecto y pulsa «Plantilla».</p>'}`, {
+      : `<button type="button" class="btn wide" data-modal="new">${I.plus}<span>Crear plantilla</span></button>`}`, {
     actions: {
-      use: el => { const t = templatesList().find(x => x.id === el.dataset.id); modal.close(); if (!t) return; kind === 'week' ? useWeekTemplate(t, ctx.ws) : useProjectTemplate(t); },
-      del: el => { if (!confirm('¿Eliminar la plantilla?')) return; state.templates = templatesList().filter(x => x.id !== el.dataset.id); save(); modal.close(); templatesSheet(kind, ctx); },
-      save: () => { modal.close(); kind === 'week' ? saveWeekTemplate(ctx.ws) : saveProjectTemplate(ctx.projectId); },
+      use: el => { const t = templatesList().find(x => x.id === el.dataset.id); if (!t) return; if (kind === 'week') { modal.close(); useWeekTemplate(t, ctx.ws); } else templatePreview(t); },
+      edit: el => { const t = templatesList().find(x => x.id === el.dataset.id); if (t) templateEditor(t, { existing: t, after: reopen }); },
+      del: el => { if (!confirm('¿Eliminar la plantilla?')) return; state.templates = templatesList().filter(x => x.id !== el.dataset.id); save(); reopen(); },
+      save: () => { kind === 'week' ? saveWeekTemplate(ctx.ws, reopen) : saveProjectTemplate(ctx.projectId, reopen); },
+      new: () => newTemplateFlow(reopen),
     },
   });
 }
@@ -317,49 +433,129 @@ function proposeWeekPlan(ws) {
   toast(pick.length ? `Propuesta: ${pick.length} prioridad${pick.length === 1 ? '' : 'es'}. Cámbialas si quieres.` : 'No hay nada urgente: elige tú las prioridades.', pick.length ? { action: 'Deshacer', onAction: () => { wp.priorities = prev; save(); rerender(); } } : {});
 }
 
-/* ---------- v24: plantillas de proyecto ya hechas ---------- */
-/* g: [título, horizonte, días hasta el plazo, cómo sabré que lo he conseguido]
+/* ---------- Plantillas de proyecto ya hechas (revisadas en v29) ----------
+   Reglas: objetivos concretos y comprobables; tareas en orden, cada una acerca a su objetivo
+   y ninguna vence después que él; plazos holgados para alguien con trabajo o estudios;
+   «minutos» = tiempo total aproximado (si es largo, va repartido en subtareas/sesiones).
+   g: [título, días hasta el plazo, cómo sabré que lo he conseguido]
    t: [título, nº de objetivo o null, días hasta el plazo o null, minutos, primer paso, subtareas] */
+const horizonForDays = n => n <= 90 ? 'corto' : n <= 365 ? 'medio' : 'largo';
 function builtinTpl(id, name, icon, color, about, goals, tasks) {
   return { id: 'b:' + id, builtin: true, kind: 'project', name, about, data: {
     project: { name, icon, color, defaultView: 'resumen', notes: about },
-    goals: goals.map(([title, horizon, dueOff, success], i) => ({ ref: 'g' + i, title, horizon, dueOff, success, description: '', progressMode: 'auto', color })),
+    goals: goals.map(([title, dueOff, success], i) => ({ ref: 'g' + i, title, horizon: horizonForDays(dueOff), dueOff, success, description: '', progressMode: 'auto', color })),
     tasks: tasks.map(([title, gi, dueOff, estimate, firstStep, subtasks]) => ({ title, goalRef: gi == null ? null : 'g' + gi, dueOff, estimate: estimate || null, firstStep: firstStep || '', priority: 'none', tags: [], notes: '', subtasks: subtasks || [] })),
   } };
 }
 const BUILTIN_TEMPLATES = [
-  builtinTpl('reforma', 'Reforma o mudanza', '🏠', '#ff9500', 'De la idea a estar ya instalado, sin que se te escape nada.',
-    [['Tener claro qué hacer y cuánto cuesta', 'corto', 14, 'Presupuesto cerrado y fechas acordadas'], ['Terminar y estar instalado', 'medio', 60, 'Todo hecho y en su sitio']],
-    [['Hacer lista de lo que quiero cambiar', 0, 2, 20, 'Recorrer la casa y apuntar cada cosa'], ['Pedir 3 presupuestos', 0, 7, 45, 'Buscar 3 profesionales con buenas opiniones'], ['Fijar el presupuesto máximo', 0, 9, 20], ['Elegir profesional y fechas', 0, 14, 30],
-     ['Comprar materiales', 1, 21, 90, null, ['Hacer la lista', 'Comparar precios', 'Pedir o comprar']], ['Avisar a comunidad y vecinos', 1, 18, 10], ['Revisar la obra cada semana', 1, 30, 30], ['Limpiar y colocar todo', 1, 60, 180]]),
-  builtinTpl('web', 'Lanzar una web o app', '💻', '#007aff', 'Desde la idea hasta tenerla publicada y con los primeros usuarios.',
-    [['Tener una primera versión', 'corto', 30, 'Se puede usar de principio a fin'], ['Publicarla y conseguir usuarios', 'medio', 60, 'Primeras 10 personas usándola']],
-    [['Escribir para quién es y qué problema resuelve', 0, 2, 30, 'Abrir una nota y escribir una frase'], ['Listar lo mínimo que debe hacer', 0, 4, 30], ['Bocetos de las pantallas', 0, 7, 60], ['Construir la primera versión', 0, 25, 240, null, ['Estructura', 'Funciones principales', 'Pulir detalles']],
-     ['Probarla con 3 personas', 0, 30, 60], ['Elegir nombre y dominio', 1, 35, 30], ['Publicarla', 1, 45, 60], ['Contarlo donde está tu público', 1, 50, 45]]),
-  builtinTpl('forma', 'Ponerse en forma', '🏋️', '#34c759', 'Crear el hábito poco a poco y notar el progreso.',
-    [['Entrenar 3 días por semana', 'corto', 30, '4 semanas seguidas cumpliendo'], ['Llegar a mi meta física', 'medio', 90, 'Correr 5 km, levantar X o la meta que elijas']],
-    [['Apuntar cómo estoy hoy (peso, medidas, marcas)', 1, 1, 15], ['Elegir horario fijo para entrenar', 0, 2, 10, 'Mirar la semana y bloquear 3 huecos'], ['Preparar ropa y material', 0, 3, 20], ['Plan de entrenamiento para 4 semanas', 0, 5, 45],
-     ['Revisar la alimentación', 1, 10, 30, null, ['Apuntar lo que como 3 días', 'Elegir 2 cambios fáciles']], ['Revisar el progreso', 1, 30, 20], ['Ajustar el plan', 1, 31, 30]]),
-  builtinTpl('examen', 'Preparar un examen', '📚', '#5856d6', 'Repartir el temario y llegar con repasos hechos.',
-    [['Terminar el temario', 'corto', 30, 'Todos los temas estudiados una vez'], ['Aprobar el examen', 'medio', 45, 'Nota que me propongo']],
-    [['Reunir apuntes y material', 0, 1, 30, 'Juntar todo en una carpeta'], ['Dividir el temario por semanas', 0, 2, 30], ['Estudiar la primera mitad', 0, 14, 600], ['Estudiar la segunda mitad', 0, 28, 600],
-     ['Hacer exámenes de otros años', 1, 35, 180], ['Repaso general', 1, 42, 240, null, ['Resúmenes', 'Dudas', 'Simulacro']], ['Preparar lo necesario para el día', 1, 44, 15]]),
-  builtinTpl('viaje', 'Organizar un viaje', '✈️', '#30b0c7', 'Transporte, alojamiento, plan y maleta, en orden.',
-    [['Tener todo reservado', 'corto', 21, 'Billetes y alojamiento confirmados'], ['Salir con todo listo', 'corto', 40, 'Maleta hecha y documentos a mano']],
-    [['Decidir destino, fechas y presupuesto', 0, 2, 30], ['Reservar transporte', 0, 7, 45], ['Reservar alojamiento', 0, 10, 45], ['Revisar documentos (DNI, pasaporte, seguro)', 1, 14, 20],
-     ['Plan día a día', 1, 30, 60], ['Hacer la maleta', 1, 39, 45, 'Sacar la maleta y la lista', ['Ropa', 'Neceser', 'Cargadores', 'Documentos']], ['Check-in online', 1, 39, 10]]),
-  builtinTpl('evento', 'Organizar un evento', '⭐', '#af52de', 'Cumpleaños, boda, reunión o fiesta: invitados, lugar y detalles.',
-    [['Tener lugar e invitados confirmados', 'corto', 21, 'Lugar reservado y lista cerrada'], ['Que el evento salga bien', 'medio', 45, 'Todo preparado el día antes']],
-    [['Decidir fecha, estilo y presupuesto', 0, 2, 30], ['Hacer lista de invitados', 0, 4, 30], ['Reservar el lugar', 0, 10, 60], ['Enviar invitaciones', 0, 14, 30],
-     ['Comida y bebida', 1, 30, 60], ['Decoración y música', 1, 35, 60], ['Confirmar asistentes', 1, 38, 20], ['Preparar todo el día antes', 1, 44, 120]]),
-  builtinTpl('trabajo', 'Buscar trabajo', '💼', '#64748b', 'Preparar el CV, enviar candidaturas y llevar el seguimiento.',
-    [['Tener CV y perfil listos', 'corto', 10, 'CV actualizado y perfil profesional al día'], ['Conseguir el nuevo trabajo', 'medio', 90, 'Oferta aceptada']],
-    [['Decidir qué tipo de puesto busco', 0, 2, 30, 'Escribir 3 puestos que me encajan'], ['Actualizar el CV', 0, 6, 90], ['Actualizar el perfil profesional', 0, 8, 45], ['Preparar carta de presentación base', 0, 10, 45],
-     ['Enviar 5 candidaturas por semana', 1, 17, 120], ['Pedir recomendaciones a contactos', 1, 20, 30], ['Preparar entrevistas', 1, 30, 90, null, ['Preguntas típicas', 'Mis logros', 'Preguntas para ellos']]]),
-  builtinTpl('ahorro', 'Ahorrar dinero', '💰', '#0f766e', 'Saber en qué se va el dinero y apartar cada mes.',
-    [['Saber en qué gasto', 'corto', 14, 'Gastos de un mes apuntados'], ['Llegar a mi meta de ahorro', 'largo', 180, 'Tener la cantidad que me propongo']],
-    [['Fijar cuánto quiero ahorrar y para qué', 1, 1, 15], ['Apuntar los gastos de este mes', 0, 14, 10, 'Abrir el banco y mirar los últimos movimientos'], ['Revisar suscripciones y cancelar las que sobran', 0, 7, 30], ['Hacer un presupuesto mensual', 0, 15, 45],
-     ['Programar una transferencia automática', 1, 16, 10], ['Revisar el ahorro cada mes', 1, 45, 20]]),
+  builtinTpl('reforma', 'Reforma o mudanza', '🏠', '#ff9500', 'De la idea a estar ya instalado, sin que se te escape nada. Pensada para unos 2 meses y medio.',
+    [['Cerrar presupuesto, profesional y fechas', 21, 'Presupuesto firmado y fecha de inicio acordada'],
+     ['Terminar la obra y estar instalado', 75, 'Obra revisada, pagada y todo en su sitio']],
+    [['Hacer la lista de lo que quiero cambiar', 0, 2, 30, 'Recorrer la casa con el móvil y apuntar cada cosa'],
+     ['Fijar el presupuesto máximo', 0, 4, 20, 'Mirar cuánto puedo gastar sin tocar el colchón para imprevistos'],
+     ['Pedir 3 presupuestos', 0, 10, 60, 'Buscar 3 profesionales con buenas opiniones', ['Pedir el primero', 'Pedir el segundo', 'Pedir el tercero']],
+     ['Comparar presupuestos y elegir profesional', 0, 17, 45],
+     ['Firmar el presupuesto y fijar fechas', 0, 21, 30],
+     ['Avisar a la comunidad y pedir permisos si hacen falta', 1, 25, 20],
+     ['Elegir y encargar materiales', 1, 30, 90, null, ['Hacer la lista', 'Comparar precios', 'Encargar']],
+     ['Vaciar y proteger la zona de obra', 1, 34, 120],
+     ['Revisar la obra con el profesional cada semana', 1, 63, 80, null, ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4']],
+     ['Repasar los detalles antes del pago final', 1, 68, 45],
+     ['Limpiar y colocar todo', 1, 75, 240, null, ['Limpiar', 'Montar muebles', 'Colocar las cosas']]]),
+  builtinTpl('web', 'Lanzar una web o app', '💻', '#007aff', 'De la idea a tenerla publicada y con las primeras personas usándola, en unas 10 semanas.',
+    [['Tener una primera versión que funcione', 42, 'Alguien puede usar la función principal de principio a fin'],
+     ['Publicarla y conseguir 10 usuarios', 70, '10 personas la han probado y me han dado su opinión']],
+    [['Escribir para quién es y qué problema resuelve', 0, 2, 30, 'Abrir una nota y escribir una frase'],
+     ['Elegir las 3 funciones imprescindibles', 0, 4, 30, 'Apuntar todas las ideas y quedarte solo con 3'],
+     ['Dibujar las pantallas principales', 0, 8, 60],
+     ['Construir la función principal', 0, 18, 360, null, ['Preparar el proyecto', 'Hacer la función', 'Probarla']],
+     ['Construir las otras dos funciones', 0, 32, 480, null, ['Función 2', 'Función 3']],
+     ['Probarla con 3 personas y apuntar fallos', 0, 38, 90],
+     ['Arreglar los fallos más importantes', 0, 42, 180],
+     ['Elegir nombre y dominio', 1, 46, 30],
+     ['Publicarla', 1, 50, 60],
+     ['Contarlo donde está tu público', 1, 56, 60, null, ['Escribir el mensaje', 'Publicarlo en 2 sitios', 'Pedir a 5 conocidos que la prueben']],
+     ['Hablar con los primeros usuarios y decidir mejoras', 1, 70, 60]]),
+  builtinTpl('forma', 'Ponerse en forma', '🏋️', '#34c759', 'Crear el hábito en 4 semanas y llegar a una meta medible en 3 meses.',
+    [['Entrenar 3 días por semana durante 4 semanas', 30, '12 entrenamientos hechos'],
+     ['Conseguir mi meta física en 3 meses', 90, 'La meta con número que elijas, por ejemplo correr 5 km seguidos']],
+    [['Elegir una meta concreta y medible', 1, 1, 15, 'Escribirla con un número: «correr 5 km», «hacer 10 flexiones»…'],
+     ['Bloquear 3 huecos fijos para entrenar', 0, 2, 10, 'Mirar la semana y elegir días y horas'],
+     ['Apuntar cómo estoy hoy', 1, 2, 15, null, ['Peso o medidas', 'Marca de partida (tiempo, repeticiones)']],
+     ['Preparar ropa y material', 0, 3, 20],
+     ['Hacer un plan sencillo de 4 semanas', 0, 4, 45, 'Empezar suave: sesiones de 20 a 30 minutos'],
+     ['Primer entrenamiento', 0, 5, 30],
+     ['Revisar la alimentación', 1, 14, 30, null, ['Apuntar lo que como 3 días', 'Elegir 2 cambios fáciles']],
+     ['Repasar las 4 primeras semanas', 0, 30, 20, 'Contar cuántos entrenamientos hiciste'],
+     ['Subir un poco la intensidad del plan', 1, 32, 30],
+     ['Medir el progreso a mitad de camino', 1, 60, 20],
+     ['Prueba final de la meta', 1, 90, 45]]),
+  builtinTpl('examen', 'Preparar un examen', '📚', '#5856d6', 'Para un examen dentro de 6 semanas: 4 de estudio (una hora al día) y 2 de repaso.',
+    [['Estudiar todo el temario una vez', 28, 'Todos los temas leídos y resumidos'],
+     ['Llegar al examen con todo repasado', 42, 'Dos simulacros hechos y las dudas resueltas']],
+    [['Reunir apuntes y material', 0, 1, 30, 'Juntar todo en una carpeta'],
+     ['Repartir los temas en 4 semanas', 0, 2, 30, 'Contar los temas y dividirlos entre 4'],
+     ['Semana 1 de estudio', 0, 7, 300, null, ['Sesión 1', 'Sesión 2', 'Sesión 3', 'Sesión 4', 'Sesión 5']],
+     ['Semana 2 de estudio', 0, 14, 300, null, ['Sesión 1', 'Sesión 2', 'Sesión 3', 'Sesión 4', 'Sesión 5']],
+     ['Semana 3 de estudio', 0, 21, 300, null, ['Sesión 1', 'Sesión 2', 'Sesión 3', 'Sesión 4', 'Sesión 5']],
+     ['Semana 4 de estudio', 0, 28, 300, null, ['Sesión 1', 'Sesión 2', 'Sesión 3', 'Sesión 4', 'Sesión 5']],
+     ['Apuntar las dudas y preguntarlas', 1, 31, 30],
+     ['Simulacro 1 con un examen de otros años', 1, 33, 120],
+     ['Repasar los temas que peor llevas', 1, 37, 240, null, ['Sesión 1', 'Sesión 2', 'Sesión 3', 'Sesión 4']],
+     ['Simulacro 2', 1, 39, 120],
+     ['Repaso ligero de los resúmenes', 1, 41, 60],
+     ['Preparar lo necesario para el día', 1, 41, 15, null, ['DNI', 'Bolígrafos', 'Calculadora si se permite', 'Cómo llegar y a qué hora']]]),
+  builtinTpl('viaje', 'Organizar un viaje', '✈️', '#30b0c7', 'Para un viaje dentro de 6 semanas: transporte, alojamiento, plan y maleta, en orden.',
+    [['Tener transporte y alojamiento reservados', 14, 'Billetes y alojamiento confirmados'],
+     ['Salir de viaje con todo listo', 42, 'Maleta hecha, documentos a mano y plan para cada día']],
+    [['Decidir destino, fechas y presupuesto', 0, 2, 30, 'Apuntar 2 o 3 destinos y cuánto puedo gastar'],
+     ['Comparar y reservar el transporte', 0, 7, 45],
+     ['Reservar el alojamiento', 0, 10, 45],
+     ['Guardar todas las reservas en un solo sitio', 0, 14, 10],
+     ['Revisar documentos (DNI, pasaporte, seguro)', 1, 15, 20, 'Mirar la fecha de caducidad: renovarlo puede tardar semanas'],
+     ['Hacer un plan sencillo para cada día', 1, 30, 60],
+     ['Preparar dinero y tarjetas para el viaje', 1, 36, 15],
+     ['Hacer la maleta', 1, 40, 45, 'Sacar la maleta y la lista', ['Ropa', 'Neceser', 'Cargadores', 'Documentos']],
+     ['Hacer el check-in online', 1, 41, 10]]),
+  builtinTpl('evento', 'Organizar un evento', '⭐', '#af52de', 'Cumpleaños, boda, reunión o fiesta dentro de 6 semanas: lugar, invitados y detalles.',
+    [['Tener fecha, lugar e invitaciones enviadas', 21, 'Lugar reservado e invitaciones enviadas'],
+     ['Celebrar el evento sin agobios', 45, 'Todo preparado el día antes']],
+    [['Decidir fecha, tipo de evento y presupuesto', 0, 2, 30],
+     ['Hacer la lista de invitados', 0, 4, 30],
+     ['Buscar y reservar el lugar', 0, 12, 90, null, ['Mirar 3 opciones', 'Preguntar precios y disponibilidad', 'Reservar']],
+     ['Enviar las invitaciones', 0, 21, 30],
+     ['Elegir comida y bebida', 1, 28, 60],
+     ['Preparar decoración y música', 1, 32, 60],
+     ['Confirmar asistentes', 1, 38, 20],
+     ['Encargar la comida y lo que falte', 1, 40, 30],
+     ['Preparar todo el día antes', 1, 44, 120]]),
+  builtinTpl('trabajo', 'Buscar trabajo', '💼', '#64748b', 'CV listo en 10 días, candidaturas cada semana y entrevistas preparadas.',
+    [['Tener CV y perfil listos', 10, 'CV actualizado y perfil profesional al día'],
+     ['Conseguir 3 entrevistas', 45, '3 entrevistas hechas'],
+     ['Conseguir el nuevo trabajo', 90, 'Oferta aceptada']],
+    [['Decidir qué tipo de puesto busco', 0, 2, 30, 'Escribir 3 puestos que me encajan'],
+     ['Actualizar el CV', 0, 6, 90, null, ['Experiencia', 'Logros con números', 'Revisar faltas']],
+     ['Actualizar el perfil profesional', 0, 8, 45],
+     ['Preparar una carta de presentación base', 0, 10, 45],
+     ['Enviar 5 candidaturas (semana 1)', 1, 17, 120],
+     ['Pedir recomendaciones a 3 contactos', 1, 20, 30],
+     ['Enviar 5 candidaturas (semana 2)', 1, 24, 120],
+     ['Preparar las entrevistas', 1, 28, 90, null, ['Preguntas típicas', 'Mis logros', 'Preguntas para ellos']],
+     ['Enviar 5 candidaturas (semana 3)', 1, 31, 120],
+     ['Revisar qué funciona y ajustar el CV', 1, 45, 30],
+     ['Comparar ofertas y decidir', 2, 90, 45]]),
+  builtinTpl('ahorro', 'Ahorrar dinero', '💰', '#0f766e', 'Saber en qué se va el dinero el primer mes y apartar cada mes durante medio año.',
+    [['Saber en qué se va mi dinero', 30, 'Un mes de gastos apuntados y un presupuesto mensual'],
+     ['Llegar a mi meta de ahorro en 6 meses', 180, 'Tener apartada la cantidad que me propuse']],
+    [['Fijar cuánto quiero ahorrar y para qué', 1, 1, 15, 'Elegir una cifra y dividirla entre 6 meses'],
+     ['Revisar los gastos del último mes', 0, 3, 30, 'Abrir el banco y mirar los últimos movimientos'],
+     ['Revisar suscripciones y cancelar las que sobran', 0, 7, 30],
+     ['Apuntar los gastos cada semana', 0, 28, 40, null, ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4']],
+     ['Hacer un presupuesto mensual', 0, 30, 45],
+     ['Programar una transferencia automática el día de cobro', 1, 31, 10],
+     ['Revisar cómo va el ahorro (mes 2)', 1, 60, 15],
+     ['Revisar cómo va el ahorro (mes 4)', 1, 120, 15],
+     ['Comprobar si has llegado a la meta', 1, 180, 15]]),
 ];
 function projectTemplateById(id) { return BUILTIN_TEMPLATES.find(t => t.id === id) || templatesList().find(t => t.id === id); }
 function tplCount(t) { const g = t.data.goals.length, n = t.data.tasks.length; return `${g} objetivo${g === 1 ? '' : 's'} · ${n} tarea${n === 1 ? '' : 's'}`; }
@@ -375,19 +571,17 @@ function newProjectSheet(ctx = {}) {
     <button type="button" class="tpl-blank" data-modal="blank"><span class="tpl-ic">${I.plus}</span><span class="grow"><b>Proyecto vacío</b><span class="small muted">Empieza de cero y ponle tus objetivos y tareas</span></span></button>
     <div class="tpl-h">Plantillas</div>
     <div class="tpl-grid">${BUILTIN_TEMPLATES.map(tplCard).join('')}</div>
-    <div class="tpl-h">Tus plantillas</div>
-    ${mine.length ? `<div class="tpl-grid">${mine.map(tplCard).join('')}</div>` : '<p class="hint">Aún no tienes. Crea una a partir de un proyecto tuyo: guarda sus objetivos y tareas para repetirlo cuando quieras.</p>'}
-    <button type="button" class="btn wide" data-modal="own">${I.template}<span>Crear plantilla desde un proyecto</span></button>`, {
+    <div class="tpl-h tpl-mine">Tus plantillas</div>
+    ${mine.length ? `<div class="tpl-grid">${mine.map(tplCard).join('')}</div>` : '<p class="hint">Aún no tienes. Crea una desde cero o copiando un proyecto tuyo, y la tendrás aquí para repetirlo cuando quieras.</p>'}
+    <button type="button" class="btn wide" data-modal="own">${I.plus}<span>Crear plantilla</span></button>`, {
     actions: {
-      blank: () => { modal.close(); projectModal(ctx); },
+      blank: () => { modal.close(); const { showMine, ...c } = ctx; projectModal(c); },
       pick: el => { const t = projectTemplateById(el.dataset.id); if (t) templatePreview(t); },
-      own: () => {
-        const ps = state.projects.filter(p => !p.archived);
-        if (!ps.length) { toast('Primero crea un proyecto; luego podrás guardarlo como plantilla'); return; }
-        actionSheet('¿Qué proyecto guardas?', ps.map(p => [esc(p.name), `<span class="swatch emoji sm" style="--c:${p.color}">${esc(p.icon || '📁')}</span>`, () => saveProjectTemplate(p.id)]), 'Se guardan sus objetivos y tareas; las fechas pasan a contar desde el día que la uses.');
-      },
+      own: () => newTemplateFlow(() => newProjectSheet({ ...ctx, showMine: true })),
     },
   });
+  /* Recién creada: se baja hasta «Tus plantillas» para verla */
+  if (ctx.showMine) requestAnimationFrame(() => { const h = modalForm.querySelector('.tpl-mine'); if (h) h.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
 }
 /* Vista previa: cambia el nombre, mira qué trae y créalo */
 function templatePreview(t) {
@@ -399,9 +593,11 @@ function templatePreview(t) {
   openModal(esc(t.name), `
     <div class="tpl-hero" style="--c:${d.project.color || '#007aff'}"><span class="tpl-ic">${esc(d.project.icon || '📁')}</span><span class="small muted">${esc(t.about || d.project.notes || 'Tu plantilla')}</span></div>
     <label class="field">Nombre del proyecto<input type="text" name="name" value="${esc(d.project.name)}" maxlength="80" required></label>
-    ${gs.map(g => `<div class="tpl-goal"><div class="tpl-goal-h">◎ ${esc(g.title)}</div>${list(tasksOf(g.ref))}</div>`).join('')}
+    ${gs.map(g => `<div class="tpl-goal"><div class="tpl-goal-h"><span>◎ ${esc(g.title)}</span>${g.dueOff != null ? `<span class="muted small">meta ${when(g.dueOff)}</span>` : ''}</div>${g.success ? `<div class="small muted tpl-success">✓ ${esc(g.success)}</div>` : ''}${list(tasksOf(g.ref))}</div>`).join('')}
     ${loose.length ? `<div class="tpl-goal"><div class="tpl-goal-h">Otras tareas</div>${list(loose)}</div>` : ''}
-    <p class="hint">Las fechas cuentan desde hoy. Después puedes cambiar, borrar o añadir lo que quieras.</p>`, {
+    <p class="hint">Las fechas cuentan desde hoy. Después puedes cambiar, borrar o añadir lo que quieras.</p>
+    ${t.builtin ? '' : `<button type="button" class="btn wide" data-modal="edit">Editar plantilla</button>`}`, {
+    actions: { edit: () => templateEditor(t, { existing: t, after: saved => templatePreview(saved) }) },
     onSave: f => { useProjectTemplate(t, f.name); },
     saveLabel: 'Crear',
     ...(t.builtin ? {} : { onDelete: () => { if (!confirm('¿Eliminar esta plantilla? Los proyectos ya creados no cambian.')) return false; state.templates = templatesList().filter(x => x.id !== t.id); save(); toast('Plantilla eliminada'); }, deleteLabel: 'Eliminar plantilla' }),

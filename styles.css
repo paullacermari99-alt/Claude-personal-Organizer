@@ -1670,3 +1670,27 @@ body[data-page="planificar"] .fab { display: none; }
 .bars-note { margin: 10px 0 0; text-align: center; }
 .chk-burst.big .ring-w { border-color: var(--green); }
 .chk-burst.big .spark:nth-child(even) { background: var(--green); }
+
+/* v29: el aviso va en la capa superior (encima de las hojas) */
+#toast[popover] { right: auto; bottom: auto; margin: 0; overflow: visible; color: var(--text); }
+@starting-style { #toast.show { transform: translate(-50%, -140%); opacity: 0; } }
+
+/* v29: editor de plantillas */
+.tpl-ed { display: flex; flex-direction: column; gap: 10px; }
+.tpl-ed-goal { background: var(--fill); border-radius: 14px; padding: 8px 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+.tpl-ed-tasks { display: flex; flex-direction: column; gap: 6px; padding-left: 18px; }
+.tpl-ed-tasks:empty { display: none; }
+.tpl-ed-line { display: flex; align-items: center; gap: 6px; }
+.tpl-ed-line input[type=text] { flex: 1; min-width: 0; min-height: 38px; padding: 6px 10px; font-size: 16px; border-radius: 10px; }
+.tpl-ed-line.g input[type=text] { font-weight: 600; }
+.tpl-ed-line .grow { flex: 1; }
+.tpl-ed-mark { flex: none; width: 14px; text-align: center; color: var(--muted); }
+.tpl-ed-days { flex: none; display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); margin: 0; }
+.tpl-ed-days input { width: 52px; min-height: 38px; padding: 6px 4px; text-align: center; font-size: 16px; border-radius: 10px; }
+.tpl-ed-line .icon-btn { flex: none; width: 32px; height: 32px; }
+.tpl-ed-line .icon-btn svg { width: 14px; height: 14px; }
+.tpl-ed-add { align-self: flex-start; margin-left: 18px; }
+.tpl-ed-add svg { width: 14px; height: 14px; }
+.tpl-goal-h { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.tpl-goal-h .small { flex: none; font-weight: 400; }
+.tpl-success { margin: -2px 0 6px; }

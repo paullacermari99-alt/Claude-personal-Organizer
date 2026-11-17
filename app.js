@@ -16,6 +16,8 @@ function toast(msg, opts = {}) {
   el.innerHTML = `<span>${esc(msg)}</span>${opts.action ? `<button type="button" class="toast-btn">${esc(opts.action)}</button>` : ''}`;
   toastAction = opts.onAction || null;
   el.classList.toggle('actionable', !!opts.action);
+  /* Capa superior: así el aviso se ve encima de una hoja abierta */
+  if (el.showPopover) try { if (!el.popover) el.popover = 'manual'; if (el.matches(':popover-open')) el.hidePopover(); el.showPopover(); } catch (_) { /* sin capa superior */ }
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { el.classList.remove('show'); toastAction = null; }, opts.action ? 5000 : 2400);
