@@ -1440,9 +1440,8 @@ function actionSheet(title, items, sub = '') {
 
 function newAnySheet() {
   const { name, id } = parseHash();
-  /* Sin otro contexto, la tarea nueva va a Hoy (solo queda sin fecha si estás en la Bandeja de Tareas) */
-  const inbox = name === 'tareas' && (state.settings.ui.tasksTab || 'bandeja') === 'bandeja';
-  const ctx = name === 'hoy' ? { due: viewDate } : name === 'proyecto' ? { projectId: id } : name === 'objetivo' ? { goalId: id } : inbox ? {} : { due: todayStr() };
+  /* Sin otro contexto (también desde Tareas), la tarea nueva va a Hoy; puedes cambiar o quitar el plazo en la ficha */
+  const ctx = name === 'hoy' ? { due: viewDate } : name === 'proyecto' ? { projectId: id } : name === 'objetivo' ? { goalId: id } : { due: todayStr() };
   actionSheet('Crear', [
     ['Tarea', I.review, () => taskModal(ctx)],
     ['Evento o bloque', I.cal, () => eventModal(defaultEventCtx())],
@@ -2306,7 +2305,7 @@ document.addEventListener('click', e => {
   switch (el.dataset.act) {
     case 'toggle-task': toggleTask(id, el); return;
     case 'edit-task': if (task(id)) taskModal(task(id)); return;
-    case 'new-task': taskModal({ goalId: el.dataset.goal || null, projectId: el.dataset.project || null, due: el.dataset.due || null }); return;
+    case 'new-task': taskModal({ goalId: el.dataset.goal || null, projectId: el.dataset.project || null, due: el.dataset.due || (el.dataset.goal || el.dataset.project ? null : todayStr()) }); return;
     case 'focus-open': openFocus(id); return;
     case 'focus-close': closeFocus(); return;
     case 'focus-min': focusMins = Number(el.dataset.v); renderFocus(); return;
@@ -2502,7 +2501,7 @@ document.addEventListener('keydown', e => {
   if (!typing && !modal.open && !e.ctrlKey && !e.metaKey && !e.altKey) {
     const k = e.key.toLowerCase();
     if (k === '/') { e.preventDefault(); openSearch(); return; }
-    if (k === 'n') { e.preventDefault(); const h = parseHash().name; taskModal({ due: h === 'hoy' ? viewDate : h === 'tareas' || h === 'proyecto' || h === 'objetivo' ? null : todayStr() }); return; }
+    if (k === 'n') { e.preventDefault(); const h = parseHash().name; taskModal({ due: h === 'hoy' ? viewDate : h === 'proyecto' || h === 'objetivo' ? null : todayStr() }); return; }
     if (k === 'f') { e.preventDefault(); startFocusShortcut(); return; }
     if (k === 'h') { location.hash = '#hoy'; return; }
     if (k === 's') { location.hash = '#semana'; return; }
