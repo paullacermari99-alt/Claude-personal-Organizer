@@ -989,7 +989,7 @@ function appearanceSection() {
 }
 /* Estilos de la interfaz: [valor, nombre, fondo, tarjeta, color] (las muestras se pintan siempre en claro) */
 const SKINS = [
-  ['', 'Cristal', 'linear-gradient(150deg,#cfe0ff,#f3d6ea 60%,#d4f3e6)', 'rgba(255,255,255,.75)', '#007aff'],
+  ['', 'Cristal', 'linear-gradient(150deg,#cfe0ff,#f3d6ea 60%,#d4f3e6)', 'rgba(255,255,255,.75)', '#4a72cf'],
   ['sereno', 'Sereno', '#f5f3ef', '#fff', '#1d1b18'],
   ['vivo', 'Vivo', 'linear-gradient(150deg,#c9b6ff,#ffc0de 55%,#ffe0a8)', 'rgba(255,255,255,.8)', 'linear-gradient(135deg,#7c3aed,#ec4899)'],
   ['compacto', 'Compacto', 'linear-gradient(150deg,#d6e6ff,#e9e2f7)', 'rgba(255,255,255,.75)', '#0e8f84'],
