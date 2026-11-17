@@ -2041,3 +2041,15 @@ body[data-page="planificar"] .fab-mic { display: none; }
 .drag-ghost { will-change: transform; }
 /* Mientras arrastras, nada más reacciona al dedo */
 body.dragging * { cursor: grabbing; }
+
+/* ---------- v43: Guardar y Cancelar de las hojas, claramente botones ---------- */
+#modal .sheet-head { grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr); }
+#modal .sheet-head h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#modal .sheet-head .btn {
+  min-height: 34px; padding: 0 14px; border-radius: 99px; max-width: 100%;
+  font-size: 15px; font-weight: 600; white-space: nowrap;
+  background: var(--fill); color: var(--text);
+}
+#modal .sheet-head .btn.primary { background: var(--action-bg); color: var(--on-action); box-shadow: 0 2px 8px rgba(0, 0, 0, .12); }
+[data-skin="vivo"] #modal .sheet-head .btn.primary { background: var(--grad); color: #fff; }
+[data-skin="compacto"] #modal .sheet-head .btn { min-height: 32px; padding: 0 12px; font-size: 14px; }
