@@ -2006,3 +2006,16 @@ body[data-page="planificar"] .fab-mic { display: none; }
 /* Datos de cada tarea: pocos y en orden (de qué es, plazo, urgencia, duración); el nombre largo se acorta con «…» */
 .task .meta.lite .tag.dot { max-width: 100%; min-width: 0; }
 .tag .tn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* v40: la lupa de arriba a la derecha nunca se monta sobre el título ni los botones
+   (en Compacto la cabecera era más baja que la lupa + los botones) */
+@media (max-width: 1023px) {
+  /* La línea pequeña de arriba ocupa todo el ancho hasta la lupa (antes se cortaba: «5 p…»)
+     y queda por encima de los botones, sin tocarlos */
+  :root { --head-h: 80px; }
+  .page-head .eyebrow { width: calc(100vw - 2 * var(--page-pad) - 46px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)); max-width: none; margin-bottom: 12px; }
+  .page-project .ph-text, .page-projects .ph-text { padding-right: 42px; }
+  :root[data-skin="compacto"] { --head-h: 76px; }
+}
+/* Compacto: el micro va centrado encima del + (que es más pequeño) */
+:root[data-skin="compacto"] .fab-mic { right: 19px; bottom: calc(var(--tab-h) + 20px + 50px + 12px + env(safe-area-inset-bottom)); }
