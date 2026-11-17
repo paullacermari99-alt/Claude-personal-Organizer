@@ -2282,36 +2282,59 @@ html[data-pro="free"] .fab-mic::after { position: absolute; top: -6px; right: -8
 .pro-body:focus { outline: none; }
 /* Cabecera: insignia con brillo + título con degradado que se mueve */
 .pro-hero { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; }
-.pro-badge { position: relative; width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; background: var(--pro-grad); color: #fff; overflow: hidden;
-  box-shadow: 0 10px 30px rgba(255, 122, 89, .4); animation: pro-pop .6s cubic-bezier(.3,1.5,.5,1) both, pro-float 4s ease-in-out .6s infinite; }
-.pro-badge > svg { position: relative; width: 34px; height: 34px; animation: pro-twinkle 4s ease-in-out 1s infinite; }
-.pb-shine { position: absolute; inset: -20%; background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.75) 50%, transparent 65%); transform: translateX(-120%); animation: pro-shine 3.2s ease-in-out 1s infinite; }
-.pb-glow { display: none; }
-@keyframes pro-pop { from { transform: scale(.4) rotate(-12deg); opacity: 0; } }
+.pro-badge { position: relative; width: 64px; height: 64px; display: grid; place-items: center; color: #fff;
+  animation: pro-drop .78s cubic-bezier(.5,0,.75,0) both, pro-float 4s ease-in-out 1.6s infinite; }
+/* La cara del logo (con su brillo) va dentro, así la sombra y el anillo no se recortan */
+.pro-badge::before { content: ""; position: absolute; inset: 0; border-radius: 20px; background: var(--pro-grad); box-shadow: 0 10px 30px rgba(255, 122, 89, .4); }
+.pro-badge > svg { position: relative; width: 34px; height: 34px; animation: pro-twinkle 4s ease-in-out 1.8s infinite; }
+.pb-shine { position: absolute; inset: 0; border-radius: 20px; overflow: hidden; }
+.pb-shine::before { content: ""; position: absolute; inset: -20%; background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.75) 50%, transparent 65%); transform: translateX(-120%); animation: pro-shine 3.2s ease-in-out 1s infinite; }
+/* Onda del impacto al caer */
+.pb-glow { position: absolute; inset: -6px; border-radius: 26px; border: 3px solid #ff8a4c; opacity: 0; pointer-events: none; animation: pro-wave .7s .62s ease-out both; }
+/* Cae de frente: desde muy cerca de la pantalla (grande, inclinado y transparente) hasta su sitio, y rebota un poco al llegar */
+@keyframes pro-drop {
+  0% { transform: perspective(600px) translateZ(480px) rotateX(24deg) rotateZ(-14deg); opacity: 0; }
+  20% { opacity: 1; }
+  72% { transform: perspective(600px) translateZ(0) rotateX(0) rotateZ(0); animation-timing-function: cubic-bezier(.2,.8,.3,1); }
+  84% { transform: scale(.86, .9); }
+  93% { transform: scale(1.06); }
+  100% { transform: none; opacity: 1; }
+}
+@keyframes pro-wave { 0% { opacity: .9; transform: scale(.9); } 100% { opacity: 0; transform: scale(1.9); } }
 @keyframes pro-float { 50% { transform: translateY(-5px); } }
 @keyframes pro-twinkle { 0%, 70%, 100% { transform: none; } 80% { transform: scale(1.18) rotate(18deg); } 90% { transform: scale(.95) rotate(-6deg); } }
 @keyframes pro-shine { 0%, 55% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
-.pro-hero h2 { padding: 0; margin: 0; text-transform: none; color: var(--text); font-size: clamp(28px, 8.5vw, 36px); font-weight: 800; line-height: 1.1; letter-spacing: -.03em; animation: pro-up .5s .08s cubic-bezier(.2,.9,.3,1) both; }
+.pro-hero h2 { padding: 0; margin: 0; text-transform: none; color: var(--text); font-size: clamp(28px, 8.5vw, 36px); font-weight: 800; line-height: 1.1; letter-spacing: -.03em; animation: pro-up .5s .6s cubic-bezier(.2,.9,.3,1) both; }
 .pro-hero h2 b { background: linear-gradient(90deg, #ffb340, #ff7a59, #ff4f8b, #ff7a59, #ffb340); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: pro-flow 4s linear infinite; }
 @keyframes pro-flow { to { background-position: -200% 0; } }
-.pro-hero p { margin: 4px 0 0; color: var(--muted); font-size: 15px; line-height: 1.35; animation: pro-up .5s .14s cubic-bezier(.2,.9,.3,1) both; }
+.pro-hero p { margin: 4px 0 0; color: var(--muted); font-size: 15px; line-height: 1.35; animation: pro-up .5s .68s cubic-bezier(.2,.9,.3,1) both; }
 @keyframes pro-up { from { opacity: 0; transform: translateY(12px); } }
 
 /* Funciones: 2 × 3, entran una detrás de otra */
-.pro-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.pro-grid li { position: relative; display: grid; grid-template-columns: 26px 1fr; column-gap: 8px; row-gap: 4px; align-content: start; padding: 11px 11px 12px; border-radius: 16px;
-  background: var(--glass-strong); box-shadow: inset 0 0 0 1px var(--separator), 0 4px 14px rgba(31, 38, 80, .05); min-width: 0;
-  animation: pro-tile .5s calc(.18s + var(--i) * .07s) cubic-bezier(.2,.9,.3,1) both; }
-@keyframes pro-tile { from { opacity: 0; transform: translateY(16px) scale(.96); } }
+.pro-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; perspective: 900px; }
+.pro-grid li { position: relative; overflow: hidden; display: grid; grid-template-columns: 26px 1fr; column-gap: 8px; row-gap: 4px; align-content: start; padding: 11px 11px 12px; border-radius: 16px;
+  background: var(--glass-strong); box-shadow: inset 0 0 0 1px var(--separator), 0 4px 14px rgba(31, 38, 80, .05); min-width: 0; transform-origin: 50% 0;
+  animation: pro-flip .7s calc(.8s + var(--i) * .09s) cubic-bezier(.3,1.35,.5,1) both; }
+/* Entrada: cada tarjeta se voltea hacia ti desde arriba, una detrás de otra, con un pequeño rebote */
+@keyframes pro-flip { from { opacity: 0; transform: rotateX(-80deg) translateY(-10px); } 40% { opacity: 1; } }
+/* Luego un destello las recorre en cadena, de vez en cuando */
+.pro-grid li::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 60%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .55), transparent); transform: translateX(-130%) skewX(-16deg);
+  animation: pro-card-shine 6s calc(1.7s + var(--i) * .12s) ease-in-out infinite; }
+:root[data-theme="dark"] .pro-grid li::after { background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .12), transparent); }
+@keyframes pro-card-shine { 0% { transform: translateX(-130%) skewX(-16deg); } 18%, 100% { transform: translateX(260%) skewX(-16deg); } }
 .pro-grid li.hit { box-shadow: inset 0 0 0 2px var(--pro), 0 6px 20px rgba(255, 122, 89, .22); }
-.pg-ic { width: 26px; height: 26px; display: grid; place-items: center; font-size: 19px; line-height: 1; animation: pro-emoji .6s calc(.3s + var(--i) * .07s) cubic-bezier(.3,1.7,.5,1) both; }
+.pg-ic { width: 26px; height: 26px; display: grid; place-items: center; font-size: 19px; line-height: 1;
+  animation: pro-emoji .6s calc(1.05s + var(--i) * .09s) cubic-bezier(.3,1.7,.5,1) both, pro-bob 3.6s calc(2s + var(--i) * .45s) ease-in-out infinite; }
 @keyframes pro-emoji { from { transform: scale(0) rotate(-25deg); } }
+/* Los iconos dan un saltito cada pocos segundos, cada uno a su ritmo */
+@keyframes pro-bob { 0%, 78%, 100% { transform: none; } 84% { transform: translateY(-4px) rotate(-10deg) scale(1.12); } 92% { transform: translateY(0) rotate(6deg); } }
 .pro-grid b { align-self: center; font-size: 14px; line-height: 1.15; min-width: 0; }
 .pro-grid em { font-style: normal; font-size: 10px; font-weight: 800; color: #fff; background: var(--pro-grad); border-radius: 99px; padding: 2px 6px; margin-left: 2px; vertical-align: 2px; white-space: nowrap; }
 .pg-d { grid-column: 1 / -1; font-size: 12px; line-height: 1.3; color: var(--muted); min-width: 0; }
 
 /* Planes y botón principal */
-.pro-actions { display: flex; flex-direction: column; gap: 10px; animation: pro-up .5s .62s cubic-bezier(.2,.9,.3,1) both; }
+.pro-actions { display: flex; flex-direction: column; gap: 10px; animation: pro-up .5s 1.4s cubic-bezier(.2,.9,.3,1) both; }
 .pro-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .pro-plan { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 14px; border: 0; border-radius: 16px;
   background: var(--glass-strong); box-shadow: inset 0 0 0 1.5px var(--separator); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: box-shadow .2s, transform .2s; min-width: 0; }
@@ -2322,8 +2345,8 @@ html[data-pro="free"] .fab-mic::after { position: absolute; top: -6px; right: -8
 .pp-price small { font-size: 12.5px; font-weight: 600; color: var(--muted); }
 .pp-tag { position: absolute; top: 9px; right: 9px; font-size: 11px; font-weight: 800; color: #fff; background: var(--pro-grad); border-radius: 99px; padding: 3px 7px; }
 #pro-store .pro-cta { position: relative; overflow: hidden; background: var(--pro-grad); color: #fff; min-height: 54px; font-size: 17px; font-weight: 800; border-radius: 16px;
-  box-shadow: 0 10px 28px rgba(255, 122, 89, .4); animation: pro-breathe 2.6s ease-in-out 1.2s infinite; }
-#pro-store .pro-cta::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 45%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent); transform: translateX(-120%) skewX(-18deg); animation: pro-cta-shine 2.6s ease-in-out 1.2s infinite; }
+  box-shadow: 0 10px 28px rgba(255, 122, 89, .4); animation: pro-breathe 2.6s ease-in-out 2s infinite; }
+#pro-store .pro-cta::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 45%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent); transform: translateX(-120%) skewX(-18deg); animation: pro-cta-shine 2.6s ease-in-out 2s infinite; }
 #pro-store .pro-cta span { position: relative; }
 @keyframes pro-breathe { 0%, 100% { transform: none; } 50% { transform: scale(1.025); } }
 @keyframes pro-cta-shine { 0%, 40% { transform: translateX(-120%) skewX(-18deg); } 75%, 100% { transform: translateX(260%) skewX(-18deg); } }
@@ -2338,12 +2361,12 @@ html[data-pro="free"] .fab-mic::after { position: absolute; top: -6px; right: -8
 /* Pantallas bajas (iPhone pequeño, o con las barras del navegador): más apretado, sin scroll */
 @media (max-height: 700px) {
   .pro-hero { flex-direction: row; justify-content: center; text-align: left; gap: 14px; }
-  .pro-badge { width: 52px; height: 52px; border-radius: 16px; } .pro-badge > svg { width: 28px; height: 28px; }
+  .pro-badge { width: 52px; height: 52px; } .pro-badge::before, .pb-shine { border-radius: 16px; } .pro-badge > svg { width: 28px; height: 28px; }
   .pro-hero h2 { font-size: 28px; } .pro-hero p { font-size: 13.5px; margin-top: 2px; }
 }
 @media (max-height: 620px) {
   .pro-body { gap: 8px; }
-  .pro-badge { width: 44px; height: 44px; border-radius: 14px; } .pro-badge > svg { width: 24px; height: 24px; }
+  .pro-badge { width: 44px; height: 44px; } .pro-badge::before, .pb-shine { border-radius: 14px; } .pro-badge > svg { width: 24px; height: 24px; }
   .pro-hero h2 { font-size: 25px; }
   .pro-grid { gap: 6px; } .pro-grid li { padding: 8px 9px 9px; row-gap: 2px; }
   .pro-plan { padding: 7px 12px; } .pp-price { font-size: 18px; }
@@ -2358,7 +2381,7 @@ html[data-pro="free"] .fab-mic::after { position: absolute; top: -6px; right: -8
   .pro-plan { padding: 7px 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  #pro-store[open], #pro-store.closing, #pro-store::before, #pro-store::after, #pro-store *, #pro-store *::after { animation: none !important; }
+  #pro-store[open], #pro-store.closing, #pro-store::before, #pro-store::after, #pro-store *, #pro-store *::before, #pro-store *::after { animation: none !important; }
   .pro-fx { display: none; }
   .pro-x.counting .pro-ring-v { transition: none; }
 }
