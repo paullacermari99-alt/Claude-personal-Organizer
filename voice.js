@@ -73,7 +73,7 @@ function cleanVoice(s) {
 }
 
 /* ---------- Micrófono en las casillas de «Nueva tarea» (solo escribe; guardas tú) ---------- */
-const micBtn = (cls = '') => voiceOK ? `<button type="button" class="icon-btn round mic-btn ${cls}" aria-label="Dictar la tarea" title="Dictar">${I.mic}</button>` : '';
+const micBtn = (cls = '') => voiceOK && !isIOS ? `<button type="button" class="icon-btn round mic-btn ${cls}" aria-label="Dictar la tarea" title="Dictar">${I.mic}</button>` : '';
 function startDictation(input, btn) {
   if (!input) return;
   if (voiceRec && voiceRec._input === input) { stopListening(false); return; }
@@ -388,13 +388,41 @@ let vHideT = null;
 function openVoice() {
   clearTimeout(vTimer); clearTimeout(vHideT);
   vEl.hidden = false; vBack.hidden = false;
-  $('.voice-type input', vEl).value = '';
+  const inp = $('.voice-type input', vEl);
+  inp.value = '';
   vIdle();
   requestAnimationFrame(() => { vEl.classList.add('open'); vBack.classList.add('open'); });
+  if (isIOS || !voiceOK) {
+    /* iPhone: el dictado del navegador falla a menudo (sobre todo en la app instalada). El del teclado
+       funciona siempre: se abre el teclado y basta con pulsar su micrófono. */
+    vEl.classList.add('kbd-mode');
+    vRender('Pulsa el micrófono 🎤 de tu teclado y habla', '<p class="voice-hint">Cuando acabes, pulsa «Ir» en el teclado. Por ejemplo: «dentista mañana a las 10».</p>');
+    inp.placeholder = 'Dicta o escribe aquí';
+    inp.focus(); /* dentro del toque: así el iPhone abre el teclado */
+    vFollowKeyboard(true);
+    return;
+  }
+  vEl.classList.remove('kbd-mode');
   vListen(); /* lo has pulsado tú: empieza a escuchar. Se para con el micrófono o con ✕ */
+}
+/* Con el teclado abierto, el panel sube para quedar justo encima de él */
+function vPlace() {
+  const vv = window.visualViewport;
+  if (!vv || vEl.hidden) return;
+  const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+  vEl.style.bottom = kb > 80 ? (kb + 10) + 'px' : '';
+  vEl.style.maxHeight = kb > 80 ? (vv.height - 20) + 'px' : '';
+}
+function vFollowKeyboard(on) {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  vv[on ? 'addEventListener' : 'removeEventListener']('resize', vPlace);
+  vv[on ? 'addEventListener' : 'removeEventListener']('scroll', vPlace);
+  if (!on) { vEl.style.bottom = ''; vEl.style.maxHeight = ''; } else vPlace();
 }
 function closeVoice() {
   vSession++;
+  vFollowKeyboard(false);
   stopListening(true);
   clearTimeout(vTimer);
   vPlan = null;
@@ -425,7 +453,7 @@ document.addEventListener('click', e => {
   else if (k === 'mic') vListen();
   else if (k === 'do') vDo();
   else if (k === 'idle') vIdle();
-  else if (k === 'kbd') { vSession++; stopListening(true); vEl.classList.remove('listening'); vIdle(); $('.voice-type input', vEl).focus(); }
+  else if (k === 'kbd') { vSession++; stopListening(true); vEl.classList.remove('listening'); vRender('Pulsa el micrófono 🎤 de tu teclado y habla', '<p class="voice-hint">Cuando acabes, pulsa «Ir» en el teclado.</p>'); $('.voice-type input', vEl).focus(); vFollowKeyboard(true); }
 });
 vBack.addEventListener('click', closeVoice);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !vEl.hidden) closeVoice(); });
