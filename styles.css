@@ -2446,15 +2446,17 @@ html:has(#pro-store[open]) { overflow: hidden; }
   .nav, [data-skin="compacto"] .nav { --nav-pad: 5px; padding: var(--nav-pad); }
 }
 
-/* v64: lo que baja por debajo de la barra de abajo no se corta de golpe: un velo difumina y
-   aclara (u oscurece) el contenido poco a poco desde un poco por encima de la barra hasta el borde */
 .nav-veil { display: none; }
+/* v65: desenfoque gaussiano progresivo, sin color encima: tres capas transparentes que desenfocan
+   cada vez más cerca de la barra (2, 4 y 8 px) y se funden hacia arriba. Lo de detrás se sigue viendo. */
 @media (max-width: 1023px) {
-  .nav-veil {
-    display: block; position: fixed; z-index: 29; left: 0; right: 0; bottom: 0; pointer-events: none;
-    height: calc(var(--tab-h) + 44px + env(safe-area-inset-bottom));
-    background: linear-gradient(to top, var(--bg) 0%, color-mix(in srgb, var(--bg) 82%, transparent) 45%, transparent 100%);
-    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-    -webkit-mask-image: linear-gradient(to top, #000 50%, transparent 100%); mask-image: linear-gradient(to top, #000 50%, transparent 100%);
-  }
+  .nav-veil { display: block; position: fixed; z-index: 29; left: 0; right: 0; bottom: 0; pointer-events: none;
+    height: calc(var(--tab-h) + 40px + env(safe-area-inset-bottom)); }
+  .nav-veil i { position: absolute; left: 0; right: 0; bottom: 0; }
+  .nav-veil i:nth-child(1) { height: 100%; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+    -webkit-mask-image: linear-gradient(to top, #000 55%, transparent); mask-image: linear-gradient(to top, #000 55%, transparent); }
+  .nav-veil i:nth-child(2) { height: 72%; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+    -webkit-mask-image: linear-gradient(to top, #000 50%, transparent); mask-image: linear-gradient(to top, #000 50%, transparent); }
+  .nav-veil i:nth-child(3) { height: 45%; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    -webkit-mask-image: linear-gradient(to top, #000 45%, transparent); mask-image: linear-gradient(to top, #000 45%, transparent); }
 }
