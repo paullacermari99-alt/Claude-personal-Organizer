@@ -397,8 +397,8 @@ function journalCard(d) {
   return `<div class="section" data-live="journal">
     <div class="section-head"><h2>${d === today ? '¿Qué tal ha ido el día?' : 'Cómo fue el día'}</h2>${j && j.mood ? `<span class="muted small">${MOOD_LABEL[j.mood - 1]}</span>` : ''}</div>
     <div class="journal glass">
-      <div class="j-row"><span class="j-label">Ánimo</span><div class="j-moods">${MOODS.map((m, i) => `<button type="button" class="j-mood ${j && j.mood === i + 1 ? 'on' : ''}" data-act="journal" data-k="mood" data-v="${i + 1}" data-date="${d}" aria-label="${MOOD_LABEL[i]}" aria-pressed="${!!(j && j.mood === i + 1)}">${m}</button>`).join('')}</div></div>
-      <div class="j-row"><span class="j-label">Energía</span><div class="j-energy ${j && j.energy ? 'lv-' + energyLevel(j.energy) : ''}">${Array.from({ length: ENERGY_MAX }, (_, i) => i + 1).map(n => `<button type="button" class="j-en z-${energyLevel(n)} ${j && j.energy >= n ? 'on' : ''}" data-act="journal" data-k="energy" data-v="${n}" data-date="${d}" aria-label="Energía ${n} de ${ENERGY_MAX}" aria-pressed="${!!(j && j.energy === n)}"></button>`).join('')}<span class="j-en-label">${j && j.energy ? ENERGY_LABEL[energyLevel(j.energy)] : ''}</span></div></div>
+      <div class="j-row"><span class="j-label">Ánimo</span><div class="j-moods">${MOODS.map((m, i) => `<button type="button" class="j-mood m${i + 1} ${j && j.mood === i + 1 ? 'on' : ''}" data-act="journal" data-k="mood" data-v="${i + 1}" data-date="${d}" aria-label="${MOOD_LABEL[i]}" aria-pressed="${!!(j && j.mood === i + 1)}">${m}</button>`).join('')}</div></div>
+      <div class="j-row"><span class="j-label">Energía</span><div class="j-energy ${j && j.energy ? 'lv-' + energyLevel(j.energy) : ''}">${Array.from({ length: ENERGY_MAX }, (_, i) => i + 1).map(n => `<button type="button" class="j-en z-${energyLevel(n)} ${j && j.energy >= n ? 'on' : ''}" data-act="journal" data-k="energy" data-v="${n}" data-date="${d}" aria-label="Energía ${n} de ${ENERGY_MAX}" aria-pressed="${!!(j && j.energy === n)}"></button>`).join('')}</div></div>
       <textarea class="j-note" data-input="journal-note" data-date="${d}" rows="2" placeholder="Una línea sobre el día (opcional)">${esc((j && j.note) || '')}</textarea>
     </div>
   </div>`;
@@ -2361,7 +2361,12 @@ document.addEventListener('click', e => {
       if (card) {
         const tpl = document.createElement('template'); tpl.innerHTML = journalCard(d).trim();
         const fresh = tpl.content.firstElementChild, ta = $('.j-note', card);
-        if (fresh) { fresh.querySelector('.j-note').value = ta ? ta.value : ''; card.replaceWith(fresh); }
+        if (fresh) {
+          fresh.querySelector('.j-note').value = ta ? ta.value : '';
+          /* v61: solo el emoji recién elegido hace su animación de entrada */
+          if (k === 'mood') { const b = fresh.querySelector('.j-mood.on'); if (b) b.classList.add('pop'); }
+          card.replaceWith(fresh);
+        }
       }
       return;
     }

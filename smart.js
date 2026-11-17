@@ -250,7 +250,6 @@ const MOOD_LABEL = ['Mal', 'Regular', 'Normal', 'Bien', 'Genial'];
 /* Energía de 1 a 6: 1–2 baja (rojo), 3–4 media (naranja), 5–6 alta (verde) */
 const ENERGY_MAX = 6;
 function energyLevel(e) { return !e ? '' : e <= 2 ? 'low' : e <= 4 ? 'mid' : 'high'; }
-const ENERGY_LABEL = { low: 'Baja', mid: 'Media', high: 'Alta' };
 function journalOf(d) { return (state.journal || {})[d] || null; }
 function setJournal(d, patch) {
   state.journal = state.journal || {};
