@@ -143,10 +143,48 @@ function userColor(u) {
   return AV_COLORS[Math.abs(h) % AV_COLORS.length];
 }
 const dispName = u => (u && (u.display_name || u.username)) || 'Alguien';
+/* Avatares para elegir: se guardan tal cual (máx. 16 caracteres en la base de datos) */
+const AVATARS = [
+  ['Animales', ['🦊', '🐼', '🐯', '🦁', '🐨', '🐸', '🐙', '🦉', '🐧', '🐢', '🦄', '🐶', '🐱', '🐰', '🐻', '🦖']],
+  ['Caras', ['😀', '😎', '🤓', '🥳', '😇', '🤠', '🧐', '😴', '🤩', '😺', '👽', '🤖']],
+  ['Cosas', ['🚀', '🔥', '🌱', '⚡', '🎧', '📚', '⚽', '🎨', '🎮', '🌈', '☕', '🍕', '🎸', '🏀', '🌙', '💎']],
+];
 function avatar(u, size = '') {
   if (!u) return `<span class="av ${size} none" aria-hidden="true">?</span>`;
   const t = u.avatar || dispName(u).trim().charAt(0).toUpperCase();
-  return `<span class="av ${size}" style="--c:${userColor(u)}" title="${esc(dispName(u))}" aria-hidden="true">${esc(t)}</span>`;
+  return `<span class="av ${size} ${u.avatar ? 'emo' : ''}" style="--c:${userColor(u)}" title="${esc(dispName(u))}" aria-hidden="true">${esc(t)}</span>`;
+}
+/* Rejilla de avatares (radio): vale para la hoja rápida y para «Tu perfil» */
+function avatarGrid(p) {
+  const c = userColor(p), cur = p.avatar || '';
+  const tile = (v, label) => `<label class="avp-tile" style="--c:${c}"><input type="radio" name="avatar" value="${esc(v)}" ${cur === v ? 'checked' : ''} aria-label="${esc(label)}"><span class="av md ${v ? 'emo' : ''}">${esc(v || dispName(p).trim().charAt(0).toUpperCase())}</span></label>`;
+  return `<div class="avp">
+    <div class="avp-g"><span class="avp-h">Tu inicial</span><div class="avp-row">${tile('', 'Inicial')}</div></div>
+    ${AVATARS.map(([n, list]) => `<div class="avp-g"><span class="avp-h">${n}</span><div class="avp-row">${list.map(e => tile(e, e)).join('')}</div></div>`).join('')}
+  </div>`;
+}
+function saveProfile(body) {
+  Object.assign(SOC.profile, body); socSaveCache(); socRefresh();
+  return rest(`profiles?id=eq.${SOC.profile.id}`, { method: 'PATCH', body: { ...body, updated_at: new Date().toISOString() } });
+}
+function avatarSheet() {
+  const p = SOC.profile;
+  if (!p) return;
+  openModal('Elige tu avatar', `<div class="avp-prev">${avatar(p, 'lg')}<span><b>${esc(dispName(p))}</b><span class="muted small">Lo verán tus amigos en los proyectos compartidos</span></span></div>${avatarGrid(p)}
+    <div class="field">Color de fondo${colorField('color', p.color || userColor(p))}</div>`, {
+    onSave: d => {
+      const color = readColor(d, 'color');
+      saveProfile({ avatar: d.avatar || null, color: /^#[0-9a-f]{6}$/i.test(color || '') ? color : null }).then(() => toast('Avatar guardado'), e => toast(niceErr(e)));
+    },
+  });
+  /* Vista previa en directo mientras eliges */
+  modalForm.addEventListener('change', function prev() {
+    const box = $('.avp-prev', modalForm);
+    if (!box) return modalForm.removeEventListener('change', prev);
+    const fd = new FormData(modalForm), v = fd.get('avatar') || '', col = readColor(Object.fromEntries(fd), 'color') || userColor(p);
+    box.firstElementChild.outerHTML = avatar({ ...p, avatar: v, color: col }, 'lg');
+    $$('.avp-tile', modalForm).forEach(t => t.style.setProperty('--c', col));
+  });
 }
 function avStack(list, max = 4, size = 'sm') {
   const more = list.length - max;
@@ -300,7 +338,7 @@ function socAfterProfile() {
   let pend = ''; try { pend = localStorage.getItem(PENDING_FRIEND) || ''; } catch {}
   if (pend && parseHash().name !== 'amigos') setTimeout(() => { location.hash = '#amigos'; }, 400);
   loadFriends().then(() => { socBadge(); }).catch(() => {});
-  loadMyTasks().then(() => { if (parseHash().name === 'hoy') socRefresh(); }).catch(() => {});
+  Promise.all([loadMyTasks(), loadTeams()]).then(() => { if (parseHash().name === 'hoy') socRefresh(); }).catch(() => {});
 }
 /* Punto en «Proyectos» del menú cuando tienes solicitudes de amistad */
 function socBadge() {
@@ -331,7 +369,7 @@ function teamCard(p) {
 function meCard(compact) {
   const p = SOC.profile, inc = (SOC.friends && SOC.friends.incoming.length) || 0, nf = (SOC.friends && SOC.friends.list.length) || 0;
   return `<div class="soc-me glass ${compact ? 'compact' : ''}">
-    ${avatar(p, 'lg')}
+    <button class="soc-av" data-sact="avatar" aria-label="Cambiar tu avatar">${avatar(p, 'lg')}<span class="soc-av-ed" aria-hidden="true">✎</span></button>
     <div class="soc-me-t"><b>${esc(dispName(p))}</b><span>@${esc(p.username)}</span>
       <button class="soc-code" data-sact="copy-code" aria-label="Copiar mi ID de amigo ${esc(p.friend_code)}">ID ${esc(p.friend_code)} ${I.copy}</button></div>
     ${compact ? `<a class="btn soc-friends-btn" href="#amigos">${inc ? `<span class="soc-dot">${inc}</span>` : ''}<span>Amigos${nf ? ' · ' + nf : ''}</span></a>` : `<button class="btn small" data-sact="edit-profile">Editar</button>`}
@@ -373,7 +411,39 @@ function friendRow(f, kind) {
   const acts = kind === 'in' ? `<button class="btn small primary" data-sact="fr-accept" data-id="${f.id}">Aceptar</button><button class="btn small" data-sact="fr-reject" data-id="${f.id}">Rechazar</button>`
     : kind === 'out' ? `<button class="btn small ghost" data-sact="fr-cancel" data-id="${f.id}">Cancelar</button>`
     : `<button class="icon-btn" data-sact="fr-menu" data-id="${f.id}" aria-label="Opciones de ${esc(dispName(u))}">${I.more}</button>`;
+  if (kind === 'friend') {
+    const n = teamsWith(u.id).length;
+    return `<li class="fr-row"><button class="fr-open" data-sact="fr-open" data-id="${f.id}">${avatar(u)}<span class="fr-t"><b>${esc(dispName(u))}</b><span>@${esc(u.username)}${n ? ` · ${n} proyecto${n === 1 ? '' : 's'} juntos` : ''}</span></span></button><span class="fr-a">${acts}</span></li>`;
+  }
   return `<li class="fr-row">${avatar(u)}<span class="fr-t"><b>${esc(dispName(u))}</b><span>@${esc(u.username)}${kind === 'in' ? ' · quiere ser tu amigo' : kind === 'out' ? ' · esperando respuesta' : ''}</span></span><span class="fr-a">${acts}</span></li>`;
+}
+const teamsWith = uid => (SOC.teams || []).filter(p => !p.archived_at && (p.members || []).some(m => m.id === uid));
+function friendSheet(f) {
+  const u = f.user, shared = teamsWith(u.id), since = f.responded_at || f.created_at;
+  openModal('', `<div class="fr-sheet">
+      ${avatar(u, 'xl')}
+      <b class="fr-sheet-n">${esc(dispName(u))}</b>
+      <span class="muted">@${esc(u.username)}${u.friend_code ? ' · ' + esc(u.friend_code) : ''}</span>
+      ${since ? `<span class="muted small">Amigos desde ${esc(fmtShortDate(String(since).slice(0, 10)))}</span>` : ''}
+    </div>
+    <div class="section"><div class="section-head"><h2>Proyectos juntos${shared.length ? ' · ' + shared.length : ''}</h2></div>
+      ${shared.length ? `<div class="sheet-list">${shared.map(p => {
+        const pct = p.total ? Math.round(p.done / p.total * 100) : 0;
+        return `<button type="button" class="sheet-item" data-modal="go" data-pid="${p.id}"><span class="fr-pj-ic" style="--c:${p.color || '#4a72cf'}">${esc(p.icon || '👥')}</span><span class="grow">${esc(p.name)}<span class="muted small"> · ${pct}% hecho</span></span>${I.right}</button>`;
+      }).join('')}</div>` : `<p class="hint">Aún no compartís ningún proyecto.</p>`}
+    </div>
+    <button type="button" class="btn wide primary" data-modal="newteam">${I.plus}<span>Nuevo proyecto con ${esc(dispName(u))}</span></button>
+    <div class="sheet-list">
+      <button type="button" class="sheet-item" data-modal="copy">${I.copy}<span>Copiar su ID</span></button>
+      <button type="button" class="sheet-item danger" data-modal="del">${I.trash}<span>Eliminar de amigos</span></button>
+    </div>`, {
+    actions: {
+      go: el => { modal.close(); location.hash = `#equipo/${el.dataset.pid}`; },
+      newteam: () => { modal.close(); setTimeout(() => teamSheet(null, [u.id]), 220); },
+      copy: () => copyText(u.friend_code || '@' + u.username, 'Copiado'),
+      del: () => { if (confirm(`¿Eliminar a ${dispName(u)} de tus amigos? Seguiréis en los proyectos que ya compartís.`)) { modal.close(); friendAction(() => rest(`friendships?id=eq.${f.id}`, { method: 'DELETE' }), 'Amigo eliminado'); } },
+    },
+  });
 }
 function foundCard() {
   const r = SOC.found;
@@ -439,19 +509,15 @@ async function friendAction(fn, msg) {
 }
 function profileSheet() {
   const p = SOC.profile;
-  const EMOJI = ['😀', '😎', '🦊', '🐼', '🐯', '🦄', '🚀', '🔥', '🌱', '⚡', '🎧', '📚'];
   openModal('Tu perfil', `
     <div class="field">Nombre visible<input type="text" name="display" value="${esc(p.display_name || '')}" maxlength="40" placeholder="${esc(p.username)}"></div>
-    <div class="field">Avatar<div class="chips-row wrap">
-      <label class="chip-radio"><input type="radio" name="avatar" value="" ${!p.avatar ? 'checked' : ''}><span>${esc(dispName(p).charAt(0).toUpperCase())}</span></label>
-      ${EMOJI.map(e => `<label class="chip-radio"><input type="radio" name="avatar" value="${e}" ${p.avatar === e ? 'checked' : ''}><span>${e}</span></label>`).join('')}</div></div>
+    <div class="field">Avatar${avatarGrid(p)}</div>
     <div class="field">Color${colorField('color', p.color || userColor(p))}</div>
     <div class="sheet-list"><button type="button" class="sheet-item" data-modal="nick">${I.gear}<span>Cambiar nick (@${esc(p.username)})</span></button></div>`, {
     onSave: d => {
       const body = { display_name: d.display.trim() || null, avatar: d.avatar || null, color: readColor(d, 'color') };
       if (body.color && !/^#[0-9a-f]{6}$/i.test(body.color)) body.color = null;
-      Object.assign(SOC.profile, body); socSaveCache();
-      rest(`profiles?id=eq.${p.id}`, { method: 'PATCH', body: { ...body, updated_at: new Date().toISOString() } }).then(() => toast('Perfil guardado'), e => toast(niceErr(e)));
+      saveProfile(body).then(() => toast('Perfil guardado'), e => toast(niceErr(e)));
     },
     actions: { nick: () => { modal.close(); setTimeout(() => openNickDialog({ change: true }), 250); } },
   });
@@ -832,7 +898,7 @@ const TEAM_TPLS = [
   { k: 'negocio', n: 'Proyecto o negocio', i: '💼', goals: ['Primera versión lista'], cards: ['Definir la idea en una frase', 'Investigar competencia', 'Nombre y logo', 'Primer prototipo', 'Enseñarlo a 5 personas', 'Decidir siguientes pasos'] },
 ];
 const TEAM_ICONS = ['🚀', '🎯', '🏠', '✈️', '🎉', '💼', '📚', '🎨', '🏋️', '🎵', '🌱', '💡'];
-function teamSheet(S) {
+function teamSheet(S, pre = []) {
   const p = (S && S.project) || {};
   const friends = (SOC.friends && SOC.friends.list) || [];
   openModal(p.id ? 'Editar proyecto' : 'Proyecto con amigos', `
@@ -841,7 +907,7 @@ function teamSheet(S) {
     <div class="field">Color${colorField('color', p.color || COLORS[0])}</div>
     <div class="field">De qué va<textarea name="description" rows="2" maxlength="2000" placeholder="La meta del equipo en una frase">${esc(p.description || '')}</textarea></div>
     ${p.id ? '' : `<div class="field">Empezar con<div class="chips-row wrap">${TEAM_TPLS.map((t, i) => `<label class="chip-radio"><input type="radio" name="tpl" value="${t.k}" data-icon="${t.i}" ${i === 0 ? 'checked' : ''}><span>${t.i} ${esc(t.n)}</span></label>`).join('')}</div><span class="hint">Las plantillas añaden unas tarjetas de ejemplo que podéis cambiar.</span></div>`}
-    ${p.id ? '' : `<div class="field">¿Con quién?${friends.length ? `<div class="chips-row wrap">${friends.map(f => `<label class="chip-radio with-av"><input type="checkbox" name="member" value="${f.user.id}"><span>${avatar(f.user, 'xs')} ${esc(dispName(f.user))}</span></label>`).join('')}</div>`
+    ${p.id ? '' : `<div class="field">¿Con quién?${friends.length ? `<div class="chips-row wrap">${friends.map(f => `<label class="chip-radio with-av"><input type="checkbox" name="member" value="${f.user.id}" ${pre.includes(f.user.id) ? 'checked' : ''}><span>${avatar(f.user, 'xs')} ${esc(dispName(f.user))}</span></label>`).join('')}</div>`
       : `<p class="hint">Aún no tienes amigos añadidos. Puedes crear el proyecto ahora e invitarles después desde <a href="#amigos">Amigos</a>.</p>`}</div>`}`, {
     saveLabel: p.id ? 'Guardar' : 'Crear',
     onSave: (d, fd) => {
@@ -989,15 +1055,30 @@ function dragEnd(cancel) {
 
 /* ---------- Hoy: lo que te toca en tus proyectos compartidos ---------- */
 function teamTodaySection(d) {
-  if (d !== todayStr() || !SOC.profile || !SOC.myTasks || !SOC.myTasks.length) return '';
+  if (d !== todayStr() || !SOC.profile) return '';
   const soon = addDays(d, 7);
-  const list = SOC.myTasks.filter(t => !t.due || t.due <= soon).slice(0, 5);
-  if (!list.length) return '';
-  return `<div class="section"><div class="section-head"><h2>Con tu equipo · ${list.length}</h2><a class="btn small ghost" href="#proyectos" data-sact="go-shared">Ver proyectos</a></div>
-    <ul class="tasks glass tm-today">${list.map(t => `<li class="tm-today-row" style="--c:${t.color || '#4a72cf'}">
+  const list = (SOC.myTasks || []).filter(t => !t.due || t.due <= soon).slice(0, 5);
+  const teams = (SOC.teams || []).filter(p => !p.archived_at)
+    .sort((a, b) => ((b.last_act > seenAct(b.id)) - (a.last_act > seenAct(a.id))) || String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+  if (!list.length && !teams.length) return '';
+  const strip = teams.length ? `<div class="tm-strip">${teams.slice(0, 8).map(p => {
+    const pct = p.total ? Math.round(p.done / p.total * 100) : 0, fresh = p.last_act && p.last_act > seenAct(p.id) && p.last_kind;
+    const who = fresh && (p.members || []).find(m => m.id === p.last_kind.user);
+    const line = fresh ? `<b>${esc(dispName(who))}</b> ${actText({ members: p.members || [] }, { ...p.last_kind, user_id: p.last_kind.user, detail: p.last_kind.detail || {} })}`
+      : p.late ? `<span class="warn-text">${p.late} atrasada${p.late === 1 ? '' : 's'}</span>` : p.mine ? `${p.mine} para ti` : p.total && p.done === p.total ? '¡Todo hecho!' : `${pct}% hecho`;
+    return `<a class="tm-mini glass ${fresh ? 'fresh' : ''}" href="#equipo/${p.id}" style="--c:${p.color || '#4a72cf'}">
+      <span class="tm-mini-top"><span class="tm-mini-ic">${esc(p.icon || '👥')}</span>${avStack(p.members || [], 3, 'xs')}</span>
+      <span class="tm-mini-n">${esc(p.name)}</span>
+      <span class="tm-mini-bar"><i style="width:${pct}%"></i></span>
+      <span class="tm-mini-l">${line}</span>
+    </a>`;
+  }).join('')}</div>` : '';
+  return `<div class="section"><div class="section-head"><h2>Con tus amigos${list.length ? ' · ' + list.length : ''}</h2><a class="btn small ghost" href="#proyectos" data-sact="go-shared">Ver proyectos</a></div>
+    ${strip}
+    ${list.length ? `<ul class="tasks glass tm-today">${list.map(t => `<li class="tm-today-row" style="--c:${t.color || '#4a72cf'}">
       <button class="tb-check" data-sact="my-done" data-id="${t.id}" data-pid="${t.project_id}" aria-label="Completar ${esc(t.title)}">${I.check}</button>
       <a class="tm-today-b" href="#equipo/${t.project_id}"><span>${esc(t.title)}</span><span class="small muted">${esc(t.icon || '👥')} ${esc(t.project)}${t.due ? ` · <span class="${t.due < d ? 'warn-text' : ''}">${esc(relDay(t.due).toLowerCase())}</span>` : ''}</span></a>
-    </li>`).join('')}</ul></div>`;
+    </li>`).join('')}</ul>` : (teams.length ? '<p class="hint">Nada asignado a ti para esta semana en los proyectos con amigos.</p>' : '')}</div>`;
 }
 
 /* ---------- Clics, formularios y refresco ---------- */
@@ -1029,6 +1110,8 @@ document.addEventListener('click', e => {
       return;
     }
     case 'edit-profile': profileSheet(); return;
+    case 'avatar': avatarSheet(); return;
+    case 'fr-open': { const f = SOC.friends && SOC.friends.list.find(x => x.id === id); if (f) friendSheet(f); return; }
     case 'fr-add': friendAction(() => rpc('send_friend_request', { target: id }).then(r => { SOC.found = SOC.found && SOC.found.user ? { ...SOC.found, user: { ...SOC.found.user, relation: r } } : null; }), '¡Solicitud enviada!'); return;
     case 'fr-accept': friendAction(() => rpc('respond_friend_request', { request_id: id, accept: true }), '¡Ahora sois amigos!'); return;
     case 'fr-reject': friendAction(() => rpc('respond_friend_request', { request_id: id, accept: false }), 'Solicitud rechazada'); return;
@@ -1112,7 +1195,7 @@ function socTick(force) {
   const r = parseHash();
   if (r.name === 'equipo' && r.id) teamPoll(r.id);
   else if ((r.name === 'proyectos' && state.settings.ui.projectsShared) || r.name === 'amigos') { if (force || Date.now() - (socTick.list || 0) > 25000) { socTick.list = Date.now(); refreshShared(); } }
-  else if (force || Date.now() - (socTick.bg || 0) > 120000) { socTick.bg = Date.now(); if (SOC.profile) { loadFriends().then(socBadge).catch(() => {}); loadMyTasks().then(() => { if (r.name === 'hoy') socFetch(Promise.resolve(), () => 0); }).catch(() => {}); } }
+  else if (force || Date.now() - (socTick.bg || 0) > 120000) { socTick.bg = Date.now(); if (SOC.profile) { loadFriends().then(socBadge).catch(() => {}); Promise.all([loadMyTasks(), loadTeams()]).then(() => { if (r.name === 'hoy') socFetch(Promise.resolve(), () => 0); }).catch(() => {}); } }
 }
 clearInterval(teamTimer);
 teamTimer = setInterval(() => socTick(false), 10000);

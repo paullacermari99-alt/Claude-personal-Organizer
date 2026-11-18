@@ -903,10 +903,82 @@ function goalRow(g) {
     <span class="pj-goal-p"><span class="pj-goal-n">${pct}%</span>${progressBar(pct)}</span>
   </a></li>`;
 }
+/* Calendario de un proyecto propio: tareas por plazo, tiempo reservado y objetivos, más una cronología de 4 semanas */
+const PJ_CAL = {};
+function projectCalendar(p, s) {
+  const today = todayStr(), cur = PJ_CAL[p.id] || today.slice(0, 7);
+  const [y, m] = cur.split('-').map(Number);
+  const start = startOfWeek(`${cur}-01`);
+  const days = Array.from({ length: 42 }, (_, i) => addDays(start, i));
+  const byDay = {}, push = (d, it) => { (byDay[d] = byDay[d] || []).push(it); };
+  s.tasks.forEach(t => { if (t.due) push(t.due, { k: 'task', t }); blocksOfTask(t.id).forEach(e => { if (!e.recurrence && e.date !== t.due) push(e.date, { k: 'block', t, e }); }); });
+  s.goals.forEach(g => { if (g.due) push(g.due, { k: 'goal', g }); });
+  const mName = cap(dtf('es-ES', { month: 'long', year: 'numeric' }).format(new Date(y, m - 1, 1)));
+  const weeks = [];
+  for (let i = 0; i < 6; i++) { const w = days.slice(i * 7, i * 7 + 7); if (i < 5 || w.some(d => d.startsWith(cur))) weeks.push(w); }
+  const label = it => it.k === 'goal' ? `<i class="tm-it goal">◎ ${esc(it.g.title)}</i>` : `<i class="tm-it ${it.t.done ? 'done' : ''} ${it.k === 'block' ? 'blk' : ''}" style="--c:${p.color}">${it.k === 'block' ? '⏱ ' : ''}${esc(it.t.title)}</i>`;
+  const dot = it => `<i style="--c:${it.k === 'goal' ? 'var(--orange)' : p.color}"></i>`;
+  /* Cronología: objetivos como barras (de cuando se crearon a su plazo) y tareas como marcas en su plazo */
+  const from = startOfWeek(today), span = 28, to = addDays(from, span - 1);
+  const dayOf = ts => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const gRows = s.goals.filter(g => g.due && g.due >= from && dayOf(g.createdAt || Date.now()) <= to).sort(sortByDue)
+    .map(g => ({ g, a: dayOf(g.createdAt || Date.now()), b: g.due }));
+  const tRows = s.tasks.filter(t => t.due && t.due >= from && t.due <= to).sort(sortByDue)
+    .map(t => { const bl = blocksOfTask(t.id).filter(e => !e.recurrence).map(e => e.date).sort()[0]; return { t, a: bl && bl < t.due ? bl : t.due, b: t.due }; });
+  const nowCol = daysBetween(from, today);
+  const row = (name, a, b, cls, c) => {
+    const s0 = Math.max(0, daysBetween(from, a)), e0 = Math.min(span - 1, daysBetween(from, b));
+    return `<div class="tg-row">${name}<div class="tg-track"><span class="tg-bar ${cls}" style="grid-column:${s0 + 1} / ${e0 + 2};--c:${c}"></span>${nowCol >= 0 && nowCol < span ? `<span class="tg-now" style="grid-column:${nowCol + 1}"></span>` : ''}</div></div>`;
+  };
+  const rows = [
+    ...gRows.map(({ g, a, b }) => row(`<a class="tg-name" href="#objetivo/${g.id}"><span>◎ ${esc(g.title)}</span></a>`, a, b, `goal ${goalStatus(g) === 'cumplido' ? 'done' : ''}`, 'var(--orange)')),
+    ...tRows.map(({ t, a, b }) => row(`<button class="tg-name" data-act="edit-task" data-id="${t.id}"><span>${esc(t.title)}</span></button>`, a, b, `${t.done ? 'done' : ''} ${isOverdue(t) ? 'late' : ''}`, p.color)),
+  ];
+  return `<div class="section">
+    <div class="tm-cal-head"><button class="icon-btn round" data-act="pj-cal-nav" data-id="${p.id}" data-n="-1" aria-label="Mes anterior">${I.left}</button><h2>${esc(mName)}</h2><button class="icon-btn round" data-act="pj-cal-nav" data-id="${p.id}" data-n="1" aria-label="Mes siguiente">${I.right}</button>${cur !== today.slice(0, 7) ? `<button class="btn small" data-act="pj-cal-nav" data-id="${p.id}" data-n="0">Hoy</button>` : ''}</div>
+    <div class="tm-cal glass">
+      <div class="tm-cal-dow">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => `<span>${d}</span>`).join('')}</div>
+      ${weeks.map(w => `<div class="tm-cal-w">${w.map(d => {
+        const items = byDay[d] || [];
+        return `<button class="tm-day ${d.startsWith(cur) ? '' : 'out'} ${d === today ? 'today' : ''} ${items.length ? 'has' : ''}" data-act="pj-cal-day" data-id="${p.id}" data-date="${d}" aria-label="${esc(fmtLongDate(d))}${items.length ? `, ${items.length} cosas` : ''}">
+          <span class="tm-dn">${Number(d.slice(8))}</span>
+          <span class="tm-items">${items.slice(0, 3).map(label).join('')}${items.length > 3 ? `<i class="tm-more">+${items.length - 3}</i>` : ''}</span>
+          <span class="tm-dots">${items.slice(0, 4).map(dot).join('')}</span>
+        </button>`;
+      }).join('')}</div>`).join('')}
+    </div>
+    <p class="hint">Plazos de tareas, ⏱ tiempo reservado en el calendario y ◎ objetivos. Toca un día para ver o añadir.</p>
+  </div>
+  <div class="section">
+    <div class="section-head"><h2>Cronología · 4 semanas</h2></div>
+    ${rows.length ? `<div class="tm-gantt glass" style="--n:${span}">
+      <div class="tg-scale">${Array.from({ length: span }, (_, i) => { const d = addDays(from, i); return `<span class="${d === today ? 'today' : ''} ${dow(d) === 1 ? 'mon' : ''}">${dow(d) === 1 || i === 0 ? Number(d.slice(8)) : ''}</span>`; }).join('')}</div>
+      ${rows.join('')}
+    </div>` : emptyBox('Pon plazo a las tareas y a los objetivos de este proyecto y aquí verás qué toca cada semana.')}
+  </div>`;
+}
+function projectDaySheet(pid, d) {
+  const p = project(pid); if (!p) return;
+  const s = projectStats(p);
+  const tasks = s.tasks.filter(t => t.due === d), goals = s.goals.filter(g => g.due === d);
+  const blocks = s.tasks.flatMap(t => blocksOfTask(t.id).filter(e => !e.recurrence && e.date === d).map(e => ({ t, e })));
+  openModal(esc(fmtLongDate(d)), `
+    ${goals.length ? `<div class="sheet-list">${goals.map(g => `<button type="button" class="sheet-item" data-modal="goal" data-gid="${g.id}"><span>◎</span><span class="grow">${esc(g.title)} <span class="muted small">objetivo</span></span></button>`).join('')}</div>` : ''}
+    ${tasks.length ? `<div class="sheet-list">${tasks.map(t => `<button type="button" class="sheet-item" data-modal="task" data-tid="${t.id}"><span>${t.done ? '✓' : '○'}</span><span class="grow ${t.done ? 'muted' : ''}">${esc(t.title)}</span></button>`).join('')}</div>` : ''}
+    ${blocks.length ? `<div class="sheet-list">${blocks.map(({ t, e }) => `<button type="button" class="sheet-item" data-modal="task" data-tid="${t.id}"><span>⏱</span><span class="grow">${esc(t.title)} <span class="muted small">${esc(e.start || '')}${e.end ? '–' + esc(e.end) : ''}</span></span></button>`).join('')}</div>` : ''}
+    ${!tasks.length && !goals.length && !blocks.length ? '<p class="hint">Nada en este proyecto para este día.</p>' : ''}
+    <button type="button" class="btn wide primary" data-modal="new">${I.plus}<span>Nueva tarea con plazo este día</span></button>`, {
+    actions: {
+      goal: el => { modal.close(); location.hash = '#objetivo/' + el.dataset.gid; },
+      task: el => { modal.close(); setTimeout(() => { const t = task(el.dataset.tid); if (t) taskModal(t); }, 220); },
+      new: () => { modal.close(); setTimeout(() => taskModal({ due: d, projectId: pid }), 220); },
+    },
+  });
+}
 function viewProject(id, sub) {
   const p = project(id);
   if (!p) return `<div class="page">${pageHead({ eyebrow: backLink('#proyectos', 'Proyectos'), title: 'No encontrado' })}${emptyBox('Este proyecto ya no existe.')}</div>`;
-  const tab = ['resumen', 'objetivos', 'tareas'].includes(sub) ? sub : (p.defaultView || 'resumen');
+  const tab = ['resumen', 'objetivos', 'tareas', 'calendario'].includes(sub) ? sub : (p.defaultView || 'resumen');
   const s = projectStats(p), st = projectState(p, s), { tasks, pr, open, next } = s;
   const goals = s.goals.slice().sort(sortByDue);
   const left = pr.total - pr.done;
@@ -954,6 +1026,8 @@ function viewProject(id, sub) {
   } else if (tab === 'objetivos') {
     body = `<div class="section"><div class="section-head"><h2>Objetivos · ${goals.length}</h2><button class="btn small" data-act="new-goal" data-project="${p.id}">${I.plus}<span>Objetivo</span></button></div>
       ${goals.length ? `<div class="grid">${goals.map(goalCard).join('')}</div>` : emptyBox('Añade un objetivo con plazo a este proyecto.')}</div>`;
+  } else if (tab === 'calendario') {
+    body = projectCalendar(p, s);
   } else {
     const done = tasks.filter(t => t.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     body = `<div class="section"><div class="section-head"><h2>Pendientes · ${open.length}</h2></div>
@@ -965,7 +1039,7 @@ function viewProject(id, sub) {
   <div class="page page-project page-proj2">
   ${pageHead({ eyebrow: backLink('#proyectos', 'Proyectos'), title: `${p.icon ? `<span class="h1-emoji">${esc(p.icon)}</span> ` : ''}${esc(p.name)}`, actions: `<button class="btn" data-act="edit-project" data-id="${p.id}">Editar</button><button class="icon-btn pj-more" data-act="project-menu" data-id="${p.id}" aria-label="Más opciones">${I.more}</button>` })}
   ${hero}
-  <div class="segmented pj-tabs" role="tablist">${[['resumen', 'Resumen'], ['objetivos', `Objetivos${goals.length ? ' · ' + goals.length : ''}`], ['tareas', `Tareas${open.length ? ' · ' + open.length : ''}`]].map(([v, l]) => `<button role="tab" class="${tab === v ? 'on' : ''}" data-act="proj-tab" data-id="${p.id}" data-v="${v}">${l}</button>`).join('')}</div>
+  <div class="segmented pj-tabs" role="tablist">${[['resumen', 'Resumen'], ['objetivos', `Objetivos${goals.length ? ' · ' + goals.length : ''}`], ['tareas', `Tareas${open.length ? ' · ' + open.length : ''}`], ['calendario', 'Calendario']].map(([v, l]) => `<button role="tab" class="${tab === v ? 'on' : ''}" data-act="proj-tab" data-id="${p.id}" data-v="${v}">${l}</button>`).join('')}</div>
   ${body}
   </div>`;
 }
@@ -1892,7 +1966,7 @@ function projectModal(p0 = {}) {
     <label class="field">Nombre<input type="text" name="name" required value="${esc(p.name)}"></label>
     <div class="field">Icono<div class="icon-pick">${PROJECT_ICONS.map(ic => `<label><input type="radio" name="icon" value="${ic}" ${ic === p.icon ? 'checked' : ''}><span>${ic}</span></label>`).join('')}</div></div>
     <div class="field">Color${colorField('color', p.color)}</div>
-    <label class="field">Al abrirlo, mostrar<select name="defaultView">${[['resumen', 'Resumen'], ['objetivos', 'Objetivos'], ['tareas', 'Tareas']].map(([v, l]) => `<option value="${v}" ${p.defaultView === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <label class="field">Al abrirlo, mostrar<select name="defaultView">${[['resumen', 'Resumen'], ['objetivos', 'Objetivos'], ['tareas', 'Tareas'], ['calendario', 'Calendario']].map(([v, l]) => `<option value="${v}" ${p.defaultView === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     <label class="field">Notas<textarea name="notes" placeholder="Qué es y cómo sabrás que está terminado">${esc(p.notes)}</textarea></label>
     <label class="field toggle-row">Favorito<input type="checkbox" class="switch" name="favorite" value="1" ${p.favorite ? 'checked' : ''}></label>
     ${isNew ? '' : `<label class="field toggle-row">Archivado<input type="checkbox" class="switch" name="archived" value="1" ${p.archived ? 'checked' : ''}></label>
@@ -2587,6 +2661,13 @@ document.addEventListener('click', e => {
     case 'project-archive': setProjectArchived(project(id), !project(id).archived); return;
     case 'projects-view': projectsViewSheet(); return;
     case 'proj-tab': location.hash = `#proyecto/${id}/${el.dataset.v}`; return;
+    case 'pj-cal-nav': {
+      const n = Number(el.dataset.n), cur = PJ_CAL[id] || todayStr().slice(0, 7);
+      if (!n) delete PJ_CAL[id];
+      else { const [y, m] = cur.split('-').map(Number), d = new Date(y, m - 1 + n, 1); PJ_CAL[id] = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+      rerender(); return;
+    }
+    case 'pj-cal-day': projectDaySheet(id, el.dataset.date); return;
     case 'new-goal': goalModal({ projectId: el.dataset.project || null }); return;
     case 'edit-goal': goalModal(goal(id)); return;
     case 'goal-done': { const g = goal(id); g.status = 'cumplido'; g.achievedAt = todayStr(); toast('¡Objetivo conseguido! 🎉'); break; }
