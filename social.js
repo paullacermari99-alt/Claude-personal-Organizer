@@ -119,13 +119,19 @@ let socPending = false;
 function socRefresh() {
   if (typeof rerender !== 'function') return;
   const a = document.activeElement;
-  if (tbDrag.on || (a && $('#app').contains(a) && a.matches('input:not([type=checkbox]):not([type=radio]), textarea'))) { socPending = true; return; }
+  const chatIdle = a && a.id === 'tm-chat-in' && !a.value;
+  if (tbDrag.on || (!chatIdle && a && $('#app').contains(a) && a.matches('input:not([type=checkbox]):not([type=radio]), textarea'))) { socPending = true; return; }
   socPending = false;
   const board = $('.tb-board'), left = board ? board.scrollLeft : 0;
   const lists = $$('.tb-list').map(l => [l.dataset.col, l.scrollTop]);
+  const chat = $('.tm-chat-list'), atBottom = !chat || chat.scrollHeight - chat.scrollTop - chat.clientHeight < 60, chatTop = chat ? chat.scrollTop : 0;
+  const pick = $('.tm-react-add.open'), pickAid = pick && pick.closest('[data-aid]') && pick.closest('[data-aid]').dataset.aid;
   rerender();
+  if (pickAid) { const w = $(`.tm-feed li[data-aid="${pickAid}"] .tm-react-add`); if (w) w.classList.add('open'); }
   const nb = $('.tb-board'); if (nb) nb.scrollLeft = left;
   lists.forEach(([c, t]) => { const l = $(`.tb-list[data-col="${c}"]`); if (l) l.scrollTop = t; });
+  const nc = $('.tm-chat-list'); if (nc) nc.scrollTop = atBottom ? nc.scrollHeight : chatTop;
+  if (chatIdle) { const i = $('#tm-chat-in'); if (i) i.focus({ preventScroll: true }); }
 }
 /* Carga y repinta solo si ha cambiado algo */
 function socFetch(job, key) {
@@ -133,6 +139,23 @@ function socFetch(job, key) {
   return job.then(() => { if (JSON.stringify(key()) !== before) socRefresh(); }, () => { socRefresh(); });
 }
 document.addEventListener('focusout', () => { if (socPending) setTimeout(() => { if (socPending) socRefresh(); }, 50); });
+
+/* ---------- Rachas: días seguidos en los que alguien del equipo terminó algo ---------- */
+function localDay(ts) { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function teamStreak(doneTimes) {
+  const days = new Set((doneTimes || []).filter(Boolean).map(localDay)), today = todayStr();
+  let d = days.has(today) ? today : addDays(today, -1), cur = 0;
+  while (days.has(d)) { cur++; d = addDays(d, -1); }
+  let best = 0, run = 0;
+  for (let i = 119; i >= 0; i--) { if (days.has(addDays(today, -i))) { run++; best = Math.max(best, run); } else run = 0; }
+  return { cur, best, today: days.has(today), last14: Array.from({ length: 14 }, (_, i) => { const x = addDays(today, i - 13); return { d: x, on: days.has(x) }; }) };
+}
+const streakTag = (st, min = 2) => st.cur >= min ? `<span class="tm-streak" title="${st.cur} días seguidos terminando algo">🔥 ${st.cur}</span>` : '';
+/* Chat: hasta cuándo lo has leído (en este dispositivo) */
+const chatSeenKey = pid => 'boldup.chatSeen.' + pid;
+const chatSeen = pid => { try { return localStorage.getItem(chatSeenKey(pid)) || ''; } catch { return ''; } };
+const chatUnread = (pid, last) => !!last && last > chatSeen(pid);
+function markChatSeen(pid, ts) { try { if (ts && ts > chatSeen(pid)) localStorage.setItem(chatSeenKey(pid), ts); } catch {} }
 
 /* ---------- Piezas ---------- */
 const AV_COLORS = ['#4a72cf', '#34a853', '#f29900', '#e8467c', '#9c5ad8', '#0f9fb5', '#d4533b', '#6b7a99'];
@@ -363,7 +386,7 @@ function teamCard(p) {
       ${projRing({ done: p.done || 0, total: p.total || 0, pct })}
     </a>
     ${fresh ? `<a class="tm-new" href="#equipo/${p.id}/actividad"><i></i><span><b>${esc(dispName((p.members || []).find(m => m.id === p.last_kind.user)))}</b> ${actText({ members: p.members || [] }, { ...p.last_kind, user_id: p.last_kind.user, detail: p.last_kind.detail || {} })}</span></a>` : ''}
-    <div class="tm-foot">${avStack(p.members || [], 5)}<span class="tm-upd">${p.updated_at ? 'Actividad ' + agoShort(p.updated_at) : ''}</span></div>
+    <div class="tm-foot">${avStack(p.members || [], 5)}${streakTag(teamStreak(p.done_days))}${chatUnread(p.id, p.last_msg) ? `<a class="tm-chat-new" href="#equipo/${p.id}/chat">💬 Mensajes nuevos</a>` : ''}<span class="tm-upd">${p.updated_at ? 'Actividad ' + agoShort(p.updated_at) : ''}</span></div>
   </article>`;
 }
 function meCard(compact) {
@@ -460,6 +483,48 @@ function foundCard() {
   return `<div class="fr-found glass">${avatar(u, 'md')}<span class="fr-t"><b>${esc(dispName(u))}</b><span>@${esc(u.username)} · ${esc(u.friend_code)}</span></span>${act}</div>`;
 }
 const PENDING_FRIEND = 'boldup.pendingFriend';
+/* Código QR con tu enlace de amigo: la librería se carga solo cuando hace falta */
+function loadQrLib() {
+  if (window.qrcode) return Promise.resolve();
+  return new Promise((ok, ko) => { const sc = document.createElement('script'); sc.src = 'vendor/qrcode.js?v=1'; sc.onload = ok; sc.onerror = () => ko(new Error('No se pudo cargar el QR: revisa la conexión')); document.head.appendChild(sc); });
+}
+const friendLink = p => `${location.origin}${location.pathname}#amigos/${p.friend_code}`;
+function qrSheet() {
+  const p = SOC.profile; if (!p) return;
+  loadQrLib().then(() => {
+    const q = qrcode(0, 'Q'); q.addData(friendLink(p)); q.make();
+    openModal('Tu código QR', `<div class="qr-box">
+      <div class="qr-card">${q.createSvgTag({ cellSize: 6, margin: 2, scalable: true })}<span class="qr-av">${avatar(p, 'md')}</span></div>
+      <b>@${esc(p.username)}</b><span class="soc-code-big">${esc(p.friend_code)}</span>
+      <p class="hint">Que tu amigo lo escanee con la cámara del móvil: se abrirá Boldup con tu perfil listo para añadirte.</p>
+    </div>
+    ${'BarcodeDetector' in window ? `<button type="button" class="btn wide" data-modal="scan">${I.search}<span>Escanear el QR de un amigo</span></button>` : ''}`, {
+      actions: { scan: () => { modal.close(); setTimeout(scanSheet, 220); } },
+    });
+  }, e => toast(e.message));
+}
+/* Escanear con la cámara (donde el navegador sabe leer QR; si no, la cámara del móvil abre el enlace igual) */
+let scanStop = null;
+async function scanSheet() {
+  if (!('BarcodeDetector' in window) || !navigator.mediaDevices) { toast('Usa la cámara del móvil para escanear el QR de tu amigo'); return; }
+  openModal('Escanear QR', `<div class="qr-scan"><video playsinline muted></video><span class="qr-frame"></span></div><p class="hint">Apunta al código QR de tu amigo.</p>`, {});
+  const video = $('#modal .qr-scan video');
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); }
+  catch (e) { modal.close(); toast('Sin permiso para la cámara'); return; }
+  video.srcObject = stream; await video.play().catch(() => {});
+  const det = new BarcodeDetector({ formats: ['qr_code'] });
+  let on = true;
+  scanStop = () => { on = false; stream.getTracks().forEach(t => t.stop()); scanStop = null; };
+  const done = code => { scanStop && scanStop(); modal.close(); location.hash = '#amigos'; setTimeout(() => findFriend(code), 300); };
+  const tick = async () => {
+    if (!on) return;
+    if (!modal.open) { scanStop && scanStop(); return; }
+    try { const r = await det.detect(video); const raw = r[0] && r[0].rawValue || ''; const m = raw.match(/BU-[A-Z0-9]{6}/i); if (m) return done(m[0].toUpperCase()); } catch {}
+    setTimeout(tick, 250);
+  };
+  tick();
+}
 function viewFriends(code) {
   const back = backLink('#proyectos', 'Proyectos');
   if (code) {
@@ -477,7 +542,7 @@ function viewFriends(code) {
   return `<div class="page page-narrow page-friends">
     ${pageHead({ eyebrow: back, title: 'Amigos' })}
     ${meCard(false)}
-    <button class="btn wide soc-share" data-sact="share-code">${I.copy}<span>Compartir mi ID para que me añadan</span></button>
+    <div class="soc-share-row"><button class="btn soc-share" data-sact="share-code">${I.copy}<span>Compartir mi ID</span></button><button class="btn soc-share" data-sact="my-qr"><span class="qr-ic" aria-hidden="true">▦</span><span>Mi código QR</span></button></div>
     <div class="section">
       <div class="section-head"><h2>Añadir un amigo</h2></div>
       <form class="fr-search glass" data-sform="find">
@@ -524,7 +589,8 @@ function profileSheet() {
 }
 
 /* ---------- Un proyecto compartido ---------- */
-const TEAM_TABS = [['tablero', 'Tablero'], ['objetivos', 'Objetivos'], ['calendario', 'Calendario'], ['actividad', 'Actividad']];
+const TEAM_TABS = [['tablero', 'Tablero'], ['chat', 'Chat'], ['objetivos', 'Objetivos'], ['calendario', 'Calendario'], ['actividad', 'Actividad']];
+const REACTS = ['🎉', '👏', '🔥', '❤️', '💪', '😂'];
 const PRIO = [[0, 'Normal'], [1, 'Importante'], [2, 'Urgente']];
 const snapOf = pid => SOC.snaps[pid] || null;
 const memberOf = (S, id) => S && id ? S.members.find(m => m.id === id) || null : null;
@@ -664,12 +730,59 @@ function viewTeamActivity(S) {
       return `<li class="fr-row">${avatar(m)}<span class="fr-t"><b>${esc(dispName(m))}${m.id === socUid() ? ' (tú)' : ''}</b><span>@${esc(m.username)} · ${open} pendiente${open === 1 ? '' : 's'} · ${done} hecha${done === 1 ? '' : 's'}${m.role === 'owner' ? ' · creador' : ''}</span></span>
         <span class="fr-a">${m.id !== socUid() ? `<button class="btn small ghost" data-sact="t-filter-go" data-v="${m.id}">Ver sus tarjetas</button>${owner ? `<button class="icon-btn" data-sact="member-remove" data-id="${m.id}" aria-label="Quitar a ${esc(dispName(m))}">${I.close}</button>` : ''}` : ''}</span></li>`;
     }).join('')}</ul></div>
+    ${streakCard(S)}
     <div class="section"><div class="section-head"><h2>Actividad</h2></div>
     ${S.activity.length ? `<ul class="tm-feed glass">${S.activity.map(a => {
       const who = memberOf(S, a.user_id) || { username: 'alguien', id: a.user_id };
-      return `<li>${avatar(who, 'sm')}<span class="tm-feed-t"><b>${esc(a.user_id === socUid() ? 'Tú' : dispName(who))}</b> ${actText(S, a)}<span class="tm-when">${agoShort(a.created_at)}</span></span></li>`;
+      return `<li data-aid="${a.id}">${avatar(who, 'sm')}<span class="tm-feed-t"><b>${esc(a.user_id === socUid() ? 'Tú' : dispName(who))}</b> ${actText(S, a)}<span class="tm-when">${agoShort(a.created_at)}</span>${reactBar(S, a)}</span></li>`;
     }).join('')}</ul>` : emptyBox('Aquí verás lo que va haciendo cada uno.')}
     </div>`;
+}
+function streakCard(S) {
+  const st = teamStreak(S.done_days);
+  const msg = st.cur >= 2 ? (st.today ? `¡${st.cur} días seguidos! Mañana, a por el ${st.cur + 1}.` : `Lleváis ${st.cur} días seguidos: terminad algo hoy para no perder la racha.`)
+    : st.cur === 1 ? (st.today ? 'Hoy ya habéis terminado algo. Repetid mañana y empezáis racha.' : 'Ayer terminasteis algo: si hoy también, ya es racha.')
+    : 'Terminad al menos una tarjeta al día, entre todos, para empezar una racha.';
+  return `<div class="section"><div class="tm-streak-card glass">
+    <div class="tm-streak-n"><span class="tm-streak-fire ${st.cur ? 'on' : ''}">🔥</span><b>${st.cur}</b><span>${st.cur === 1 ? 'día' : 'días'}</span></div>
+    <div class="tm-streak-t"><b>Racha del equipo</b><span>${msg}</span>
+      <span class="tm-streak-days" aria-label="Últimos 14 días">${st.last14.map(x => `<i class="${x.on ? 'on' : ''} ${x.d === todayStr() ? 'today' : ''}" title="${esc(fmtShortDate(x.d))}"></i>`).join('')}</span>
+      ${st.best > st.cur ? `<span class="muted small">Mejor racha: ${st.best} días</span>` : ''}</div>
+  </div></div>`;
+}
+function reactBar(S, a) {
+  const rs = (S.reactions || []).filter(r => r.a === a.id), me = socUid();
+  const counts = REACTS.map(e => ({ e, n: rs.filter(r => r.e === e).length, mine: rs.some(r => r.e === e && r.u === me), who: rs.filter(r => r.e === e).map(r => dispName(memberOf(S, r.u))).join(', ') })).filter(x => x.n);
+  const celebrate = /^(task_done|goal_done|goal_created|project_created|member_added)$/.test(a.kind) || counts.length;
+  if (!celebrate) return '';
+  return `<span class="tm-reacts">${counts.map(x => `<button class="tm-react ${x.mine ? 'mine' : ''}" data-sact="react" data-aid="${a.id}" data-e="${x.e}" title="${esc(x.who)}" aria-label="${x.e} ${x.n}${x.mine ? ', quitar la tuya' : ''}">${x.e}<b>${x.n}</b></button>`).join('')}<span class="tm-react-add"><button class="tm-react plus" data-sact="react-pick" aria-label="Reaccionar">＋</button><span class="tm-react-pick">${REACTS.map(e => `<button data-sact="react" data-aid="${a.id}" data-e="${e}" aria-label="Reaccionar con ${e}">${e}</button>`).join('')}</span></span></span>`;
+}
+function toggleReact(pid, aid, e) {
+  const S = snapOf(pid); if (!S) return;
+  const me = socUid(), mine = (S.reactions || []).some(r => r.a === aid && r.u === me && r.e === e);
+  haptic(8);
+  mutate(pid, S2 => { S2.reactions = mine ? S2.reactions.filter(r => !(r.a === aid && r.u === me && r.e === e)) : [...(S2.reactions || []), { a: aid, u: me, e }]; },
+    () => mine ? rest(`team_reactions?activity_id=eq.${aid}&user_id=eq.${me}&emoji=eq.${encodeURIComponent(e)}`, { method: 'DELETE' })
+      : rest('team_reactions', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: { activity_id: aid, project_id: pid, emoji: e } })).catch(() => {});
+}
+/* ---------- Chat del equipo ---------- */
+function viewTeamChat(S, pid) {
+  const msgs = S.messages || [], me = socUid();
+  if (msgs.length) markChatSeen(pid, msgs[msgs.length - 1].created_at);
+  let prevDay = '', prevUser = '', prevT = 0;
+  const rows = msgs.map(m => {
+    const day = localDay(m.created_at), t = Date.parse(m.created_at), mine = m.user_id === me, who = memberOf(S, m.user_id) || { username: 'alguien', id: m.user_id };
+    const sep = day !== prevDay ? `<li class="tm-chat-day"><span>${esc(relDay(day))}</span></li>` : '';
+    const cont = day === prevDay && prevUser === m.user_id && t - prevT < 5 * 60000;
+    prevDay = day; prevUser = m.user_id; prevT = t;
+    const hm = new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    return `${sep}<li class="tm-msg ${mine ? 'mine' : ''} ${cont ? 'cont' : ''}">${mine ? '' : cont ? '<span class="tm-msg-sp"></span>' : avatar(who, 'sm')}
+      <div class="tm-bubble" ${mine ? 'data-sact="msg-sel"' : ''}>${!mine && !cont ? `<b>${esc(dispName(who))}</b>` : ''}<span class="tm-msg-t">${esc(m.body)}</span><span class="tm-msg-h">${hm}</span>${mine ? `<button class="tm-msg-del" data-sact="chat-del" data-id="${m.id}" aria-label="Borrar mensaje">${I.close}</button>` : ''}</div></li>`;
+  }).join('');
+  return `<div class="section tm-chat glass">
+    <ul class="tm-chat-list">${rows || `<li class="tm-chat-empty">Aquí podéis hablar del proyecto sin salir de Boldup.<br><span class="muted small">Solo lo ven los miembros. Los mensajes tardan unos segundos en llegar a los demás.</span></li>`}</ul>
+    <form class="tm-chat-form" data-sform="chat"><input id="tm-chat-in" name="body" placeholder="Escribe al equipo…" maxlength="1000" autocomplete="off" enterkeyhint="send" aria-label="Mensaje para el equipo"><button class="btn primary small" type="submit" aria-label="Enviar">Enviar</button></form>
+  </div>`;
 }
 function viewTeam(pid, sub) {
   const back = backLink('#proyectos', 'Con amigos');
@@ -687,8 +800,10 @@ function viewTeam(pid, sub) {
   const mine = S.tasks.filter(t => isMine(t) && !t.done_at), late = S.tasks.filter(lateTask).length;
   const pct = total ? Math.round(done / total * 100) : 0;
   const nextMine = mine.slice().sort((a, b) => (a.due || '9').localeCompare(b.due || '9'))[0];
-  const body = tab === 'objetivos' ? viewTeamGoals(S) : tab === 'calendario' ? viewTeamCalendar(S, pid) : tab === 'actividad' ? viewTeamActivity(S) : viewBoard(S, pid);
-  return `<div class="page page-team ${tab === 'tablero' ? 'is-board' : ''}" style="--c:${p.color || '#4a72cf'}">
+  const body = tab === 'objetivos' ? viewTeamGoals(S) : tab === 'calendario' ? viewTeamCalendar(S, pid) : tab === 'actividad' ? viewTeamActivity(S) : tab === 'chat' ? viewTeamChat(S, pid) : viewBoard(S, pid);
+  const lastOther = (S.messages || []).filter(m => m.user_id !== socUid()).map(m => m.created_at).pop();
+  const unread = tab !== 'chat' && chatUnread(pid, lastOther), st = teamStreak(S.done_days);
+  return `<div class="page page-team ${tab === 'tablero' ? 'is-board' : ''} ${tab === 'chat' ? 'is-chat' : ''}" style="--c:${p.color || '#4a72cf'}">
     ${pageHead({ eyebrow: back, title: `${p.icon ? `<span class="h1-emoji">${esc(p.icon)}</span> ` : ''}${esc(p.name)}`, actions: `<button class="btn tm-invite" data-sact="invite" aria-label="Invitar">${avStack(S.members, 3, 'xs')}<span>${I.plus}</span></button><button class="icon-btn pj-more" data-sact="team-menu" aria-label="Más opciones">${I.more}</button>` })}
     <section class="pj-hero glass tm-hero">
       <div class="pj-hero-main">
@@ -696,12 +811,13 @@ function viewTeam(pid, sub) {
         <div class="pj-hero-text">
           <div class="pj-hero-t">${!total ? 'Tablero vacío' : !left ? '¡Todo hecho!' : `Quedan ${left} tarjeta${left === 1 ? '' : 's'}`}</div>
           ${stateLine(late ? { k: 'warn', txt: `${late} atrasada${late === 1 ? '' : 's'}` } : mine.length ? { k: 'soon', txt: `${mine.length} para ti` } : { k: total ? 'go' : 'idle', txt: total ? 'En marcha' : 'Añadid la primera tarjeta' })}
+          ${st.cur >= 1 ? `<button class="tm-hero-streak" data-sact="team-tab" data-v="actividad">🔥 Racha de ${st.cur} día${st.cur === 1 ? '' : 's'}${st.today ? '' : ' · ¡terminad algo hoy!'}</button>` : ''}
           ${nextMine ? `<button class="tm-next" data-sact="t-open" data-id="${nextMine.id}">Lo tuyo ahora: <b>${esc(nextMine.title)}</b>${nextMine.due ? ` · ${esc(relDay(nextMine.due).toLowerCase())}` : ''}</button>` : `<div class="pj-hero-l">${S.members.length} miembro${S.members.length === 1 ? '' : 's'} · ${S.goals.length} objetivo${S.goals.length === 1 ? '' : 's'}</div>`}
         </div>
       </div>
       ${p.description ? `<div class="pj-notes">${esc(p.description)}</div>` : ''}
     </section>
-    <div class="segmented pj-tabs tm-tabs" role="tablist">${TEAM_TABS.map(([v, l]) => `<button role="tab" class="${tab === v ? 'on' : ''}" data-sact="team-tab" data-v="${v}">${l}${v === 'objetivos' && S.goals.length ? ' · ' + S.goals.length : ''}</button>`).join('')}</div>
+    <div class="segmented pj-tabs tm-tabs" role="tablist">${TEAM_TABS.map(([v, l]) => `<button role="tab" class="${tab === v ? 'on' : ''}" data-sact="team-tab" data-v="${v}">${l}${v === 'objetivos' && S.goals.length ? ' · ' + S.goals.length : ''}${v === 'chat' && unread ? '<i class="tm-tab-dot" aria-label="mensajes nuevos"></i>' : ''}</button>`).join('')}</div>
     ${body}
   </div>`;
 }
@@ -1067,7 +1183,7 @@ function teamTodaySection(d) {
     const line = fresh ? `<b>${esc(dispName(who))}</b> ${actText({ members: p.members || [] }, { ...p.last_kind, user_id: p.last_kind.user, detail: p.last_kind.detail || {} })}`
       : p.late ? `<span class="warn-text">${p.late} atrasada${p.late === 1 ? '' : 's'}</span>` : p.mine ? `${p.mine} para ti` : p.total && p.done === p.total ? '¡Todo hecho!' : `${pct}% hecho`;
     return `<a class="tm-mini glass ${fresh ? 'fresh' : ''}" href="#equipo/${p.id}" style="--c:${p.color || '#4a72cf'}">
-      <span class="tm-mini-top"><span class="tm-mini-ic">${esc(p.icon || '👥')}</span>${avStack(p.members || [], 3, 'xs')}</span>
+      <span class="tm-mini-top"><span class="tm-mini-ic">${esc(p.icon || '👥')}</span>${streakTag(teamStreak(p.done_days))}${chatUnread(p.id, p.last_msg) ? '<span class="tm-mini-chat" title="Mensajes nuevos">💬</span>' : ''}${avStack(p.members || [], 3, 'xs')}</span>
       <span class="tm-mini-n">${esc(p.name)}</span>
       <span class="tm-mini-bar"><i style="width:${pct}%"></i></span>
       <span class="tm-mini-l">${line}</span>
@@ -1111,6 +1227,16 @@ document.addEventListener('click', e => {
     }
     case 'edit-profile': profileSheet(); return;
     case 'avatar': avatarSheet(); return;
+    case 'react': toggleReact(pid, Number(el.dataset.aid), el.dataset.e); return;
+    case 'react-pick': { const w = el.closest('.tm-react-add'), open = !w.classList.contains('open'); $$('.tm-react-add.open').forEach(x => x.classList.remove('open')); w.classList.toggle('open', open); return; }
+    case 'chat-del': {
+      if (!confirm('¿Borrar este mensaje para todos?')) return;
+      mutate(pid, S => { S.messages = (S.messages || []).filter(m => m.id !== id); }, () => rest(`team_messages?id=eq.${id}`, { method: 'DELETE' })).catch(() => {});
+      return;
+    }
+    case 'msg-sel': if (!e.target.closest('.tm-msg-del')) { const li = el.closest('.tm-msg'), on = !li.classList.contains('sel'); $$('.tm-msg.sel').forEach(x => x.classList.toggle('sel', false)); li.classList.toggle('sel', on); } return;
+    case 'my-qr': qrSheet(); return;
+    case 'scan-qr': scanSheet(); return;
     case 'fr-open': { const f = SOC.friends && SOC.friends.list.find(x => x.id === id); if (f) friendSheet(f); return; }
     case 'fr-add': friendAction(() => rpc('send_friend_request', { target: id }).then(r => { SOC.found = SOC.found && SOC.found.user ? { ...SOC.found, user: { ...SOC.found.user, relation: r } } : null; }), '¡Solicitud enviada!'); return;
     case 'fr-accept': friendAction(() => rpc('respond_friend_request', { request_id: id, accept: true }), '¡Ahora sois amigos!'); return;
@@ -1158,12 +1284,22 @@ document.addEventListener('keydown', e => {
   const card = e.target.closest && e.target.closest('.tb-card');
   if (card && (e.key === 'Enter' || e.key === ' ') && e.target === card) { e.preventDefault(); cardSheet(curPid(), card.dataset.tid); }
 });
+document.addEventListener('pointerdown', e => { if (!e.target.closest('.tm-react-add')) $$('.tm-react-add.open').forEach(x => x.classList.remove('open')); }, true);
 document.addEventListener('submit', e => {
   const f = e.target, k = f.dataset.sform;
   if (!k) return;
   e.preventDefault(); e.stopPropagation();
   const pid = curPid();
   if (k === 'find') { findFriend(f.elements.q.value); f.elements.q.blur(); return; }
+  if (k === 'chat') {
+    const inp = f.elements.body, body = inp.value.trim(); if (!body || !pid) return;
+    inp.value = '';
+    const msg = { id: newId(), project_id: pid, user_id: socUid(), body, created_at: new Date().toISOString() };
+    markChatSeen(pid, msg.created_at);
+    mutate(pid, S => { S.messages = [...(S.messages || []), msg]; }, () => rest('team_messages', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: { id: msg.id, project_id: pid, body } }))
+      .catch(() => { inp.value = body; });
+    return;
+  }
   if (k === 'add-card') {
     const inp = f.elements.title, v = inp.value.trim(); if (!v) return;
     inp.value = ''; addCard(pid, f.dataset.col, v);

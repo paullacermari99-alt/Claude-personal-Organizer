@@ -134,6 +134,27 @@ create table if not exists public.team_activity (
   created_at timestamptz not null default now()
 );
 create index if not exists team_activity_project_idx on public.team_activity (project_id, id desc);
+-- v74: reacciones a lo que pasa en el proyecto (🎉👏…) y chat corto del equipo
+create table if not exists public.team_reactions (
+  id bigint generated always as identity primary key,
+  activity_id bigint not null references public.team_activity(id) on delete cascade,
+  project_id uuid not null references public.team_projects(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade default auth.uid(),
+  emoji text not null check (emoji in ('🎉', '👏', '🔥', '❤️', '💪', '😂')),
+  created_at timestamptz not null default now(),
+  unique (activity_id, user_id, emoji)
+);
+create index if not exists team_reactions_project_idx on public.team_reactions (project_id, activity_id);
+create table if not exists public.team_messages (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.team_projects(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete set null default auth.uid(),
+  body text not null check (char_length(btrim(body)) between 1 and 1000),
+  created_at timestamptz not null default now()
+);
+create index if not exists team_messages_project_idx on public.team_messages (project_id, created_at desc);
+alter table public.team_reactions enable row level security;
+alter table public.team_messages enable row level security;
 
 alter table public.team_projects enable row level security;
 alter table public.team_members enable row level security;
@@ -510,7 +531,9 @@ language sql stable security definer set search_path = '' as $$
       'late', (select count(*) from public.team_tasks t where t.project_id = p.id and t.done_at is null and t.due < current_date),
       'next_due', (select min(t.due) from public.team_tasks t where t.project_id = p.id and t.done_at is null and t.due >= current_date),
       'last_act', (select max(a.id) from public.team_activity a where a.project_id = p.id and a.user_id is distinct from auth.uid()),
-      'last_kind', (select jsonb_build_object('kind', a.kind, 'title', a.title, 'user', a.user_id, 'at', a.created_at, 'detail', a.detail) from public.team_activity a where a.project_id = p.id and a.user_id is distinct from auth.uid() order by a.id desc limit 1)
+      'last_kind', (select jsonb_build_object('kind', a.kind, 'title', a.title, 'user', a.user_id, 'at', a.created_at, 'detail', a.detail) from public.team_activity a where a.project_id = p.id and a.user_id is distinct from auth.uid() order by a.id desc limit 1),
+      'done_days', (select coalesce(jsonb_agg(t.done_at order by t.done_at desc), '[]'::jsonb) from public.team_tasks t where t.project_id = p.id and t.done_at > now() - interval '60 days'),
+      'last_msg', (select max(c.created_at) from public.team_messages c where c.project_id = p.id and c.user_id is distinct from auth.uid())
     ) as x
     from public.team_projects p join public.team_members me on me.project_id = p.id and me.user_id = auth.uid()
   ) s
@@ -528,7 +551,11 @@ begin
     'columns', (select coalesce(jsonb_agg(to_jsonb(c) order by c.position, c.created_at), '[]'::jsonb) from public.team_columns c where c.project_id = pid),
     'goals', (select coalesce(jsonb_agg(to_jsonb(g) order by g.position, g.created_at), '[]'::jsonb) from public.team_goals g where g.project_id = pid),
     'tasks', (select coalesce(jsonb_agg(to_jsonb(t) || jsonb_build_object('comments', (select count(*) from public.team_comments k where k.task_id = t.id)) order by t.position, t.created_at), '[]'::jsonb) from public.team_tasks t where t.project_id = pid),
-    'activity', (select coalesce(jsonb_agg(to_jsonb(a) order by a.id desc), '[]'::jsonb) from (select * from public.team_activity a where a.project_id = pid order by a.id desc limit 60) a)
+    'activity', (select coalesce(jsonb_agg(to_jsonb(a) order by a.id desc), '[]'::jsonb) from (select * from public.team_activity a where a.project_id = pid order by a.id desc limit 60) a),
+    'reactions', (select coalesce(jsonb_agg(jsonb_build_object('a', r.activity_id, 'u', r.user_id, 'e', r.emoji) order by r.id), '[]'::jsonb) from public.team_reactions r
+                  where r.project_id = pid and r.activity_id in (select a.id from public.team_activity a where a.project_id = pid order by a.id desc limit 60)),
+    'messages', (select coalesce(jsonb_agg(to_jsonb(c) order by c.created_at), '[]'::jsonb) from (select * from public.team_messages c where c.project_id = pid order by c.created_at desc limit 100) c),
+    'done_days', (select coalesce(jsonb_agg(t.done_at order by t.done_at desc), '[]'::jsonb) from public.team_tasks t where t.project_id = pid and t.done_at > now() - interval '120 days')
   ) from public.team_projects p where p.id = pid);
 end $$;
 
@@ -615,11 +642,57 @@ end $$;
 drop trigger if exists team_comments_notify on public.team_comments;
 create trigger team_comments_notify after insert on public.team_comments for each row execute function public.team_comments_notify();
 
+-- ============ v74: reacciones y chat ============
+drop policy if exists "leer reacciones" on public.team_reactions;
+create policy "leer reacciones" on public.team_reactions for select to authenticated using (public.is_team_member(project_id));
+drop policy if exists "reaccionar" on public.team_reactions;
+create policy "reaccionar" on public.team_reactions for insert to authenticated with check (
+  user_id = (select auth.uid()) and public.is_team_member(project_id)
+  and exists (select 1 from public.team_activity a where a.id = activity_id and a.project_id = team_reactions.project_id));
+drop policy if exists "quitar mi reacción" on public.team_reactions;
+create policy "quitar mi reacción" on public.team_reactions for delete to authenticated using (user_id = (select auth.uid()));
+
+drop policy if exists "leer chat" on public.team_messages;
+create policy "leer chat" on public.team_messages for select to authenticated using (public.is_team_member(project_id));
+drop policy if exists "escribir en el chat" on public.team_messages;
+create policy "escribir en el chat" on public.team_messages for insert to authenticated with check (user_id = (select auth.uid()) and public.is_team_member(project_id));
+drop policy if exists "borrar mi mensaje" on public.team_messages;
+create policy "borrar mi mensaje" on public.team_messages for delete to authenticated using (user_id = (select auth.uid()));
+
+-- Avisos: a quien hizo lo que celebran, y a los demás miembros cuando alguien escribe en el chat (se agrupan por proyecto)
+create or replace function public.team_reactions_notify() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare a public.team_activity; pname text;
+begin
+  select * into a from public.team_activity where id = new.activity_id;
+  select coalesce(p.icon || ' ', '') || p.name into pname from public.team_projects p where p.id = new.project_id;
+  perform public.notify(a.user_id, pname, coalesce(public.who(new.user_id), 'Alguien') || ' ' || new.emoji || coalesce(' a «' || a.title || '»', ''), '#equipo/' || new.project_id || '/actividad', 'react-' || new.activity_id);
+  return new;
+end $$;
+drop trigger if exists team_reactions_notify on public.team_reactions;
+create trigger team_reactions_notify after insert on public.team_reactions for each row execute function public.team_reactions_notify();
+
+create or replace function public.team_messages_notify() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare pname text; m record;
+begin
+  select coalesce(p.icon || ' ', '') || p.name into pname from public.team_projects p where p.id = new.project_id;
+  for m in select user_id from public.team_members where project_id = new.project_id loop
+    perform public.notify(m.user_id, pname, coalesce(public.who(new.user_id), 'Alguien') || ': ' || left(new.body, 140), '#equipo/' || new.project_id || '/chat', 'chat-' || new.project_id);
+  end loop;
+  update public.team_projects set updated_at = now() where id = new.project_id;
+  return new;
+end $$;
+drop trigger if exists team_messages_notify on public.team_messages;
+create trigger team_messages_notify after insert on public.team_messages for each row execute function public.team_messages_notify();
+
 -- ============ Permisos ============
 grant usage on schema public to anon, authenticated, service_role;
 -- Primero se quita todo (Supabase a veces da permisos por defecto) y luego se da solo lo necesario
 revoke all on public.profiles, public.friendships, public.team_projects, public.team_members, public.team_columns,
-  public.team_goals, public.team_tasks, public.team_comments, public.team_activity from anon, authenticated;
+  public.team_goals, public.team_tasks, public.team_comments, public.team_activity, public.team_reactions, public.team_messages from anon, authenticated;
+grant select, insert, delete on public.team_reactions, public.team_messages to authenticated;
+grant all on public.team_reactions, public.team_messages to service_role;
 grant select, update on public.profiles to authenticated;
 grant select, delete on public.friendships to authenticated;
 grant select, update, delete on public.team_projects to authenticated;
