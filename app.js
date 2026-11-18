@@ -1457,21 +1457,42 @@ function settingsBody(sec) {
 
 const modal = $('#modal');
 (function fixKeyboardGap() {
-  const vv = window.visualViewport;
-  const isField = el => el && el.matches && el.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea, select, [contenteditable="true"]');
-  let t = 0;
-  const settle = () => {
-    clearTimeout(t);
-    t = setTimeout(() => {
-      if (isField(document.activeElement)) return; /* el teclado sigue abierto */
-      const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      const y = Math.min(window.scrollY, max);
-      /* Un pequeño desplazamiento obliga a iOS a recolocar los elementos fijos (barra de abajo, botón +) */
-      window.scrollTo(0, y + 1); window.scrollTo(0, y);
-    }, 120);
+  /* v77: en iPhone, al escribir el navegador desplaza la página (o el popup) para enseñar el campo y,
+     al cerrar el teclado, a veces no la devuelve: todo queda subido con una franja negra debajo.
+     Aquí guardamos dónde estaba la página al empezar a escribir y la devolvemos al cerrar el teclado,
+     con varios intentos (el teclado tarda en cerrarse) y también al volver a tocar la pantalla. */
+  const vv = window.visualViewport, root = document.documentElement;
+  const isField = el => !!(el && el.matches && el.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button]):not([type=submit]):not([type=file]), textarea, select, [contenteditable="true"]'));
+  const typing = () => isField(document.activeElement) && document.activeElement.isConnected;
+  const locked = () => !!document.querySelector('dialog[open]') || getComputedStyle(root).overflowY === 'hidden';
+  let y0 = null, timers = [];
+  const kbOpen = () => vv && window.innerHeight - vv.height > 120;
+  const shifted = () => {
+    const max = Math.max(0, root.scrollHeight - window.innerHeight);
+    return window.scrollY > max + 1 || (vv && vv.offsetTop > 1) || (locked() && y0 !== null && Math.abs(window.scrollY - y0) > 1);
   };
-  document.addEventListener('focusout', e => { if (isField(e.target)) settle(); });
-  if (vv) vv.addEventListener('resize', () => { if (!isField(document.activeElement)) settle(); });
+  const fix = () => {
+    if (typing() || kbOpen()) return;
+    const max = Math.max(0, root.scrollHeight - window.innerHeight);
+    const y = Math.min(Math.max(0, locked() && y0 !== null ? y0 : window.scrollY), max);
+    /* Con un popup abierto la página está bloqueada (overflow: hidden) y iOS ignora scrollTo: se desbloquea un instante */
+    const prev = root.style.overflow;
+    if (locked()) root.style.overflow = 'visible';
+    window.scrollTo(0, y + 1); window.scrollTo(0, y);
+    if (locked()) requestAnimationFrame(() => { root.style.overflow = prev; });
+    if (!kbOpen()) y0 = null;
+  };
+  const settle = () => { timers.forEach(clearTimeout); timers = [80, 300, 650].map(ms => setTimeout(fix, ms)); };
+  document.addEventListener('focusin', e => { if (isField(e.target) && y0 === null) y0 = window.scrollY; }, true);
+  document.addEventListener('focusout', e => { if (isField(e.target)) settle(); }, true);
+  if (vv) {
+    vv.addEventListener('resize', () => { if (!typing()) settle(); });
+    vv.addEventListener('scroll', () => { if (!typing() && !kbOpen() && shifted()) settle(); });
+  }
+  /* Red de seguridad: si algo quitó el campo sin avisar (p. ej. al refrescar la hoja), se arregla al tocar */
+  document.addEventListener('touchstart', () => { if (!typing() && !kbOpen() && shifted()) fix(); }, { passive: true, capture: true });
+  window.addEventListener('pageshow', settle);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) settle(); });
 })();
 const modalForm = $('#modal-form');
 let modalOpts = {};
