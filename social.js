@@ -198,42 +198,116 @@ function saveProfile(body) {
   return rest(`profiles?id=eq.${SOC.profile.id}`, { method: 'PATCH', body: { ...body, updated_at: new Date().toISOString() } });
 }
 /* ---------- Foto de perfil (Supabase Storage, carpeta propia) ---------- */
+/* v76: el input vive dentro del documento (y dentro del popup si hay uno abierto): en iPhone,
+   un input suelto o fuera del popup a veces no abre la galería o no avisa al elegir. */
+let photoInput = null;
 function pickPhoto() {
-  const inp = document.createElement('input');
-  inp.type = 'file'; inp.accept = 'image/*';
-  inp.onchange = () => { const f = inp.files && inp.files[0]; if (f) uploadPhoto(f); };
+  if (photoInput) photoInput.remove();
+  const inp = photoInput = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*'; inp.className = 'photo-inp';
+  inp.setAttribute('aria-hidden', 'true'); inp.tabIndex = -1;
+  let done = false;
+  const go = () => { if (done) return; const f = inp.files && inp.files[0]; if (!f) return; done = true; inp.remove(); if (photoInput === inp) photoInput = null; cropPhoto(f); };
+  inp.addEventListener('change', go); inp.addEventListener('input', go);
+  const host = document.querySelector('dialog[open]:not(.crop-dlg)') || document.body;
+  host.appendChild(inp);
   inp.click();
 }
-async function squareJpeg(file, size = 320) {
-  let img;
-  try { img = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
-  catch { img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('No se pudo leer la imagen')); i.src = URL.createObjectURL(file); }); }
-  const w = img.width, h = img.height, side = Math.min(w, h);
-  const cv = document.createElement('canvas'); cv.width = cv.height = size;
-  const cx = cv.getContext('2d'); cx.imageSmoothingQuality = 'high';
-  cx.drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, size, size);
-  return new Promise((ok, ko) => cv.toBlob(b => b ? ok(b) : ko(new Error('No se pudo preparar la foto')), 'image/jpeg', 0.86));
+function loadImg(file) {
+  return new Promise((ok, ko) => {
+    const url = URL.createObjectURL(file), i = new Image();
+    i.onload = () => ok({ img: i, url });
+    i.onerror = () => { URL.revokeObjectURL(url); ko(new Error('No se pudo abrir esa imagen. Prueba con otra (JPG o PNG).')); };
+    i.src = url;
+  });
+}
+/* Pantalla de recorte: arrastra para mover, pellizca (o rueda / barra) para hacer zoom */
+async function cropPhoto(file) {
+  if (!/^image\//.test(file.type || 'image/')) { toast('Elige una imagen'); return; }
+  let L;
+  try { L = await loadImg(file); } catch (e) { toast(e.message); return; }
+  const { img, url } = L, W = img.naturalWidth, H = img.naturalHeight;
+  if (!W || !H) { URL.revokeObjectURL(url); toast('No se pudo abrir esa imagen'); return; }
+  const dlg = document.createElement('dialog');
+  dlg.className = 'crop-dlg';
+  dlg.innerHTML = `<div class="crop-head"><button type="button" class="btn" data-c="no">Cancelar</button><h3>Ajusta tu foto</h3><button type="button" class="btn primary" data-c="ok">Usar foto</button></div>
+    <div class="crop-stage"><div class="crop-box"><img alt="" draggable="false"><div class="crop-mask" aria-hidden="true"></div></div></div>
+    <p class="crop-tip muted small">Arrastra para elegir la zona y pellizca para acercar</p>
+    <div class="crop-zoom"><span aria-hidden="true">−</span><input type="range" min="1" max="4" step="0.01" value="1" aria-label="Zoom"><span aria-hidden="true">+</span></div>`;
+  document.body.appendChild(dlg);
+  const box = dlg.querySelector('.crop-box'), im = dlg.querySelector('img'), range = dlg.querySelector('input[type=range]');
+  im.src = url;
+  let V = 280, z = 1, x = 0, y = 0;
+  const base = () => Math.max(V / W, V / H);
+  const clamp = () => {
+    const s = base() * z, mx = Math.max(0, (W * s - V) / 2), my = Math.max(0, (H * s - V) / 2);
+    x = Math.min(mx, Math.max(-mx, x)); y = Math.min(my, Math.max(-my, y));
+  };
+  const draw = () => {
+    clamp();
+    const s = base() * z;
+    im.style.width = W * s + 'px'; im.style.height = H * s + 'px';
+    im.style.transform = `translate(${V / 2 + x - W * s / 2}px, ${V / 2 + y - H * s / 2}px)`;
+    range.value = z;
+  };
+  const zoomTo = (nz, cx = V / 2, cy = V / 2) => {
+    nz = Math.min(4, Math.max(1, nz));
+    /* Mantiene quieto el punto bajo los dedos */
+    const k = nz / z; x = (x - (cx - V / 2)) * k + (cx - V / 2); y = (y - (cy - V / 2)) * k + (cy - V / 2); z = nz; draw();
+  };
+  const fit = () => { V = Math.round(box.getBoundingClientRect().width) || 280; draw(); };
+  const pts = new Map(); let last = null;
+  const rel = e => { const r = box.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  box.addEventListener('pointerdown', e => { e.preventDefault(); box.setPointerCapture(e.pointerId); pts.set(e.pointerId, rel(e)); last = null; });
+  box.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return;
+    const prev = pts.get(e.pointerId), cur = rel(e); pts.set(e.pointerId, cur);
+    if (pts.size === 1) { x += cur[0] - prev[0]; y += cur[1] - prev[1]; draw(); return; }
+    const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if (last) { x += c[0] - last.c[0]; y += c[1] - last.c[1]; zoomTo(z * d / last.d, c[0], c[1]); }
+    last = { d, c };
+  });
+  const up = e => { pts.delete(e.pointerId); last = null; };
+  box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
+  box.addEventListener('wheel', e => { e.preventDefault(); const [cx, cy] = rel(e); zoomTo(z * Math.exp(-e.deltaY / 300), cx, cy); }, { passive: false });
+  range.addEventListener('input', () => zoomTo(+range.value));
+  const ro = new ResizeObserver(fit); ro.observe(box);
+  const close = () => { ro.disconnect(); URL.revokeObjectURL(url); dlg.close(); dlg.remove(); };
+  dlg.addEventListener('cancel', e => { e.preventDefault(); close(); });
+  dlg.addEventListener('click', async e => {
+    const b = e.target.closest('[data-c]'); if (!b) return;
+    if (b.dataset.c === 'no') return close();
+    b.disabled = true; b.textContent = 'Subiendo…';
+    try {
+      const s = base() * z, side = V / s, sx = W / 2 - (V / 2 + x) / s, sy = H / 2 - (V / 2 + y) / s;
+      const out = Math.min(400, Math.round(side)) || 400;
+      const cv = document.createElement('canvas'); cv.width = cv.height = Math.max(160, out);
+      const cx = cv.getContext('2d'); cx.imageSmoothingQuality = 'high';
+      cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+      cx.drawImage(img, sx, sy, side, side, 0, 0, cv.width, cv.height);
+      const blob = await new Promise((ok, ko) => cv.toBlob(bb => bb ? ok(bb) : ko(new Error('No se pudo preparar la foto')), 'image/jpeg', 0.88));
+      await uploadPhoto(blob);
+      close();
+    } catch (err) { b.disabled = false; b.textContent = 'Usar foto'; toast(niceErr(err)); }
+  });
+  dlg.showModal();
+  requestAnimationFrame(fit);
 }
 async function storageFetch(method, path, body) {
   const tok = await accessToken();
   if (!tok) throw new Error('Sesión caducada: vuelve a entrar');
-  const r = await fetch(`${CFG.supabaseUrl.replace(/\/$/, '')}/storage/v1/object/avatars/${path}`, { method, headers: { apikey: CFG.supabaseKey, Authorization: 'Bearer ' + tok, ...(body ? { 'Content-Type': 'image/jpeg', 'x-upsert': 'true', 'cache-control': '31536000' } : {}) }, body });
+  const r = await fetch(`${CFG.supabaseUrl.replace(/\/$/, '')}/storage/v1/object/avatars/${path}`, { method, headers: { apikey: CFG.supabaseKey, Authorization: 'Bearer ' + tok, ...(body ? { 'Content-Type': 'image/jpeg', 'x-upsert': 'true', 'cache-control': 'max-age=31536000' } : {}) }, body });
   if (!r.ok) { const t = await r.text().catch(() => ''); let m = ''; try { m = JSON.parse(t).message || JSON.parse(t).error; } catch {} throw new Error(m || 'No se pudo subir la foto (' + r.status + ')'); }
 }
 function dropPhotoFile(path) { if (path) storageFetch('DELETE', path).catch(() => {}); }
-async function uploadPhoto(file) {
-  const p = SOC.profile; if (!p) return;
-  if (!/^image\//.test(file.type || 'image/')) { toast('Elige una imagen'); return; }
-  toast('Subiendo foto…');
-  try {
-    const blob = await squareJpeg(file);
-    const path = `${p.id}/${Date.now().toString(36)}.jpg`, old = p.photo;
-    await storageFetch('POST', path, blob);
-    await saveProfile({ photo: path });
-    if (old && old !== path) dropPhotoFile(old);
-    if (modal.open && $('.avp-prev', modalForm)) modal.close();
-    toast('¡Foto de perfil puesta!'); haptic(12);
-  } catch (e) { toast(niceErr(e)); }
+async function uploadPhoto(blob) {
+  const p = SOC.profile; if (!p) throw new Error('Entra en tu cuenta para poner una foto');
+  const path = `${p.id}/${Date.now().toString(36)}.jpg`, old = p.photo;
+  await storageFetch('POST', path, blob);
+  await saveProfile({ photo: path });
+  if (old && old !== path) dropPhotoFile(old);
+  if (modal.open && $('.avp-prev', modalForm)) modal.close();
+  toast('¡Foto de perfil puesta!'); haptic(12);
 }
 function removePhoto() {
   const p = SOC.profile; if (!p || !p.photo) return;
@@ -260,7 +334,7 @@ function profileSettingsSection() {
     </div>
     <div class="section"><div class="section-head"><h2>Foto o avatar</h2></div>
       <div class="settings-group glass">
-        <button class="item set-btn" data-sact="pf-photo"><span>${p.photo ? 'Cambiar la foto' : 'Subir una foto'}<span class="muted small item-sub">Se recorta en cuadrado y solo la ven tus amigos y compañeros</span></span>${I.right}</button>
+        <button class="item set-btn" data-sact="pf-photo"><span>${p.photo ? 'Cambiar la foto' : 'Subir una foto'}<span class="muted small item-sub">Eliges la zona que quieres y la ven tus amigos y compañeros</span></span>${I.right}</button>
         ${p.photo ? `<button class="item set-btn danger" data-sact="pf-nophoto"><span>Quitar la foto</span></button>` : ''}
         <button class="item set-btn" data-sact="avatar"><span>Elegir un avatar<span class="muted small item-sub">Animales, caras, cosas o tu inicial</span></span>${I.right}</button>
       </div></div>
