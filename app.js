@@ -1080,7 +1080,7 @@ function syncSection() {
     const s = getSession();
     body = `${syncInfo.needPassword ? `<form class="item login" data-act="new-password"><span class="grow">Pon tu contraseña nueva</span><input type="password" name="password" placeholder="Contraseña nueva" autocomplete="new-password" aria-label="Contraseña nueva" minlength="6" required><button class="btn small primary" type="submit">Guardar</button></form>` : ''}
       <div class="item"><span>Cuenta</span><span class="muted">${esc((s.user && s.user.email) || '…')}</span></div>
-      ${typeof SOC !== 'undefined' && SOC.profile ? `<div class="item"><span>Nick</span><span class="soc-acc"><span class="muted">@${esc(SOC.profile.username)} · ${esc(SOC.profile.friend_code)}</span><button class="btn small" data-sact="edit-profile">Editar</button></span></div>`
+      ${typeof SOC !== 'undefined' && SOC.profile ? `<div class="item"><span>Nick</span><span class="soc-acc"><span class="muted">@${esc(SOC.profile.username)} · ${esc(SOC.profile.friend_code)}</span><a class="btn small" href="#ajustes/perfil">Editar</a></span></div>`
         : typeof SOC !== 'undefined' && SOC.profileLoaded && SOC.backend ? `<div class="item"><span>Nick</span><button class="btn small primary" data-sact="nick">Elegir mi nick</button></div>` : ''}
       <div class="item" data-live="sync">${syncLine()}<button class="btn small" data-act="sync-now">Sincronizar ahora</button></div>
       ${CFG.vapidPublicKey ? `<div class="item"><span>Avisos con la app cerrada</span><button class="btn small ${pushActive() ? '' : 'primary'}" data-act="push-toggle">${pushActive() ? 'Desactivar' : 'Activar'}</button></div>` : ''}
@@ -1315,6 +1315,7 @@ const SET_ICON = {
   avisos: svg('<path d="M6 16.5V11a6 6 0 0112 0v5.5l1.5 2h-15zM10 20.5a2.2 2.2 0 004 0"/>'),
 };
 const SET_SECTIONS = [
+  ['perfil', 'Tu perfil', '#e8467c', svg('<circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c1.2-3.4 3.9-5 7-5s5.8 1.6 7 5"/>')],
   ['apariencia', 'Apariencia', '#7c6cf0', SET_ICON.apariencia],
   ['avisos', 'Recordatorios', '#ff6b5e', SET_ICON.avisos],
   ['calendario', 'Calendario y jornada', '#4a72cf', I.cal],
@@ -1329,6 +1330,7 @@ function settingsSummary(k) {
   const perm = 'Notification' in window ? Notification.permission : 'unsupported';
   switch (k) {
     case 'apariencia': { const t = window.themePref ? themePref() : 'auto', sk = window.skinPref ? skinPref() : ''; return `${(THEMES.find(([v]) => v === t) || THEMES[0])[1]} · ${(SKINS.find(([v]) => v === sk) || SKINS[0])[1]}`; }
+    case 'perfil': return typeof SOC !== 'undefined' && SOC.profile ? `@${SOC.profile.username} · nick, avatar, foto y colores` : 'Nick, avatar, foto y colores';
     case 'avisos': return r.enabled && perm === 'granted' ? 'Activados' : 'Desactivados';
     case 'calendario': return `Jornada de ${s.dayStart || '08:00'} a ${s.dayEnd || '21:00'}`;
     case 'calendarios': { const n = (s.calendars || []).length; return n ? `${n} conectado${n === 1 ? '' : 's'}` : 'Ver tus citas en la app'; }
@@ -1373,6 +1375,7 @@ function settingsBody(sec) {
   try { tzs = Intl.supportedValuesOf('timeZone'); if (!tzs.includes(s.timezone)) tzs.unshift(s.timezone); } catch {}
   const sel = (path, opts, cur, num) => `<select data-set="${path}" ${num ? 'data-num' : ''}>${opts.map(([v, l]) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   if (sec === 'cuenta') return syncSection();
+  if (sec === 'perfil') return typeof profileSettingsSection === 'function' ? profileSettingsSection() : '';
   if (sec === 'apariencia') return appearanceSection();
   if (sec === 'pro') return proSettingsSection();
   if (sec === 'calendarios') return calendarsSection();
@@ -1453,6 +1456,23 @@ function settingsBody(sec) {
 /* ---------- Hojas modales ---------- */
 
 const modal = $('#modal');
+(function fixKeyboardGap() {
+  const vv = window.visualViewport;
+  const isField = el => el && el.matches && el.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea, select, [contenteditable="true"]');
+  let t = 0;
+  const settle = () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      if (isField(document.activeElement)) return; /* el teclado sigue abierto */
+      const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      const y = Math.min(window.scrollY, max);
+      /* Un pequeño desplazamiento obliga a iOS a recolocar los elementos fijos (barra de abajo, botón +) */
+      window.scrollTo(0, y + 1); window.scrollTo(0, y);
+    }, 120);
+  };
+  document.addEventListener('focusout', e => { if (isField(e.target)) settle(); });
+  if (vv) vv.addEventListener('resize', () => { if (!isField(document.activeElement)) settle(); });
+})();
 const modalForm = $('#modal-form');
 let modalOpts = {};
 

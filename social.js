@@ -172,17 +172,24 @@ const AVATARS = [
   ['Caras', ['😀', '😎', '🤓', '🥳', '😇', '🤠', '🧐', '😴', '🤩', '😺', '👽', '🤖']],
   ['Cosas', ['🚀', '🔥', '🌱', '⚡', '🎧', '📚', '⚽', '🎨', '🎮', '🌈', '☕', '🍕', '🎸', '🏀', '🌙', '💎']],
 ];
+const AV_BASE = ((window.PO_CONFIG && PO_CONFIG.supabaseUrl) || '').replace(/\/$/, '') + '/storage/v1/object/public/avatars/';
+const photoUrl = path => AV_BASE + path.split('/').map(encodeURIComponent).join('/');
+const nameStyle = u => u && /^#[0-9a-f]{6}$/i.test(u.name_color || '') ? ` style="color:${u.name_color}"` : '';
 function avatar(u, size = '') {
   if (!u) return `<span class="av ${size} none" aria-hidden="true">?</span>`;
+  const st = u.av_style === 'square' ? 'sq' : u.av_style === 'ring' ? 'ring' : '';
+  const vars = `--c:${userColor(u)};--rc:${u.name_color || userColor(u)}`;
+  if (u.photo) return `<span class="av ${size} ${st} photo" style="${vars}" title="${esc(dispName(u))}" aria-hidden="true"><img src="${photoUrl(u.photo)}" alt="" loading="lazy" decoding="async"></span>`;
   const t = u.avatar || dispName(u).trim().charAt(0).toUpperCase();
-  return `<span class="av ${size} ${u.avatar ? 'emo' : ''}" style="--c:${userColor(u)}" title="${esc(dispName(u))}" aria-hidden="true">${esc(t)}</span>`;
+  return `<span class="av ${size} ${st} ${u.avatar ? 'emo' : ''}" style="${vars}" title="${esc(dispName(u))}" aria-hidden="true">${esc(t)}</span>`;
 }
 /* Rejilla de avatares (radio): vale para la hoja rápida y para «Tu perfil» */
 function avatarGrid(p) {
-  const c = userColor(p), cur = p.avatar || '';
+  const c = userColor(p), cur = p.photo ? '@photo' : (p.avatar || '');
   const tile = (v, label) => `<label class="avp-tile" style="--c:${c}"><input type="radio" name="avatar" value="${esc(v)}" ${cur === v ? 'checked' : ''} aria-label="${esc(label)}"><span class="av md ${v ? 'emo' : ''}">${esc(v || dispName(p).trim().charAt(0).toUpperCase())}</span></label>`;
+  const photo = p.photo ? `<label class="avp-tile" style="--c:${c}"><input type="radio" name="avatar" value="@photo" checked aria-label="Tu foto"><span class="av md photo"><img src="${photoUrl(p.photo)}" alt=""></span></label>` : '';
   return `<div class="avp">
-    <div class="avp-g"><span class="avp-h">Tu inicial</span><div class="avp-row">${tile('', 'Inicial')}</div></div>
+    <div class="avp-g"><span class="avp-h">${p.photo ? 'Tu foto o tu inicial' : 'Tu inicial'}</span><div class="avp-row">${photo}${tile('', 'Inicial')}<button type="button" class="avp-up" data-avp-up aria-label="Subir una foto">${I.plus}<span>Foto</span></button></div></div>
     ${AVATARS.map(([n, list]) => `<div class="avp-g"><span class="avp-h">${n}</span><div class="avp-row">${list.map(e => tile(e, e)).join('')}</div></div>`).join('')}
   </div>`;
 }
@@ -190,14 +197,100 @@ function saveProfile(body) {
   Object.assign(SOC.profile, body); socSaveCache(); socRefresh();
   return rest(`profiles?id=eq.${SOC.profile.id}`, { method: 'PATCH', body: { ...body, updated_at: new Date().toISOString() } });
 }
+/* ---------- Foto de perfil (Supabase Storage, carpeta propia) ---------- */
+function pickPhoto() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = () => { const f = inp.files && inp.files[0]; if (f) uploadPhoto(f); };
+  inp.click();
+}
+async function squareJpeg(file, size = 320) {
+  let img;
+  try { img = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+  catch { img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('No se pudo leer la imagen')); i.src = URL.createObjectURL(file); }); }
+  const w = img.width, h = img.height, side = Math.min(w, h);
+  const cv = document.createElement('canvas'); cv.width = cv.height = size;
+  const cx = cv.getContext('2d'); cx.imageSmoothingQuality = 'high';
+  cx.drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, size, size);
+  return new Promise((ok, ko) => cv.toBlob(b => b ? ok(b) : ko(new Error('No se pudo preparar la foto')), 'image/jpeg', 0.86));
+}
+async function storageFetch(method, path, body) {
+  const tok = await accessToken();
+  if (!tok) throw new Error('Sesión caducada: vuelve a entrar');
+  const r = await fetch(`${CFG.supabaseUrl.replace(/\/$/, '')}/storage/v1/object/avatars/${path}`, { method, headers: { apikey: CFG.supabaseKey, Authorization: 'Bearer ' + tok, ...(body ? { 'Content-Type': 'image/jpeg', 'x-upsert': 'true', 'cache-control': '31536000' } : {}) }, body });
+  if (!r.ok) { const t = await r.text().catch(() => ''); let m = ''; try { m = JSON.parse(t).message || JSON.parse(t).error; } catch {} throw new Error(m || 'No se pudo subir la foto (' + r.status + ')'); }
+}
+function dropPhotoFile(path) { if (path) storageFetch('DELETE', path).catch(() => {}); }
+async function uploadPhoto(file) {
+  const p = SOC.profile; if (!p) return;
+  if (!/^image\//.test(file.type || 'image/')) { toast('Elige una imagen'); return; }
+  toast('Subiendo foto…');
+  try {
+    const blob = await squareJpeg(file);
+    const path = `${p.id}/${Date.now().toString(36)}.jpg`, old = p.photo;
+    await storageFetch('POST', path, blob);
+    await saveProfile({ photo: path });
+    if (old && old !== path) dropPhotoFile(old);
+    if (modal.open && $('.avp-prev', modalForm)) modal.close();
+    toast('¡Foto de perfil puesta!'); haptic(12);
+  } catch (e) { toast(niceErr(e)); }
+}
+function removePhoto() {
+  const p = SOC.profile; if (!p || !p.photo) return;
+  const old = p.photo;
+  saveProfile({ photo: null }).then(() => { dropPhotoFile(old); toast('Foto quitada'); }, e => toast(niceErr(e)));
+}
+document.addEventListener('click', e => { if (e.target.closest('[data-avp-up]')) { e.preventDefault(); pickPhoto(); } });
+
+/* ---------- Ajustes › Tu perfil ---------- */
+const NAME_COLORS = ['#4a72cf', '#34a853', '#f29900', '#e8467c', '#9c5ad8', '#0f9fb5', '#d4533b', '#6b7a99'];
+function profileSettingsSection() {
+  if (typeof cloudReady === 'function' && !cloudReady()) return socNotice('Tu perfil', 'Esta parte necesita la nube de Boldup.');
+  if (!getSession()) return socNotice('Tu perfil', 'Entra en tu cuenta para tener nick, avatar y amigos.', `<a class="btn primary" href="#ajustes/cuenta">Entrar o crear cuenta</a>`);
+  if (!SOC.profileLoaded) { (loadProfile() || Promise.resolve()).then(() => socRefresh(), () => socRefresh()); return `<div class="soc-loading glass"><span class="spin"></span>Cargando tu perfil…</div>`; }
+  if (SOC.backend === false) return socNotice('Casi listo', 'Los perfiles se están activando en el servidor.');
+  const p = SOC.profile;
+  if (!p) return socNotice('Elige tu nick', 'Tu nick es tu nombre en Boldup: con él te encuentran tus amigos.', `<button class="btn primary" data-sact="nick">Elegir mi nick</button>`);
+  const sw = (k, list, cur, auto) => `<div class="pf-sw">${auto ? `<button class="pf-dot auto ${!cur ? 'on' : ''}" data-sact="pf-set" data-k="${k}" data-v="" aria-label="Automático">A</button>` : ''}${list.map(c => `<button class="pf-dot ${cur && cur.toLowerCase() === c ? 'on' : ''}" style="--c:${c}" data-sact="pf-set" data-k="${k}" data-v="${c}" aria-label="Color ${c}"></button>`).join('')}</div>`;
+  const styles = [['', 'Círculo'], ['ring', 'Con anillo'], ['square', 'Cuadrado']];
+  return `<div class="pf-card glass">
+      <button class="soc-av" data-sact="avatar" aria-label="Cambiar avatar">${avatar(p, 'xl')}<span class="soc-av-ed" aria-hidden="true">✎</span></button>
+      <b class="pf-name"${nameStyle(p)}>${esc(dispName(p))}</b>
+      <span class="muted">@${esc(p.username)} · ${esc(p.friend_code)}</span>
+    </div>
+    <div class="section"><div class="section-head"><h2>Foto o avatar</h2></div>
+      <div class="settings-group glass">
+        <button class="item set-btn" data-sact="pf-photo"><span>${p.photo ? 'Cambiar la foto' : 'Subir una foto'}<span class="muted small item-sub">Se recorta en cuadrado y solo la ven tus amigos y compañeros</span></span>${I.right}</button>
+        ${p.photo ? `<button class="item set-btn danger" data-sact="pf-nophoto"><span>Quitar la foto</span></button>` : ''}
+        <button class="item set-btn" data-sact="avatar"><span>Elegir un avatar<span class="muted small item-sub">Animales, caras, cosas o tu inicial</span></span>${I.right}</button>
+      </div></div>
+    <div class="section"><div class="section-head"><h2>Cómo te ven</h2></div>
+      <div class="settings-group glass">
+        <label class="item pf-in"><span>Nombre visible</span><input type="text" data-pf="display_name" value="${esc(p.display_name || '')}" maxlength="40" placeholder="${esc(p.username)}" enterkeyhint="done"></label>
+        <div class="item"><span>Nick<span class="muted small item-sub">@${esc(p.username)}</span></span><button class="btn small" data-sact="pf-nick">Cambiar</button></div>
+        <div class="item pf-col"><span>Color del avatar</span>${sw('color', AV_COLORS, p.color, true)}</div>
+        <div class="item pf-col"><span>Color de tu nombre</span>${sw('name_color', NAME_COLORS, p.name_color, true)}</div>
+        <div class="item"><span>Aspecto del avatar</span><div class="segmented compact">${styles.map(([v, l]) => `<button class="${(p.av_style || '') === v ? 'on' : ''}" data-sact="pf-set" data-k="av_style" data-v="${v}">${l}</button>`).join('')}</div></div>
+      </div>
+      <p class="hint">Tus amigos ven tu nombre, tu nick y tu avatar en los proyectos compartidos. Tus tareas personales nunca se comparten.</p></div>`;
+}
+document.addEventListener('change', e => {
+  const inp = e.target.closest && e.target.closest('[data-pf]');
+  if (!inp || !SOC.profile) return;
+  const v = inp.value.trim();
+  if ((SOC.profile[inp.dataset.pf] || '') === v) return;
+  saveProfile({ [inp.dataset.pf]: v || null }).then(() => toast('Guardado'), err => toast(niceErr(err)));
+});
 function avatarSheet() {
   const p = SOC.profile;
   if (!p) return;
-  openModal('Elige tu avatar', `<div class="avp-prev">${avatar(p, 'lg')}<span><b>${esc(dispName(p))}</b><span class="muted small">Lo verán tus amigos en los proyectos compartidos</span></span></div>${avatarGrid(p)}
+  openModal('Elige tu avatar', `<div class="avp-prev">${avatar(p, 'lg')}<span><b${nameStyle(p)}>${esc(dispName(p))}</b><span class="muted small">Lo verán tus amigos en los proyectos compartidos</span></span></div>${avatarGrid(p)}
     <div class="field">Color de fondo${colorField('color', p.color || userColor(p))}</div>`, {
     onSave: d => {
-      const color = readColor(d, 'color');
-      saveProfile({ avatar: d.avatar || null, color: /^#[0-9a-f]{6}$/i.test(color || '') ? color : null }).then(() => toast('Avatar guardado'), e => toast(niceErr(e)));
+      const color = readColor(d, 'color'), keepPhoto = d.avatar === '@photo';
+      const body = { color: /^#[0-9a-f]{6}$/i.test(color || '') ? color : null };
+      if (!keepPhoto) { body.avatar = d.avatar || null; if (p.photo) { body.photo = null; dropPhotoFile(p.photo); } }
+      saveProfile(body).then(() => toast('Avatar guardado'), e => toast(niceErr(e)));
     },
   });
   /* Vista previa en directo mientras eliges */
@@ -205,7 +298,7 @@ function avatarSheet() {
     const box = $('.avp-prev', modalForm);
     if (!box) return modalForm.removeEventListener('change', prev);
     const fd = new FormData(modalForm), v = fd.get('avatar') || '', col = readColor(Object.fromEntries(fd), 'color') || userColor(p);
-    box.firstElementChild.outerHTML = avatar({ ...p, avatar: v, color: col }, 'lg');
+    box.firstElementChild.outerHTML = avatar(v === '@photo' ? { ...p, color: col } : { ...p, avatar: v, photo: null, color: col }, 'lg');
     $$('.avp-tile', modalForm).forEach(t => t.style.setProperty('--c', col));
   });
 }
@@ -385,7 +478,7 @@ function teamCard(p) {
       <span class="pj-text"><span class="pj-name">${esc(p.name)}</span>${stateLine(st)}<span class="pj-sub">${sub}</span></span>
       ${projRing({ done: p.done || 0, total: p.total || 0, pct })}
     </a>
-    ${fresh ? `<a class="tm-new" href="#equipo/${p.id}/actividad"><i></i><span><b>${esc(dispName((p.members || []).find(m => m.id === p.last_kind.user)))}</b> ${actText({ members: p.members || [] }, { ...p.last_kind, user_id: p.last_kind.user, detail: p.last_kind.detail || {} })}</span></a>` : ''}
+    ${fresh ? `<a class="tm-new" href="#equipo/${p.id}/actividad"><i></i><span><b${nameStyle((p.members || []).find(m => m.id === p.last_kind.user))}>${esc(dispName((p.members || []).find(m => m.id === p.last_kind.user)))}</b> ${actText({ members: p.members || [] }, { ...p.last_kind, user_id: p.last_kind.user, detail: p.last_kind.detail || {} })}</span></a>` : ''}
     <div class="tm-foot">${avStack(p.members || [], 5)}${streakTag(teamStreak(p.done_days))}${chatUnread(p.id, p.last_msg) ? `<a class="tm-chat-new" href="#equipo/${p.id}/chat">💬 Mensajes nuevos</a>` : ''}<span class="tm-upd">${p.updated_at ? 'Actividad ' + agoShort(p.updated_at) : ''}</span></div>
   </article>`;
 }
@@ -393,7 +486,7 @@ function meCard(compact) {
   const p = SOC.profile, inc = (SOC.friends && SOC.friends.incoming.length) || 0, nf = (SOC.friends && SOC.friends.list.length) || 0;
   return `<div class="soc-me glass ${compact ? 'compact' : ''}">
     <button class="soc-av" data-sact="avatar" aria-label="Cambiar tu avatar">${avatar(p, 'lg')}<span class="soc-av-ed" aria-hidden="true">✎</span></button>
-    <div class="soc-me-t"><b>${esc(dispName(p))}</b><span>@${esc(p.username)}</span>
+    <div class="soc-me-t"><b${nameStyle(p)}>${esc(dispName(p))}</b><span>@${esc(p.username)}</span>
       <button class="soc-code" data-sact="copy-code" aria-label="Copiar mi ID de amigo ${esc(p.friend_code)}">ID ${esc(p.friend_code)} ${I.copy}</button></div>
     ${compact ? `<a class="btn soc-friends-btn" href="#amigos">${inc ? `<span class="soc-dot">${inc}</span>` : ''}<span>Amigos${nf ? ' · ' + nf : ''}</span></a>` : `<button class="btn small" data-sact="edit-profile">Editar</button>`}
   </div>`;
@@ -436,9 +529,9 @@ function friendRow(f, kind) {
     : `<button class="icon-btn" data-sact="fr-menu" data-id="${f.id}" aria-label="Opciones de ${esc(dispName(u))}">${I.more}</button>`;
   if (kind === 'friend') {
     const n = teamsWith(u.id).length;
-    return `<li class="fr-row"><button class="fr-open" data-sact="fr-open" data-id="${f.id}">${avatar(u)}<span class="fr-t"><b>${esc(dispName(u))}</b><span>@${esc(u.username)}${n ? ` · ${n} proyecto${n === 1 ? '' : 's'} juntos` : ''}</span></span></button><span class="fr-a">${acts}</span></li>`;
+    return `<li class="fr-row"><button class="fr-open" data-sact="fr-open" data-id="${f.id}">${avatar(u)}<span class="fr-t"><b${nameStyle(u)}>${esc(dispName(u))}</b><span>@${esc(u.username)}${n ? ` · ${n} proyecto${n === 1 ? '' : 's'} juntos` : ''}</span></span></button><span class="fr-a">${acts}</span></li>`;
   }
-  return `<li class="fr-row">${avatar(u)}<span class="fr-t"><b>${esc(dispName(u))}</b><span>@${esc(u.username)}${kind === 'in' ? ' · quiere ser tu amigo' : kind === 'out' ? ' · esperando respuesta' : ''}</span></span><span class="fr-a">${acts}</span></li>`;
+  return `<li class="fr-row">${avatar(u)}<span class="fr-t"><b${nameStyle(u)}>${esc(dispName(u))}</b><span>@${esc(u.username)}${kind === 'in' ? ' · quiere ser tu amigo' : kind === 'out' ? ' · esperando respuesta' : ''}</span></span><span class="fr-a">${acts}</span></li>`;
 }
 const teamsWith = uid => (SOC.teams || []).filter(p => !p.archived_at && (p.members || []).some(m => m.id === uid));
 function friendSheet(f) {
@@ -480,7 +573,7 @@ function foundCard() {
     : rel === 'sent' ? '<span class="tag">Solicitud enviada</span>'
     : rel === 'received' ? `<button class="btn small primary" data-sact="fr-add" data-id="${u.id}">Aceptar</button>`
     : `<button class="btn small primary" data-sact="fr-add" data-id="${u.id}">${I.plus}<span>Añadir</span></button>`;
-  return `<div class="fr-found glass">${avatar(u, 'md')}<span class="fr-t"><b>${esc(dispName(u))}</b><span>@${esc(u.username)} · ${esc(u.friend_code)}</span></span>${act}</div>`;
+  return `<div class="fr-found glass">${avatar(u, 'md')}<span class="fr-t"><b${nameStyle(u)}>${esc(dispName(u))}</b><span>@${esc(u.username)} · ${esc(u.friend_code)}</span></span>${act}</div>`;
 }
 const PENDING_FRIEND = 'boldup.pendingFriend';
 /* Código QR con tu enlace de amigo: la librería se carga solo cuando hace falta */
@@ -580,7 +673,8 @@ function profileSheet() {
     <div class="field">Color${colorField('color', p.color || userColor(p))}</div>
     <div class="sheet-list"><button type="button" class="sheet-item" data-modal="nick">${I.gear}<span>Cambiar nick (@${esc(p.username)})</span></button></div>`, {
     onSave: d => {
-      const body = { display_name: d.display.trim() || null, avatar: d.avatar || null, color: readColor(d, 'color') };
+      const body = { display_name: d.display.trim() || null, color: readColor(d, 'color') };
+      if (d.avatar !== '@photo') { body.avatar = d.avatar || null; if (p.photo) { body.photo = null; dropPhotoFile(p.photo); } }
       if (body.color && !/^#[0-9a-f]{6}$/i.test(body.color)) body.color = null;
       saveProfile(body).then(() => toast('Perfil guardado'), e => toast(niceErr(e)));
     },
@@ -727,7 +821,7 @@ function viewTeamActivity(S) {
   return `<div class="section"><div class="section-head"><h2>Equipo · ${S.members.length}</h2><button class="btn small" data-sact="invite">${I.plus}<span>Invitar</span></button></div>
     <ul class="fr-list glass">${S.members.map(m => {
       const open = S.tasks.filter(t => t.assignee === m.id && !t.done_at).length, done = S.tasks.filter(t => t.assignee === m.id && t.done_at).length;
-      return `<li class="fr-row">${avatar(m)}<span class="fr-t"><b>${esc(dispName(m))}${m.id === socUid() ? ' (tú)' : ''}</b><span>@${esc(m.username)} · ${open} pendiente${open === 1 ? '' : 's'} · ${done} hecha${done === 1 ? '' : 's'}${m.role === 'owner' ? ' · creador' : ''}</span></span>
+      return `<li class="fr-row">${avatar(m)}<span class="fr-t"><b${nameStyle(m)}>${esc(dispName(m))}${m.id === socUid() ? ' (tú)' : ''}</b><span>@${esc(m.username)} · ${open} pendiente${open === 1 ? '' : 's'} · ${done} hecha${done === 1 ? '' : 's'}${m.role === 'owner' ? ' · creador' : ''}</span></span>
         <span class="fr-a">${m.id !== socUid() ? `<button class="btn small ghost" data-sact="t-filter-go" data-v="${m.id}">Ver sus tarjetas</button>${owner ? `<button class="icon-btn" data-sact="member-remove" data-id="${m.id}" aria-label="Quitar a ${esc(dispName(m))}">${I.close}</button>` : ''}` : ''}</span></li>`;
     }).join('')}</ul></div>
     ${streakCard(S)}
@@ -777,7 +871,7 @@ function viewTeamChat(S, pid) {
     prevDay = day; prevUser = m.user_id; prevT = t;
     const hm = new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     return `${sep}<li class="tm-msg ${mine ? 'mine' : ''} ${cont ? 'cont' : ''}">${mine ? '' : cont ? '<span class="tm-msg-sp"></span>' : avatar(who, 'sm')}
-      <div class="tm-bubble" ${mine ? 'data-sact="msg-sel"' : ''}>${!mine && !cont ? `<b>${esc(dispName(who))}</b>` : ''}<span class="tm-msg-t">${esc(m.body)}</span><span class="tm-msg-h">${hm}</span>${mine ? `<button class="tm-msg-del" data-sact="chat-del" data-id="${m.id}" aria-label="Borrar mensaje">${I.close}</button>` : ''}</div></li>`;
+      <div class="tm-bubble" ${mine ? 'data-sact="msg-sel"' : ''}>${!mine && !cont ? `<b${nameStyle(who)}>${esc(dispName(who))}</b>` : ''}<span class="tm-msg-t">${esc(m.body)}</span><span class="tm-msg-h">${hm}</span>${mine ? `<button class="tm-msg-del" data-sact="chat-del" data-id="${m.id}" aria-label="Borrar mensaje">${I.close}</button>` : ''}</div></li>`;
   }).join('');
   return `<div class="section tm-chat glass">
     <ul class="tm-chat-list">${rows || `<li class="tm-chat-empty">Aquí podéis hablar del proyecto sin salir de Boldup.<br><span class="muted small">Solo lo ven los miembros. Los mensajes tardan unos segundos en llegar a los demás.</span></li>`}</ul>
@@ -1055,7 +1149,7 @@ function inviteSheet(pid) {
   const go = () => {
     const friends = ((SOC.friends && SOC.friends.list) || []).filter(f => !inside.has(f.user.id));
     openModal('Invitar amigos', `
-      ${friends.length ? `<ul class="fr-list">${friends.map(f => `<li class="fr-row">${avatar(f.user)}<span class="fr-t"><b>${esc(dispName(f.user))}</b><span>@${esc(f.user.username)}</span></span><span class="fr-a"><button type="button" class="btn small primary" data-modal="add" data-uid="${f.user.id}">Añadir</button></span></li>`).join('')}</ul>`
+      ${friends.length ? `<ul class="fr-list">${friends.map(f => `<li class="fr-row">${avatar(f.user)}<span class="fr-t"><b${nameStyle(f.user)}>${esc(dispName(f.user))}</b><span>@${esc(f.user.username)}</span></span><span class="fr-a"><button type="button" class="btn small primary" data-modal="add" data-uid="${f.user.id}">Añadir</button></span></li>`).join('')}</ul>`
         : `<p class="hint">${(SOC.friends && SOC.friends.list.length) ? 'Todos tus amigos ya están en este proyecto.' : 'Primero añade amigos por su nick o ID.'}</p>`}
       <div class="sheet-list"><button type="button" class="sheet-item" data-modal="friends">${I.plus}<span>Buscar y añadir amigos</span></button></div>
       <p class="hint">Solo puedes invitar a tus amigos. Al añadirles verán el tablero al momento.</p>`, {
@@ -1180,7 +1274,7 @@ function teamTodaySection(d) {
   const strip = teams.length ? `<div class="tm-strip">${teams.slice(0, 8).map(p => {
     const pct = p.total ? Math.round(p.done / p.total * 100) : 0, fresh = p.last_act && p.last_act > seenAct(p.id) && p.last_kind;
     const who = fresh && (p.members || []).find(m => m.id === p.last_kind.user);
-    const line = fresh ? `<b>${esc(dispName(who))}</b> ${actText({ members: p.members || [] }, { ...p.last_kind, user_id: p.last_kind.user, detail: p.last_kind.detail || {} })}`
+    const line = fresh ? `<b${nameStyle(who)}>${esc(dispName(who))}</b> ${actText({ members: p.members || [] }, { ...p.last_kind, user_id: p.last_kind.user, detail: p.last_kind.detail || {} })}`
       : p.late ? `<span class="warn-text">${p.late} atrasada${p.late === 1 ? '' : 's'}</span>` : p.mine ? `${p.mine} para ti` : p.total && p.done === p.total ? '¡Todo hecho!' : `${pct}% hecho`;
     return `<a class="tm-mini glass ${fresh ? 'fresh' : ''}" href="#equipo/${p.id}" style="--c:${p.color || '#4a72cf'}">
       <span class="tm-mini-top"><span class="tm-mini-ic">${esc(p.icon || '👥')}</span>${streakTag(teamStreak(p.done_days))}${chatUnread(p.id, p.last_msg) ? '<span class="tm-mini-chat" title="Mensajes nuevos">💬</span>' : ''}${avStack(p.members || [], 3, 'xs')}</span>
@@ -1227,6 +1321,10 @@ document.addEventListener('click', e => {
     }
     case 'edit-profile': profileSheet(); return;
     case 'avatar': avatarSheet(); return;
+    case 'pf-photo': pickPhoto(); return;
+    case 'pf-nophoto': if (confirm('¿Quitar tu foto de perfil?')) removePhoto(); return;
+    case 'pf-nick': openNickDialog({ change: true }); return;
+    case 'pf-set': { const k = el.dataset.k, v = el.dataset.v || null; if (!['color', 'name_color', 'av_style'].includes(k)) return; haptic(6); saveProfile({ [k]: v }).catch(err => toast(niceErr(err))); return; }
     case 'react': toggleReact(pid, Number(el.dataset.aid), el.dataset.e); return;
     case 'react-pick': { const w = el.closest('.tm-react-add'), open = !w.classList.contains('open'); $$('.tm-react-add.open').forEach(x => x.classList.remove('open')); w.classList.toggle('open', open); return; }
     case 'chat-del': {

@@ -27,6 +27,21 @@ create table if not exists public.profiles (
   constraint profiles_avatar_len check (avatar is null or char_length(avatar) <= 16),
   constraint profiles_color_fmt check (color is null or color ~ '^#[0-9a-fA-F]{6}$')
 );
+-- v75: foto propia (ruta dentro del almacén «avatars», siempre en tu carpeta), color del nombre y estilo del avatar
+alter table public.profiles add column if not exists photo text;
+alter table public.profiles add column if not exists name_color text;
+alter table public.profiles add column if not exists av_style text;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'profiles_photo_fmt') then
+    alter table public.profiles add constraint profiles_photo_fmt check (photo is null or (photo ~ '^[0-9a-f-]{36}/[A-Za-z0-9_-]{1,40}\.(jpg|webp|png)$' and split_part(photo, '/', 1) = id::text));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'profiles_name_color_fmt') then
+    alter table public.profiles add constraint profiles_name_color_fmt check (name_color is null or name_color ~ '^#[0-9a-fA-F]{6}$');
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'profiles_av_style_ok') then
+    alter table public.profiles add constraint profiles_av_style_ok check (av_style is null or av_style in ('ring', 'square'));
+  end if;
+end $$;
 create unique index if not exists profiles_username_key on public.profiles (username);
 create unique index if not exists profiles_friend_code_key on public.profiles (friend_code);
 alter table public.profiles enable row level security;
@@ -403,8 +418,9 @@ begin
 end $$;
 
 -- Busca a alguien por nick exacto o por ID de amigo (no deja listar a todo el mundo)
+drop function if exists public.find_user(text);
 create or replace function public.find_user(q text)
-returns table (id uuid, username text, display_name text, friend_code text, avatar text, color text, relation text)
+returns table (id uuid, username text, display_name text, friend_code text, avatar text, color text, photo text, name_color text, av_style text, relation text)
 language plpgsql stable security definer set search_path = '' as $$
 declare me uuid := auth.uid(); s text := upper(trim(both from coalesce(q, '')));
 begin
@@ -412,7 +428,7 @@ begin
   s := regexp_replace(s, '^@', '');
   if s ~ '^BU-?[A-Z0-9]{6}$' then s := 'BU-' || right(s, 6); end if;
   return query
-    select p.id, p.username, p.display_name, p.friend_code, p.avatar, p.color,
+    select p.id, p.username, p.display_name, p.friend_code, p.avatar, p.color, p.photo, p.name_color, p.av_style,
       case when p.id = me then 'me'
         when f.status = 'accepted' then 'friend'
         when f.status = 'pending' and f.requester = me then 'sent'
@@ -523,7 +539,7 @@ language sql stable security definer set search_path = '' as $$
     select jsonb_build_object(
       'id', p.id, 'name', p.name, 'icon', p.icon, 'color', p.color, 'description', p.description, 'owner', p.owner,
       'created_at', p.created_at, 'updated_at', p.updated_at, 'archived_at', p.archived_at,
-      'members', (select jsonb_agg(jsonb_build_object('id', u.id, 'username', u.username, 'display_name', u.display_name, 'avatar', u.avatar, 'color', u.color, 'role', m.role) order by m.joined_at)
+      'members', (select jsonb_agg(jsonb_build_object('id', u.id, 'username', u.username, 'display_name', u.display_name, 'avatar', u.avatar, 'color', u.color, 'photo', u.photo, 'name_color', u.name_color, 'av_style', u.av_style, 'role', m.role) order by m.joined_at)
                   from public.team_members m join public.profiles u on u.id = m.user_id where m.project_id = p.id),
       'total', (select count(*) from public.team_tasks t where t.project_id = p.id),
       'done', (select count(*) from public.team_tasks t where t.project_id = p.id and t.done_at is not null),
@@ -546,7 +562,7 @@ begin
   if not public.is_team_member(pid) then return null; end if;
   return (select jsonb_build_object(
     'project', to_jsonb(p),
-    'members', (select coalesce(jsonb_agg(jsonb_build_object('id', u.id, 'username', u.username, 'display_name', u.display_name, 'avatar', u.avatar, 'color', u.color, 'friend_code', u.friend_code, 'role', m.role, 'joined_at', m.joined_at) order by m.joined_at), '[]'::jsonb)
+    'members', (select coalesce(jsonb_agg(jsonb_build_object('id', u.id, 'username', u.username, 'display_name', u.display_name, 'avatar', u.avatar, 'color', u.color, 'photo', u.photo, 'name_color', u.name_color, 'av_style', u.av_style, 'friend_code', u.friend_code, 'role', m.role, 'joined_at', m.joined_at) order by m.joined_at), '[]'::jsonb)
                 from public.team_members m join public.profiles u on u.id = m.user_id where m.project_id = pid),
     'columns', (select coalesce(jsonb_agg(to_jsonb(c) order by c.position, c.created_at), '[]'::jsonb) from public.team_columns c where c.project_id = pid),
     'goals', (select coalesce(jsonb_agg(to_jsonb(g) order by g.position, g.created_at), '[]'::jsonb) from public.team_goals g where g.project_id = pid),
@@ -704,7 +720,24 @@ grant all on public.profiles, public.friendships, public.team_projects, public.t
   public.team_goals, public.team_tasks, public.team_comments, public.team_activity to service_role;
 -- El perfil: solo se pueden cambiar nombre visible, avatar y color (el nick va por claim_username)
 revoke update on public.profiles from authenticated;
-grant update (display_name, avatar, color, updated_at) on public.profiles to authenticated;
+grant update (display_name, avatar, color, photo, name_color, av_style, updated_at) on public.profiles to authenticated;
+
+-- v75: almacén público «avatars» para las fotos de perfil. Cada uno solo puede escribir en su carpeta (su id).
+do $$ begin
+  if exists (select 1 from information_schema.tables where table_schema = 'storage' and table_name = 'buckets') then
+    insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    values ('avatars', 'avatars', true, 524288, array['image/jpeg', 'image/webp', 'image/png'])
+    on conflict (id) do update set public = true, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+    drop policy if exists "avatars: ver lo mío" on storage.objects;
+    create policy "avatars: ver lo mío" on storage.objects for select to authenticated using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+    drop policy if exists "avatars: subir a lo mío" on storage.objects;
+    create policy "avatars: subir a lo mío" on storage.objects for insert to authenticated with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+    drop policy if exists "avatars: cambiar lo mío" on storage.objects;
+    create policy "avatars: cambiar lo mío" on storage.objects for update to authenticated using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+    drop policy if exists "avatars: borrar lo mío" on storage.objects;
+    create policy "avatars: borrar lo mío" on storage.objects for delete to authenticated using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+  end if;
+end $$;
 -- Proyecto: los miembros cambian nombre, icono, color, descripción y archivado; el dueño se cede por RPC
 revoke update on public.team_projects from authenticated;
 grant update (name, icon, color, description, archived_at, owner) on public.team_projects to authenticated;
