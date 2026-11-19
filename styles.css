@@ -3141,3 +3141,33 @@ dialog.crop-dlg { width: 100%; max-width: 460px; padding: 0 0 calc(18px + env(sa
 .tf-more { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 @media (max-width: 1023.98px) { .today-grid .today-side { display: none; } }
 @media (min-width: 1024px) { .tf.mobile-fold { display: none; } }
+
+/* ---------- v85: elegir el tiempo arrastrando la esfera y con − / + ---------- */
+.dial.is-setable { cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+.dial.is-setable.dragging { cursor: grabbing; }
+.dial.is-setable:focus-visible { outline: none; }
+.dial.is-setable:focus-visible .dial-time { text-decoration: underline 2px var(--accent); text-underline-offset: 6px; }
+.dial.is-setable .dial-knob circle:not(.knob-hint) { r: 5.6; stroke-width: 2.6; }
+/* Un anillo suave alrededor del tirador invita a arrastrarlo */
+.dial.is-setable .knob-hint { fill: color-mix(in srgb, var(--dial-a) 22%, transparent); stroke: none; transform-box: fill-box; transform-origin: center; animation: knob-hint 2.2s ease-in-out infinite; }
+.dial.is-setable.dragging .knob-hint { animation: none; opacity: 1; transform: scale(1.25); }
+@keyframes knob-hint { 0%, 100% { transform: scale(.7); opacity: .2; } 50% { transform: scale(1.15); opacity: 1; } }
+.dial.dragging .bar, .dial.dragging .dial-knob { transition: none !important; }
+.dial.dragging .dial-time { transform: scale(1.04); }
+.dial-time { transition: transform .2s; }
+.dial.is-setable .dial-label { font-weight: 500; font-size: 11px; opacity: .85; }
+/* Filas con − valor + */
+.focus-steps { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 340px; }
+.fstep { display: grid; grid-template-columns: 1fr 40px minmax(76px, auto) 40px; align-items: center; gap: 6px; padding: 4px 4px 4px 14px; border-radius: 14px; background: var(--fill); }
+.fstep-l { font-size: 14px; font-weight: 500; color: var(--muted); }
+.fstep-v { text-align: center; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fstep-b { width: 40px; height: 36px; border: 0; border-radius: 10px; background: var(--seg-thumb, #fff); color: var(--text); font-size: 20px; font-weight: 500; line-height: 1; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08); -webkit-tap-highlight-color: transparent; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+.fstep-b:active { transform: scale(.94); }
+.fstep-b:disabled { opacity: .35; cursor: default; transform: none; }
+@media (max-height: 700px) and (max-width: 600px) { .fstep { padding-top: 2px; padding-bottom: 2px; } .fstep-b { height: 32px; } }
+@media (prefers-reduced-motion: reduce) { .dial.is-setable .knob-hint { animation: none; opacity: .6; } }
+.dial-time.hrs { font-size: calc(var(--ds) * .155); }
+/* Antes de empezar, la esfera es el control principal: más grande y sin la ayuda del primer paso */
+.focus-card:not(.is-running):not(.is-summary) .focus-extra .hint { display: none; }
+@media (max-height: 820px) and (max-width: 600px) { .focus-card:not(.is-running) .dial.is-setable { --ds: 196px; } }
+@media (max-height: 640px) and (max-width: 600px) { .focus-card:not(.is-running) .dial.is-setable { --ds: 172px; } }

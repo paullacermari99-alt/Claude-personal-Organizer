@@ -274,7 +274,7 @@ function interpret(raw) {
     const name = (rest || '').replace(/\s*(?:de|durante)\s+\d+\s+minutos?/i, '').trim();
     const t = name && findTaskByName(name);
     if (!t) return { say: name ? `No encuentro la tarea «${name}». Di «empieza» y el nombre de la tarea.` : '¿Con qué tarea? Di, por ejemplo, «empieza el informe».' };
-    return { say: `Empezar un enfoque con «${t.title}»${focusMin ? ` (${focusMin} min)` : ''}`, go: () => { if (focusMin && SINGLE_MINS.includes(Number(focusMin))) focusMins = Number(focusMin); openFocus(t.id); } };
+    return { say: `Empezar un enfoque con «${t.title}»${focusMin ? ` (${focusMin} min)` : ''}`, go: () => { if (focusMin && Number(focusMin) >= 1 && Number(focusMin) <= 180) focusMins = Number(focusMin); openFocus(t.id); } };
   }
 
   /* Crear objetivo, proyecto o hábito */

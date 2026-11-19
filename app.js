@@ -1444,7 +1444,7 @@ function settingsBody(sec) {
       <div class="item"><span>Zona horaria</span><select data-set="timezone" class="tz">${tzs.map(z => `<option ${z === s.timezone ? 'selected' : ''}>${esc(z)}</option>`).join('')}</select></div>
       <div class="item"><span>Primer día de la semana</span>${sel('weekStart', [[1, 'Lunes'], [0, 'Domingo']], s.weekStart, true)}</div>
       <div class="item"><span>Tu jornada</span><div class="inline"><input type="time" data-set="dayStart" value="${esc(s.dayStart || '08:00')}" aria-label="Empieza"><span class="muted">a</span><input type="time" data-set="dayEnd" value="${esc(s.dayEnd || '21:00')}" aria-label="Termina"></div></div>
-      <div class="item"><span>Temporizador de enfoque</span>${sel('focusMinutes', SINGLE_MINS.map(m => [m, m + ' min']), s.focusMinutes, true)}</div>
+      <div class="item"><span>Temporizador de enfoque</span>${sel('focusMinutes', [...new Set([...SINGLE_MINS, Number(s.focusMinutes) || 25])].sort((a, b) => a - b).map(m => [m, m + ' min']), s.focusMinutes, true)}</div>
     </div>
   </div>`;
   if (sec === 'etiquetas') return `
@@ -2054,16 +2054,26 @@ function projectModal(p0 = {}) {
    Sesión larga: trabajo → descanso → trabajo… sin descanso tras la última ronda. */
 
 const SINGLE_MINS = [5, 15, 25, 45, 60];
-const LONG_OPTS = { work: [25, 45, 50], brk: [5, 10, 15], rounds: [2, 3, 4] };
+/* v85: cada uno elige su tiempo: foco 1–180 min (arrastrando la esfera o con − / +), descanso 1–60 min, 2–12 rondas */
+const FOCUS_LIM = { work: [1, 180], brk: [1, 60], rounds: [2, 12] };
+const limFocus = (k, v, d) => { const [a, b] = FOCUS_LIM[k]; v = Math.round(Number(v)); return Number.isFinite(v) && v >= a ? Math.min(b, v) : d; };
 function focusPlan() {
   const p = state.settings.focusPlan || {};
   return {
     mode: p.mode === 'long' ? 'long' : 'single',
-    work: LONG_OPTS.work.includes(p.work) ? p.work : 25,
-    brk: LONG_OPTS.brk.includes(p.brk) ? p.brk : 5,
-    rounds: LONG_OPTS.rounds.includes(p.rounds) ? p.rounds : 4,
+    work: limFocus('work', p.work, 25),
+    brk: limFocus('brk', p.brk, 5),
+    rounds: limFocus('rounds', p.rounds, 4),
   };
 }
+/* Minutos de foco que se están eligiendo (sesión única o cada ronda) */
+const focusSetMins = () => focusPlan().mode === 'long' ? focusPlan().work : focusMins;
+function setFocusMins(v) {
+  v = limFocus('work', v, 25);
+  if (focusPlan().mode === 'long') setFocusPlan('work', v);
+  else { focusMins = v; state.settings.focusMinutes = v; save(true); }
+}
+const fmtMins = m => m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}` : m + ' min';
 function setFocusPlan(k, v) { state.settings.focusPlan = { ...focusPlan(), [k]: v }; save(true); }
 
 function getTimer() { try { return JSON.parse(localStorage.getItem(TIMER_KEY)) || null; } catch { return null; } }
@@ -2088,7 +2098,7 @@ function timerSchedule(tm) {
   return out;
 }
 const timerLeft = tm => tm.pausedLeft != null ? tm.pausedLeft : Math.max(0, tm.endAt - Date.now());
-const mmss = ms => `${pad(Math.floor(ms / 60000))}:${pad(Math.floor(ms / 1000) % 60)}`;
+const mmss = ms => ms >= 3600000 ? `${Math.floor(ms / 3600000)}:${pad(Math.floor(ms / 60000) % 60)}:${pad(Math.floor(ms / 1000) % 60)}` : `${pad(Math.floor(ms / 60000))}:${pad(Math.floor(ms / 1000) % 60)}`;
 const clockAt = ms => dtf('es-ES', { timeZone: state.settings.timezone || undefined, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ms));
 const sessionEnd = tm => timerSchedule(tm).slice(-1)[0].at;
 const phaseLabel = tm => tm.mode !== 'long' ? '' : tm.phase === 'break' ? `Descanso · ronda ${tm.round} de ${tm.rounds}` : `Ronda ${tm.round} de ${tm.rounds}`;
@@ -2174,7 +2184,7 @@ function openFocus(id) {
   if (!t) return;
   focusTaskId = id;
   if (!t.startedAt) { t.startedAt = Date.now(); save(); }
-  if (!SINGLE_MINS.includes(focusMins)) focusMins = SINGLE_MINS.includes(state.settings.focusMinutes) ? state.settings.focusMinutes : 25;
+  if (limFocus('work', focusMins, 0) !== focusMins) focusMins = limFocus('work', state.settings.focusMinutes, 25);
   const layer = $('#focus');
   clearTimeout(closeFocus.t); layer.classList.remove('is-closing');
   const wasOpen = !layer.hidden;
@@ -2258,30 +2268,33 @@ function renderFocus(noMorph) {
   const timer = getTimer(), mine = timer && timer.taskId === t.id, paused = mine && timer.pausedLeft != null;
   const other = timer && !mine, plan = focusPlan();
   const total = plan.rounds * plan.work + (plan.rounds - 1) * plan.brk;
+  const stepper = (k, v, label, txt) => `<div class="fstep" data-k="${k}"><span class="fstep-l">${label}</span>
+        <button class="fstep-b" data-act="focus-step" data-k="${k}" data-d="-1" aria-label="Menos ${label.toLowerCase()}" ${v <= FOCUS_LIM[k][0] ? 'disabled' : ''}>−</button>
+        <b class="fstep-v" data-v="${k}">${txt}</b>
+        <button class="fstep-b" data-act="focus-step" data-k="${k}" data-d="1" aria-label="Más ${label.toLowerCase()}" ${v >= FOCUS_LIM[k][1] ? 'disabled' : ''}>+</button></div>`;
+  const setMins = plan.mode === 'long' ? plan.work : focusMins;
   const setup = mine ? '' : `
       <div class="segmented compact focus-mode seg-slide" role="tablist" style="--i:${plan.mode === 'long' ? 1 : 0}">
         <button role="tab" class="${plan.mode === 'single' ? 'on' : ''}" data-act="focus-mode" data-v="single">Sesión única</button>
         <button role="tab" class="${plan.mode === 'long' ? 'on' : ''}" data-act="focus-mode" data-v="long">Con descansos</button>
       </div>
-      ${plan.mode === 'single' ? chips('focus-min', SINGLE_MINS, focusMins, ' min', true) : `
-      <div class="focus-plan">
-        <span>Trabajo</span>${chips('focus-plan-work', LONG_OPTS.work, plan.work)}
-        <span>Descanso</span>${chips('focus-plan-brk', LONG_OPTS.brk, plan.brk)}
-        <span>Rondas</span>${chips('focus-plan-rounds', LONG_OPTS.rounds, plan.rounds, '')}
-      </div>`}`;
+      <div class="focus-steps">
+        ${stepper('work', setMins, 'Foco', fmtMins(setMins))}
+        ${plan.mode === 'long' ? stepper('brk', plan.brk, 'Descanso', fmtMins(plan.brk)) + stepper('rounds', plan.rounds, 'Rondas', plan.rounds) : ''}
+      </div>`;
   const brk = mine && timer.phase === 'break';
   const sub = paused ? 'Tómate tu tiempo. Seguimos cuando quieras.'
     : mine ? `${timer.mode === 'long' ? (brk ? `Vuelves a las ${clockAt(timer.endAt)}` : timer.round < timer.rounds ? `Descanso a las ${clockAt(timer.endAt)}` : `Termina a las ${clockAt(timer.endAt)}`) : `Termina a las ${clockAt(timer.endAt)}`}. Si sales de la app, te aviso.`
     : other ? 'Hay otro temporizador en marcha; si empiezas este, lo sustituye.'
-    : plan.mode === 'long' ? `${plan.rounds} rondas de ${plan.work} min con ${plan.brk} min de descanso: ${total >= 60 ? Math.floor(total / 60) + ' h ' + (total % 60 ? total % 60 + ' min' : '') : total + ' min'} en total.`
-    : 'Una sola sesión, sin descansos. La esfera es una hora: lo de color es tu sesión.';
+    : plan.mode === 'long' ? `${fmtMins(total)} en total · terminas a las ${clockAt(Date.now() + total * 60000)}.`
+    : `Terminas a las ${clockAt(Date.now() + focusMins * 60000)}.`;
   const startMins = plan.mode === 'long' ? plan.work : focusMins;
   const ms0 = mine ? timerLeft(timer) : startMins * 60000;
   /* Estado arriba: un punto de color que late mientras corre el tiempo */
   const status = showSum ? ['done', 'Sesión terminada'] : !mine ? ['idle', 'Enfoque'] : paused ? ['pause', 'En pausa'] : brk ? ['break', 'Descanso'] : ['run', timer.mode === 'long' ? `Ronda ${timer.round} de ${timer.rounds}` : 'Concentrado'];
   const rounds = mine ? timer.rounds : plan.mode === 'long' ? plan.rounds : 1;
   const dots = rounds > 1 ? `<div class="dial-dots" aria-label="Ronda ${mine ? timer.round : 1} de ${rounds}">${Array.from({ length: rounds }, (_, k) => { const r = k + 1, cur = mine ? timer.round : 0; return `<i class="${r < cur || (r === cur && brk) ? 'done' : r === cur ? 'cur' : ''}"></i>`; }).join('')}</div>` : '';
-  const dialLabel = mine ? (dots || `hasta las ${clockAt(timer.endAt)}`) : (dots || 'min');
+  const dialLabel = mine ? (dots || `hasta las ${clockAt(timer.endAt)}`) : '↻ arrastra';
   const ch = mine && !paused && timer.cheer ? timer.cheer : null;
   const ctrl = (act, icon, label, cls = 'fc-side', extra = '') => `<button class="${cls}" data-act="${act}" ${extra} aria-label="${label}"><span class="fc-ic">${icon}</span><small>${label}</small></button>`;
   layer.innerHTML = `<div class="focus-card glass ${showSum ? 'is-summary' : ''} ${mine ? 'is-running' : ''} ${paused ? 'is-paused' : ''} ${prevCard ? 'no-pop' : ''}" data-mode="${mine ? 'run' : showSum ? 'sum' : plan.mode}" role="dialog" aria-label="Enfoque">
@@ -2294,13 +2307,13 @@ function renderFocus(noMorph) {
       <span class="hint">Una acción pequeña y concreta, de menos de 2 minutos. Así arrancar cuesta mucho menos.</span></label>
     ${t.subtasks.length ? `<div class="focus-subs focus-extra">${t.subtasks.map(s => `<label><input type="checkbox" class="check sm" data-act="sub-toggle" data-id="${t.id}" data-sub="${s.id}" ${s.done ? 'checked' : ''}><span>${esc(s.title)}</span></label>`).join('')}</div>` : ''}
     <div class="focus-timer ${paused ? 'is-paused' : ''} ${brk ? 'is-break' : ''} ${mine && !paused ? 'is-live' : ''} ${showSum ? 'is-hidden' : ''}">
-      <div class="ring big dial" aria-hidden="true">
+      <div class="ring big dial ${!mine && !showSum ? 'is-setable' : ''}" ${!mine && !showSum ? `role="slider" tabindex="0" aria-label="Minutos de foco" aria-valuemin="1" aria-valuemax="180" aria-valuenow="${startMins}"` : 'aria-hidden="true"'}>
         <span class="dial-halo"></span>
         <svg viewBox="0 0 84 84"><defs><linearGradient id="dial-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="g0"/><stop offset="1" class="g1"/></linearGradient></defs>
           <circle class="face" cx="42" cy="42" r="35"/><circle class="track" cx="42" cy="42" r="38"/>${RING_TICKS}
           <circle class="bar" id="focus-ring" cx="42" cy="42" r="38" stroke-dasharray="${RING}" stroke-dashoffset="${prevRing != null ? prevRing : ringOffset(ms0)}"/>
-          <g class="dial-knob" id="focus-knob" style="transform:${prevKnob || `rotate(${knobDeg(ms0)}deg)`}"><circle cx="80" cy="42" r="4.3"/></g></svg>
-        <div class="dial-mid"><span class="dial-time" id="focus-time">${pad(startMins)}:00</span><span class="dial-label">${dialLabel}</span></div>
+          <g class="dial-knob" id="focus-knob" style="transform:${prevKnob || `rotate(${knobDeg(ms0)}deg)`}">${!mine && !showSum ? '<circle class="knob-hint" cx="80" cy="42" r="9"/>' : ''}<circle cx="80" cy="42" r="4.3"/></g></svg>
+        <div class="dial-mid"><span class="dial-time ${(mine ? timerLeft(timer) : startMins * 60000) >= 3600000 ? 'hrs' : ''}" id="focus-time">${mmss(startMins * 60000)}</span><span class="dial-label">${dialLabel}</span></div>
       </div>
       ${ch ? cheerHTML(ch, ch.t !== prevCheer) : ''}
       ${setup}
@@ -2319,7 +2332,7 @@ function renderFocus(noMorph) {
       ${showSum ? `<button class="btn" data-act="focus-again">${I.repeat}<span>Otra sesión</span></button>
       <button class="btn primary" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar tarea'}</button>`
       : `<button class="btn fc-done" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar'}</button>
-      <button class="btn primary fc-start" data-act="focus-start">${I.play}<span>Empezar<span class="fc-mins"> · ${startMins} min</span></span></button>`}
+      <button class="btn primary fc-start" data-act="focus-start">${I.play}<span>Empezar<span class="fc-mins"> · ${fmtMins(startMins)}</span></span></button>`}
     </div>`}
   </div>`;
   if (prev && !noMorph) morphFocus(layer.querySelector('.focus-card'), prev);
@@ -2379,7 +2392,7 @@ function updateTimerUI() {
     pill.hidden = true;
     const el = $('#focus-time');
     const m0 = focusPlan().mode === 'long' ? focusPlan().work : focusMins || 25;
-    if (el) { el.textContent = pad(m0) + ':00'; $('#focus-ring').style.strokeDashoffset = ringOffset(m0 * 60000); const k = $('#focus-knob'); if (k) k.style.transform = `rotate(${knobDeg(m0 * 60000)}deg)`; }
+    if (el && !dialDrag) { el.textContent = mmss(m0 * 60000); el.classList.toggle('hrs', m0 >= 60); $('#focus-ring').style.strokeDashoffset = ringOffset(m0 * 60000); const k = $('#focus-knob'); if (k) k.style.transform = `rotate(${knobDeg(m0 * 60000)}deg)`; }
     closeFocusNote();
     return;
   }
@@ -2393,7 +2406,7 @@ function updateTimerUI() {
   pill.innerHTML = `${paused ? I.pause : I.play}<span class="one-line">${brk ? 'Descanso' : esc(t ? t.title : 'Enfoque')}</span><b>${txt}</b>`;
   const el = $('#focus-time');
   if (el && timer.taskId === focusTaskId) {
-    el.textContent = txt;
+    el.textContent = txt; el.classList.toggle('hrs', left >= 3600000);
     $('#focus-ring').style.strokeDashoffset = ringOffset(left);
     const k = $('#focus-knob'); if (k) k.style.transform = `rotate(${knobDeg(left)}deg)`;
   }
@@ -2460,6 +2473,102 @@ function beep() {
   } catch {}
 }
 setInterval(updateTimerUI, 1000);
+
+/* ---------- v85: elegir el tiempo arrastrando la esfera y con − / + ---------- */
+let dialDrag = null;
+/* Pone al día la ventana sin volver a pintarla (para que arrastrar sea fluido) */
+function updateSetupUI() {
+  const plan = focusPlan(), m = focusSetMins(), layer = $('#focus');
+  const el = $('#focus-time'), ring = $('#focus-ring'), knob = $('#focus-knob');
+  if (el) { el.textContent = mmss(m * 60000); el.classList.toggle('hrs', m >= 60); }
+  if (ring) ring.style.strokeDashoffset = ringOffset(m * 60000);
+  if (knob) knob.style.transform = `rotate(${knobDeg(m * 60000)}deg)`;
+  const dial = layer.querySelector('.dial.is-setable'); if (dial) dial.setAttribute('aria-valuenow', m);
+  const vals = { work: m, brk: plan.brk, rounds: plan.rounds };
+  layer.querySelectorAll('.fstep').forEach(row => {
+    const k = row.dataset.k, v = vals[k];
+    row.querySelector('.fstep-v').textContent = k === 'rounds' ? v : fmtMins(v);
+    row.querySelector('[data-d="-1"]').disabled = v <= FOCUS_LIM[k][0];
+    row.querySelector('[data-d="1"]').disabled = v >= FOCUS_LIM[k][1];
+  });
+  const total = plan.mode === 'long' ? plan.rounds * plan.work + (plan.rounds - 1) * plan.brk : m;
+  const sub = $('#focus-sub');
+  if (sub && !getTimer()) sub.textContent = plan.mode === 'long' ? `${fmtMins(total)} en total · terminas a las ${clockAt(Date.now() + total * 60000)}.` : `Terminas a las ${clockAt(Date.now() + m * 60000)}.`;
+  const lab = layer.querySelector('.fc-mins'); if (lab) lab.textContent = ` · ${fmtMins(m)}`;
+}
+/* − / +: el foco va de 5 en 5 (para afinar, la esfera), el descanso y las rondas de 1 en 1 */
+function focusStep(k, d) {
+  const plan = focusPlan();
+  if (k === 'work') { const m = focusSetMins(), step = 5; setFocusMins(d > 0 ? Math.floor(m / step) * step + step : Math.ceil(m / step) * step - step || 1); }
+  else setFocusPlan(k, limFocus(k, plan[k] + d, plan[k]));
+  haptic(6);
+  updateSetupUI();
+}
+function dialMinutes(dial, x, y, cur) {
+  const r = dial.getBoundingClientRect(), dx = x - (r.left + r.width / 2), dy = y - (r.top + r.height / 2);
+  let a = Math.atan2(dx, -dy); if (a < 0) a += 2 * Math.PI;
+  let m = Math.round(a / (2 * Math.PI) * 60) || 60;
+  /* No salta de 60 a 1 (ni de 1 a 60) al pasar por arriba */
+  const c = Math.min(60, cur);
+  if (c >= 45 && m <= 15) m = 60;
+  else if (c <= 15 && m >= 45) m = 1;
+  return Math.max(1, m);
+}
+(() => {
+  const layer = $('#focus');
+  if (!layer) return;
+  layer.addEventListener('pointerdown', e => {
+    const dial = e.target.closest('.dial.is-setable');
+    if (!dial || e.button > 0) return;
+    e.preventDefault(); e.stopPropagation();
+    dialDrag = { id: e.pointerId, dial, last: focusSetMins() };
+    dial.classList.add('dragging');
+    try { dial.setPointerCapture(e.pointerId); } catch {}
+    move(e);
+  });
+  const move = e => {
+    if (!dialDrag || e.pointerId !== dialDrag.id) return;
+    e.preventDefault();
+    const m = dialMinutes(dialDrag.dial, e.clientX, e.clientY, dialDrag.last);
+    if (m === dialDrag.last) return;
+    if (Math.floor(m / 5) !== Math.floor(dialDrag.last / 5)) haptic(5);
+    dialDrag.last = m;
+    if (focusPlan().mode === 'long') state.settings.focusPlan = { ...focusPlan(), work: m }; else focusMins = m;
+    updateSetupUI();
+  };
+  const end = e => {
+    if (!dialDrag || e.pointerId !== dialDrag.id) return;
+    dialDrag.dial.classList.remove('dragging');
+    const m = dialDrag.last;
+    dialDrag = null;
+    setFocusMins(m);
+    updateSetupUI();
+  };
+  layer.addEventListener('pointermove', move, { passive: false });
+  layer.addEventListener('pointerup', end);
+  layer.addEventListener('pointercancel', end);
+  layer.addEventListener('keydown', e => {
+    const dial = e.target.closest && e.target.closest('.dial.is-setable');
+    if (!dial) return;
+    const d = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    setFocusMins(focusSetMins() + d);
+    updateSetupUI();
+  });
+  /* Mantener pulsado − / + repite */
+  let hold = null;
+  const stop = () => { if (hold) { clearTimeout(hold.t); clearInterval(hold.i); } };
+  layer.addEventListener('pointerdown', e => {
+    const b = e.target.closest('.fstep-b');
+    if (!b) return;
+    stop();
+    hold = { b, t: setTimeout(() => { hold.i = setInterval(() => { if (b.disabled) return stop(); hold.rep = true; focusStep(b.dataset.k, Number(b.dataset.d)); }, 110); }, 420) };
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => layer.addEventListener(ev, e => { if (hold && (ev !== 'pointerleave' || e.target === hold.b)) stop(); }));
+  /* Tras repetir, el clic de soltar no suma uno más */
+  layer.addEventListener('click', e => { if (hold && hold.rep && e.target.closest('.fstep-b')) { e.stopPropagation(); e.preventDefault(); hold = null; } }, true);
+})();
 
 /* ---------- Recordatorios ---------- */
 
@@ -2612,6 +2721,7 @@ document.addEventListener('click', e => {
     case 'focus-open': openFocus(id); return;
     case 'focus-close': closeFocus(); return;
     case 'focus-min': focusMins = Number(el.dataset.v); renderFocus(); return;
+    case 'focus-step': focusStep(el.dataset.k, Number(el.dataset.d)); return;
     case 'focus-mode': setFocusPlan('mode', el.dataset.v); renderFocus(); return;
     case 'focus-plan-work': setFocusPlan('work', Number(el.dataset.v)); renderFocus(); return;
     case 'focus-plan-brk': setFocusPlan('brk', Number(el.dataset.v)); renderFocus(); return;
