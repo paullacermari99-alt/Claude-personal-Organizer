@@ -576,21 +576,23 @@ function taskResults() {
 function viewTasks() {
   const ui = state.settings.ui, tab = ui.tasksTab || 'bandeja', f = ui.taskFilter || {};
   const counts = Object.fromEntries(TASK_TABS.map(([k]) => [k, tasksForTab(k).length]));
-  const activeProjects = state.projects.filter(p => !p.archived);
+  /* v81: los filtros viven en una hoja; aquí solo se ven los que están puestos */
+  const chips = [], fp = f.project && project(f.project), ft = f.tag && state.tags.find(t => t.id === f.tag);
+  if (fp) chips.push(`<button class="chip-btn on" data-act="task-filter-off" data-k="project">${esc(fp.icon || '')} ${esc(fp.name)} ${I.close}</button>`);
+  if (ft) chips.push(`<button class="chip-btn on" data-act="task-filter-off" data-k="tag">${esc(ft.name)} ${I.close}</button>`);
+  if (f.priority && PRIORITIES[f.priority]) chips.push(`<button class="chip-btn on" data-act="task-filter-off" data-k="priority">${esc(PRIORITIES[f.priority])} ${I.close}</button>`);
+  const nF = chips.length;
   return `
   <div class="page page-mid">
   ${pageHead({ eyebrow: (n => n ? `${n} pendiente${n === 1 ? '' : 's'}` : 'Nada pendiente')(state.tasks.filter(t => !isRoutineTask(t) && !t.done).length), title: 'Tareas', actions: `<a class="btn small" href="#diarias">${I.daily}<span>Diarias</span></a>
     <button class="btn primary" data-act="new-task">${I.plus}<span>Nueva</span></button>` })}
   <div class="segmented" role="tablist" data-live="task-tabs">${TASK_TABS.map(([k, l]) => `<button role="tab" class="${tab === k ? 'on' : ''}" data-act="tasks-tab" data-v="${k}">${l}${k !== 'completadas' && counts[k] ? ` <span class="seg-count ${k === 'vencidas' ? 'warn' : ''}">${counts[k]}</span>` : ''}</button>`).join('')}</div>
-  <div class="filters">
-    <label class="search glass">${I.search}<input type="search" data-input="task-search" value="${esc(taskQuery)}" placeholder="Buscar tareas" aria-label="Buscar tareas"></label>
-    <div class="filter-row">
-    <select data-set-ui="taskFilter.project" aria-label="Filtrar por proyecto"><option value="">Proyecto: todos</option>${activeProjects.map(p => `<option value="${p.id}" ${f.project === p.id ? 'selected' : ''}>${esc(p.icon)} ${esc(p.name)}</option>`).join('')}</select>
-    <select data-set-ui="taskFilter.tag" aria-label="Filtrar por etiqueta"><option value="">Etiqueta: todas</option>${state.tags.map(t => `<option value="${t.id}" ${f.tag === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
-    <select data-set-ui="taskFilter.priority" aria-label="Filtrar por prioridad"><option value="">Prioridad: todas</option>${Object.entries(PRIORITIES).map(([k, l]) => `<option value="${k}" ${f.priority === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-    </div>
-  </div>
   ${tab === 'completadas' ? '' : quickAdd({ due: tab === 'proximas' ? todayStr() : tab === 'bandeja' ? '' : '' }, tab === 'proximas' ? 'Nueva tarea para hoy' : 'Ej.: dentista mañana a las 10')}
+  <div class="filters tk-filters">
+    <label class="search glass">${I.search}<input type="search" data-input="task-search" value="${esc(taskQuery)}" placeholder="Buscar tareas" aria-label="Buscar tareas"></label>
+    <button class="btn tk-filter-btn ${nF ? 'on' : ''}" data-act="task-filters" aria-label="Filtros${nF ? `, ${nF} activos` : ''}">${I.filter}<span>Filtros</span>${nF ? `<span class="tk-fn">${nF}</span>` : ''}</button>
+  </div>
+  ${nF ? `<div class="chips-row tk-active">${chips.join('')}<button class="chip-btn ghost" data-act="task-filter-clear">Quitar filtros</button></div>` : ''}
   <div id="task-results" class="section-gap">${taskResults()}</div>
   </div>`;
 }
@@ -823,6 +825,20 @@ function projectRow(p) {
     <span class="pj-text"><span class="pj-name">${esc(p.name)}</span>${stateLine(st)}</span>
     ${projRing(s.pr)}
   </a></li>`;
+}
+function taskFiltersSheet() {
+  const ui = state.settings.ui, f = ui.taskFilter || {};
+  const grp = (k, title, opts) => `<div class="tpl-h">${title}</div><div class="chips-row wrap">${[['', 'Todos'], ...opts].map(([v, l]) => `<button type="button" class="chip-btn ${(f[k] || '') === v ? 'on' : ''}" data-modal="pick" data-k="${k}" data-v="${esc(v)}">${l}</button>`).join('')}</div>`;
+  openModal('Filtros', `
+    ${grp('project', 'Proyecto', state.projects.filter(p => !p.archived).map(p => [p.id, `${esc(p.icon || '')} ${esc(p.name)}`]))}
+    ${grp('tag', 'Etiqueta', state.tags.map(t => [t.id, esc(t.name)]))}
+    ${grp('priority', 'Prioridad', Object.entries(PRIORITIES).map(([k, l]) => [k, esc(l)]))}
+    <button type="button" class="btn wide" data-modal="clear">Quitar filtros</button>`, {
+    actions: {
+      pick: el => { ui.taskFilter = { ...f, [el.dataset.k]: el.dataset.v || '' }; save(); modal.close(); softSwap(); },
+      clear: () => { ui.taskFilter = {}; save(); modal.close(); softSwap(); },
+    },
+  });
 }
 const PROJ_SORTS = [['manual', 'Creación'], ['nombre', 'Nombre'], ['recientes', 'Más recientes'], ['progreso', 'Progreso']];
 function projectsViewSheet() {
@@ -2757,6 +2773,9 @@ document.addEventListener('click', e => {
     case 'project-fav': e.preventDefault(); { const p = project(id); p.favorite = !p.favorite; haptic(); } break;
     case 'project-menu': projectMenu(project(id)); return;
     case 'share-project': shareProjectSheet(project(id)); return;
+    case 'task-filters': taskFiltersSheet(); return;
+    case 'task-filter-off': { const f = { ...(state.settings.ui.taskFilter || {}) }; f[el.dataset.k] = ''; state.settings.ui.taskFilter = f; save(); softSwap(); return; }
+    case 'task-filter-clear': state.settings.ui.taskFilter = {}; save(); softSwap(); return;
     case 'project-archive': setProjectArchived(project(id), !project(id).archived); return;
     case 'projects-view': projectsViewSheet(); return;
     case 'proj-tab': location.hash = `#proyecto/${id}/${el.dataset.v}`; return;

@@ -3083,3 +3083,13 @@ dialog.crop-dlg { width: 100%; max-width: 460px; padding: 0 0 calc(18px + env(sa
 .pj-share-hint svg { width: 16px; height: 16px; flex: none; margin-top: 2px; }
 .pj-row .av-stack { margin-left: auto; flex: none; }
 @media (max-width: 380px) { .page-projects .pj-friends { width: 44px; padding: 0; justify-content: center; } .page-projects .pj-friends > span:not(.soc-dot) { display: none; } }
+
+/* ---------- v81: Tareas con un solo botón de filtros ---------- */
+.tk-filters { flex-wrap: nowrap; margin-top: 10px; }
+.tk-filters .search { flex: 1 1 auto; }
+.tk-filter-btn { flex: none; gap: 6px; min-height: 42px; }
+.tk-filter-btn svg { width: 18px; height: 18px; }
+.tk-fn { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 99px; background: var(--action-bg, var(--accent)); color: #fff; font-size: 12px; font-weight: 700; }
+.tk-active { flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.tk-active .chip-btn svg { width: 12px; height: 12px; margin-left: 2px; vertical-align: -1px; }
+.tk-active .chip-btn { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }

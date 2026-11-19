@@ -667,7 +667,7 @@ async function convertToTeam(p, members) {
   const gmap = {};
   const goals = s.goals.map((g, i) => { gmap[g.id] = newId(); return { id: gmap[g.id], project_id: pid, title: (g.title || 'Objetivo').slice(0, 140), notes: (g.notes || '').slice(0, 2000) || null, due: g.due || null, done_at: goalStatus(g) === 'cumplido' ? new Date().toISOString() : null, position: i + 1 }; });
   if (goals.length) await rest('team_goals', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: goals });
-  const pri = { high: 2, medium: 1 };
+  const pri = { high: 2, med: 1 };
   const tasks = s.tasks.slice().sort((a, b) => (a.done - b.done) || sortByDue(a, b)).map((t, i) => ({
     id: newId(), project_id: pid, column_id: (t.done ? done : open) ? (t.done ? done : open).id : null, goal_id: gmap[t.goalId] || null,
     title: (t.title || 'Tarea').slice(0, 200), notes: (t.notes || '').slice(0, 5000) || null, due: t.due || null, priority: pri[t.priority] || 0,
