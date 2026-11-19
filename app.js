@@ -1384,13 +1384,13 @@ function settingsBody(sec) {
     <div class="section-head"><h2>Recordatorios</h2></div>
     <div class="settings-group glass">
       <label class="item"><span>Activar recordatorios</span><input type="checkbox" class="switch" data-set="reminders.enabled" ${r.enabled && perm === 'granted' ? 'checked' : ''} ${perm === 'unsupported' ? 'disabled' : ''}></label>
-      <div class="item"><span>Antes de un bloque</span>${sel('reminders.blocks', [[0, 'No avisar'], [5, '5 min antes'], [10, '10 min antes'], [15, '15 min antes'], [30, '30 min antes']], r.blocks, true)}</div>
+      <div class="item"><span>Antes de un bloque<span class="muted small item-sub">Por defecto. En cada tarea o bloque puedes elegir otro aviso</span></span>${sel('reminders.blocks', [[0, 'No avisar'], [5, '5 min antes'], [10, '10 min antes'], [15, '15 min antes'], [30, '30 min antes'], [60, '1 hora antes'], [120, '2 horas antes']], r.blocks, true)}</div>
       <div class="item"><span>Plazos</span><div class="inline">${sel('reminders.deadlines', [['off', 'No avisar'], ['day-before', 'El día antes'], ['same-day', 'El mismo día']], r.deadlines)}<input type="time" data-set="reminders.deadlineTime" value="${esc(r.deadlineTime)}" aria-label="Hora del aviso de plazos"></div></div>
       <div class="item"><span>Resumen de la mañana<span class="muted small item-sub">Tus prioridades, bloques y diarias del día</span></span>${sel('reminders.morning', [['', 'No'], ['06:30', 'A las 6:30'], ['07:00', 'A las 7:00'], ['07:30', 'A las 7:30'], ['08:00', 'A las 8:00'], ['08:30', 'A las 8:30'], ['09:00', 'A las 9:00'], ['10:00', 'A las 10:00']], r.morning || '')}</div>
       <div class="item"><span>Resumen de diarias</span>${sel('reminders.dailySummary', [['', 'No'], ['08:00', 'A las 8:00'], ['09:00', 'A las 9:00'], ['13:00', 'A las 13:00'], ['18:00', 'A las 18:00'], ['20:00', 'A las 20:00'], ['21:00', 'A las 21:00']], r.dailySummary)}</div>
       <div class="item"><span>Horas de silencio</span><div class="inline"><input type="time" data-set="reminders.quietFrom" value="${esc(r.quietFrom)}" aria-label="Desde"><span class="muted">a</span><input type="time" data-set="reminders.quietTo" value="${esc(r.quietTo)}" aria-label="Hasta"></div></div>
     </div>
-    <p class="hint">${perm === 'unsupported' ? 'Este navegador no admite notificaciones. En iPhone, instala la app en la pantalla de inicio.' : perm === 'denied' ? 'Las notificaciones están bloqueadas en el navegador; actívalas en sus ajustes.' : 'Los avisos llegan mientras la app está abierta o en segundo plano. En silencio no se avisa.'}</p>
+    <p class="hint">${perm === 'unsupported' ? 'Este navegador no admite notificaciones. En iPhone, instala la app en la pantalla de inicio.' : perm === 'denied' ? 'Las notificaciones están bloqueadas en el navegador; actívalas en sus ajustes.' : 'Con «Avisos con la app cerrada» (en Cuenta) te llegan aunque cierres la app. Los avisos que eliges en una tarea o bloque suenan también en horas de silencio.'}</p>
   </div>`;
   if (sec === 'calendario') return `
   <div class="section">
@@ -1652,6 +1652,10 @@ function taskModal(t0 = {}) {
       <label class="field">Duración estimada<select name="estimate"><option value="">—</option>${ESTIMATES.map(m => `<option value="${m}" ${t.estimate === m ? 'selected' : ''}>${durLabel(m)}</option>`).join('')}</select></label>
     </div>
     <div class="row">
+      ${evs.length ? `<div class="field">Hora<div class="small muted remind-at">${esc(relDay(evs[0].date))} a las ${esc(evs[0].start)}</div></div>` : `<label class="field">Hora (opcional)<input type="time" name="time" value=""></label>`}
+      <label class="field">Avisarme<select name="remind">${remindOptions(t.remind)}</select></label>
+    </div>
+    <div class="row">
       <label class="field">Repetir<select name="repUnit"><option value="">No se repite</option>${Object.entries(REPEAT_UNITS).map(([u, [one]]) => `<option value="${u}" ${t.repeat && t.repeat.unit === u ? 'selected' : ''}>Cada ${one}</option>`).join('')}</select></label>
       <label class="field rep-n">Cada cuántos<input type="number" name="repN" min="1" max="99" inputmode="numeric" value="${t.repeat ? t.repeat.n : 1}"></label>
     </div>
@@ -1707,11 +1711,15 @@ function taskModal(t0 = {}) {
         }
         if (voiced) voiceSavedToast(obj, p.found);
       }
+      obj.remind = readRemind(d.remind);
+      if (d.time) nlTime = d.time;
+      if (obj.remind != null && obj.remind >= 0 && !nlTime && !blocksOfTask(obj.id).length) { toast('Pon una hora para que pueda avisarte'); return false; }
       if (obj.repeat && !obj.due) obj.due = todayStr();
       if (nlTime) { if (!obj.due) obj.due = todayStr(); scheduleTask(obj, obj.due, nlTime, fmtHM(Math.min(toMin(nlTime) + (obj.estimate || 60), 24 * 60 - 1))); }
       if (isNew) state.tasks.push(obj);
       else blocksOfTask(obj.id).forEach(e => { if (e.title === oldTitle) e.title = title; });
       saved = obj;
+      if (obj.remind != null && obj.remind >= 0) ensureReminders();
     },
     onDelete: isNew ? null : () => { deleteWithUndo('task', t.id); },
     actions: {
@@ -1754,6 +1762,7 @@ function eventModal(ev0 = {}) {
       <label class="field">Empieza<input type="time" name="start" required value="${esc(src.start)}"></label>
       <label class="field">Termina<input type="time" name="end" required value="${esc(src.end)}"></label>
     </div>
+    <label class="field">Avisarme<select name="remind">${remindOptions(src.remind, t)}</select></label>
     ${recFields}
     <div class="field">Color${colorField('color', src.color, { auto: true })}</div>
     <div class="row">
@@ -1763,7 +1772,8 @@ function eventModal(ev0 = {}) {
     ${occ ? `<button type="button" class="btn wide danger-soft" data-modal="del-one">Eliminar solo este día</button>` : ''}`, {
     onSave: (d, fd) => {
       if (d.end <= d.start) { toast('La hora de fin debe ser posterior al inicio'); return false; }
-      const fields = { title: d.title.trim() || (t ? t.title : 'Bloque'), color: readColor(d, 'color'), tagId: d.tagId || null, projectId: d.projectId || null };
+      const fields = { title: d.title.trim() || (t ? t.title : 'Bloque'), color: readColor(d, 'color'), tagId: d.tagId || null, projectId: d.projectId || null, remind: readRemind(d.remind) };
+      if (fields.remind != null && fields.remind >= 0) ensureReminders();
       let saved;
       if (occ) {
         Object.assign(series, fields);
@@ -2455,6 +2465,53 @@ function notify(key, title, body, tag) {
     else new Notification(title, opts);
   } catch (e) { console.warn('Notificación', e); }
 }
+/* v79: aviso antes de cada tarea o bloque. remind: sin valor = el de Ajustes; -1 = no avisar; 0 = a la hora; n = n minutos antes */
+const REMIND_OPTS = [[-1, 'No avisar'], [0, 'A la hora'], [5, '5 min antes'], [10, '10 min antes'], [15, '15 min antes'], [30, '30 min antes'], [60, '1 hora antes'], [120, '2 horas antes'], [1440, '1 día antes']];
+function remindLabel(m) { const o = REMIND_OPTS.find(([v]) => v === m); return o ? o[1] : `${m} min antes`; }
+function remindOptions(cur, t) {
+  const inherited = t && t.remind != null ? t.remind : state.settings.reminders.blocks || -1;
+  const def = `${t && t.remind != null ? 'Como la tarea' : 'Como siempre'} (${remindLabel(inherited).toLowerCase()})`;
+  return `<option value="" ${cur == null ? 'selected' : ''}>${esc(def)}</option>` + REMIND_OPTS.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('');
+}
+const readRemind = v => v === '' || v == null ? null : Number(v);
+/* Minutos de antelación de un bloque y si los eligió la persona (así suenan aunque sea hora de silencio) */
+function remindOf(e) {
+  if (e.remind != null) return { m: e.remind, own: true };
+  const t = e.taskId && task(e.taskId);
+  if (t && t.remind != null) return { m: t.remind, own: true };
+  return { m: state.settings.reminders.blocks || -1, own: false };
+}
+function fmtLead(min) {
+  if (min < 1) return 'ahora';
+  if (min < 60) return `en ${min} min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return `en ${h} h${m ? ` ${m} min` : ''}`;
+}
+function eventAlerts(today, now) {
+  const out = [], nowMin = toMin(now);
+  [today, addDays(today, 1)].forEach((d, i) => eventsOn(d).forEach(e => {
+    const { m, own } = remindOf(e);
+    if (m < 0) return;
+    const t = e.taskId && task(e.taskId);
+    if (t && t.done) return;
+    const diff = i * 1440 + toMin(e.start) - nowMin;
+    if (diff < 0 || diff > m) return;
+    out.push({ key: `ev:${e.id}:${d}`, own, title: e.title, body: `${i ? 'Mañana' : 'Empieza'} a las ${e.start} · ${fmtLead(diff)}` });
+  }));
+  return out;
+}
+/* Al elegir un aviso: pide permiso y, si hay cuenta, activa los avisos con la app cerrada */
+function ensureReminders() {
+  const r = state.settings.reminders;
+  if (!('Notification' in window)) { toast('Para recibir avisos en iPhone, instala la app en la pantalla de inicio'); return; }
+  const done = () => { if (getSession() && CFG.vapidPublicKey && !pushActive()) subscribePush().catch(() => {}); };
+  if (Notification.permission === 'granted') { if (!r.enabled) { r.enabled = true; save(); } done(); return; }
+  if (Notification.permission === 'denied') { toast('Las notificaciones están bloqueadas: actívalas en los ajustes del navegador'); return; }
+  Notification.requestPermission().then(p => {
+    if (p !== 'granted') { toast('Sin permiso para avisar'); return; }
+    r.enabled = true; save(); toast('Avisos activados'); done();
+  });
+}
 function checkReminders() {
   const r = state.settings.reminders;
   if (!r.enabled || pushActive() || !('Notification' in window) || Notification.permission !== 'granted') return;
@@ -2466,11 +2523,9 @@ function checkReminders() {
     const m = morningSummary(today);
     notify(`morning:${today}`, m.title, m.body);
   }
-  if (inQuiet(now)) return;
-  if (r.blocks) eventsOn(today).forEach(e => {
-    const diff = toMin(e.start) - toMin(now);
-    if (diff >= 0 && diff <= r.blocks) notify(`ev:${e.id}:${today}`, e.title, `Empieza a las ${e.start}`);
-  });
+  const quiet = inQuiet(now);
+  for (const a of eventAlerts(today, now)) if (a.own || !quiet) notify(a.key, a.title, a.body);
+  if (quiet) return;
   if (r.deadlines !== 'off' && now >= r.deadlineTime) {
     const target = r.deadlines === 'day-before' ? addDays(today, 1) : today;
     state.tasks.filter(t => !t.done && !isRoutineTask(t) && t.due === target).forEach(t => notify(`due:${t.id}:${target}`, `Plazo ${relDay(target).toLowerCase()}`, t.title));

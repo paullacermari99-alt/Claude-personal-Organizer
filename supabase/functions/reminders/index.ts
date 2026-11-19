@@ -110,11 +110,24 @@ function remindersBase(st: Any) {
     if (rest.length) lines.push(rest.join(' · '));
     out.push({ key: `morning:${today}`, title: 'Tu día', body: lines.join('\n') });
   }
-  if (inQuiet(r, hm)) return out;
-  if (r.blocks) for (const e of eventsOn(st, today)) {
-    const diff = toMin(e.start) - toMin(hm);
-    if (diff >= 0 && diff <= r.blocks) out.push({ key: `ev:${e.id}:${today}`, title: e.title, body: `Empieza a las ${e.start}` });
-  }
+  /* v79: aviso antes de cada bloque o tarea con hora. remind: sin valor = el de Ajustes; -1 = no; 0 = a la hora; n = minutos antes.
+     Los que eligió la persona suenan también en horas de silencio. */
+  const quiet = inQuiet(r, hm);
+  const tasks = new Map((st.tasks || []).map((t: Any) => [t.id, t]));
+  [today, addDays(today, 1)].forEach((d, i) => {
+    for (const e of eventsOn(st, d)) {
+      const t: Any = e.taskId ? tasks.get(e.taskId) : null;
+      if (t && t.done) continue;
+      const own = e.remind != null || (t && t.remind != null);
+      const m = e.remind != null ? e.remind : t && t.remind != null ? t.remind : (r.blocks || -1);
+      if (m < 0 || (!own && quiet)) continue;
+      const diff = i * 1440 + toMin(e.start) - toMin(hm);
+      if (diff < 0 || diff > m) continue;
+      const lead = diff < 1 ? 'ahora' : diff < 60 ? `en ${diff} min` : `en ${Math.floor(diff / 60)} h${diff % 60 ? ` ${diff % 60} min` : ''}`;
+      out.push({ key: `ev:${e.id}:${d}`, title: e.title, body: `${i ? 'Mañana' : 'Empieza'} a las ${e.start} · ${lead}` });
+    }
+  });
+  if (quiet) return out;
   if (r.deadlines && r.deadlines !== 'off' && hm >= (r.deadlineTime || '09:00')) {
     const target = r.deadlines === 'day-before' ? addDays(today, 1) : today;
     for (const t of st.tasks || []) if (!t.done && !t.routineId && t.due === target) out.push({ key: `due:${t.id}:${target}`, title: `Plazo ${relDay(today, target)}`, body: t.title });
