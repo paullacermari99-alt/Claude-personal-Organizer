@@ -474,7 +474,7 @@ function focusHome(tasks) {
     </div>`;
   }
   const plan = focusPlan(), mins = plan.mode === 'long' ? plan.work : (focusMins || limFocus('work', state.settings.focusMinutes, 25));
-  const how = plan.mode === 'long' ? `${plan.rounds} × ${fmtMins(plan.work)} con descansos` : fmtMins(mins);
+  const how = plan.mode === 'long' && plan.rounds > 1 ? `${plan.rounds} × ${fmtMins(plan.work)} con descansos` : fmtMins(plan.mode === 'long' ? plan.work : mins);
   return `<div class="fh-in">
     <div class="fh-text"><span class="fh-l"><span class="fh-spark" aria-hidden="true">✦</span>Modo foco</span>
       <span class="fh-t">Concéntrate sin distracciones</span>
@@ -2081,8 +2081,8 @@ function projectModal(p0 = {}) {
    Sesión larga: trabajo → descanso → trabajo… sin descanso tras la última ronda. */
 
 const SINGLE_MINS = [5, 15, 25, 45, 60];
-/* v85: cada uno elige su tiempo: foco 1–180 min (arrastrando la esfera o con − / +), descanso 1–60 min, 2–12 rondas */
-const FOCUS_LIM = { work: [1, 180], brk: [1, 60], rounds: [2, 12] };
+/* v85: cada uno elige su tiempo: foco 1–180 min (arrastrando la esfera o con − / +), descanso 1–60 min, 1–12 rondas (con 1 ronda no hay descanso) */
+const FOCUS_LIM = { work: [1, 180], brk: [1, 60], rounds: [1, 12] };
 const limFocus = (k, v, d) => { const [a, b] = FOCUS_LIM[k]; v = Math.round(Number(v)); return Number.isFinite(v) && v >= a ? Math.min(b, v) : d; };
 function focusPlan() {
   const p = state.settings.focusPlan || {};
@@ -2205,7 +2205,7 @@ let dreamFx = null;
 function dreamMeta(tm) {
   const left = timerLeft(tm), long = tm.mode === 'long', brk = tm.phase === 'break';
   const chip = (ic, txt) => `<span class="dream-chip"><span aria-hidden="true">${ic}</span>${txt}</span>`;
-  if (!long) return chip('🏁', `Sin descansos · termina a las ${clockAt(Date.now() + left)}`);
+  if (!long || tm.rounds < 2) return chip('🏁', `Sin descansos · termina a las ${clockAt(Date.now() + left)}`);
   const breaks = tm.rounds - 1;
   const dots = `<span class="dream-dots" aria-label="Ronda ${tm.round} de ${tm.rounds}">${Array.from({ length: tm.rounds }, (_, k) => `<i class="${k + 1 < tm.round || (k + 1 === tm.round && brk) ? 'done' : k + 1 === tm.round ? 'cur' : ''}"></i>`).join('')}</span>`;
   if (brk) return chip('☕', `Descanso ${tm.round} de ${breaks} · vuelves en <b>${mmss(left)}</b>`) + dots;
@@ -2216,7 +2216,7 @@ function renderDream(t, timer) {
   const layer = $('#focus');
   const was = !layer.hidden && !layer.classList.contains('is-minimizing') && layer.querySelector('.dream');
   const prevCheer = was && $('#focus-cheer') ? $('#focus-cheer').textContent.slice(1) : null;
-  const paused = timer.pausedLeft != null, brk = timer.phase === 'break', long = timer.mode === 'long';
+  const paused = timer.pausedLeft != null, brk = timer.phase === 'break', long = timer.mode === 'long' && timer.rounds > 1;
   const left = timerLeft(timer);
   const status = paused ? 'En pausa' : brk ? 'Descanso' : long ? `Ronda ${timer.round} de ${timer.rounds}` : 'Concentrado';
   const ch = timer.cheer || { k: 'start', t: CHEERS.start[0] };
@@ -2429,7 +2429,7 @@ function renderFocus(noMorph) {
       </div>
       <div class="focus-steps">
         ${stepper('work', setMins, 'Foco', fmtMins(setMins))}
-        ${plan.mode === 'long' ? stepper('brk', plan.brk, 'Descanso', fmtMins(plan.brk)) + stepper('rounds', plan.rounds, 'Rondas', plan.rounds) : ''}
+        ${plan.mode === 'long' ? stepper('brk', plan.brk, 'Descanso', fmtMins(plan.brk)).replace('class="fstep"', `class="fstep ${plan.rounds < 2 ? 'off' : ''}"`) + stepper('rounds', plan.rounds, 'Rondas', plan.rounds) : ''}
       </div>`;
   const brk = mine && timer.phase === 'break';
   const sub = paused ? 'Tómate tu tiempo. Seguimos cuando quieras.'
@@ -2658,6 +2658,7 @@ function updateSetupUI() {
     row.querySelector('.fstep-v').textContent = k === 'rounds' ? v : fmtMins(v);
     row.querySelector('[data-d="-1"]').disabled = v <= FOCUS_LIM[k][0];
     row.querySelector('[data-d="1"]').disabled = v >= FOCUS_LIM[k][1];
+    if (k === 'brk') row.classList.toggle('off', plan.rounds < 2);
   });
   const total = plan.mode === 'long' ? plan.rounds * plan.work + (plan.rounds - 1) * plan.brk : m;
   const sub = $('#focus-sub');

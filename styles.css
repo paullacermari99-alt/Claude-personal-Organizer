@@ -3341,3 +3341,5 @@ dialog.crop-dlg { width: 100%; max-width: 460px; padding: 0 0 calc(18px + env(sa
 .dream.enter .dream-cheer { animation: none; }
 @media (max-height: 700px) { .dream-tip { min-height: 104px; padding: 16px 20px; border-radius: 22px; } .dream-tip .dream-cheer { font-size: 17px; } }
 @media (prefers-reduced-motion: reduce) { .dream-cheer { transition: none; } }
+/* v91: con 1 ronda no hay descanso: la fila se apaga */
+.fstep.off { opacity: .4; pointer-events: none; }
