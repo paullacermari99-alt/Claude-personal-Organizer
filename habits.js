@@ -132,6 +132,22 @@ function habitsTodaySection(d) {
   return collapsible('habitos', 'Hábitos', `${done}/${list.length}`, `<ul class="habit-list glass">${list.map(h => habitRow(h, d)).join('')}</ul>`,
     `<a class="btn small ghost" href="#habitos">Ver todos</a>`);
 }
+/* v82: en Hoy los hábitos van plegados; esto da el resumen y el contenido */
+function habitsTodayParts(d) {
+  const list = habits().filter(h => habitDueOn(h, d)).sort(habitOrder);
+  if (!habits().length) {
+    if (state.settings.ui.habitHintOff || d !== todayStr()) return null;
+    return { sum: 'Crea el primero', body: `<div class="plan-card glass habit-hint">
+      <div class="grow"><div class="title">Crea un hábito 🔥</div><div class="small muted">Márcalo cada día y mira crecer tu racha.</div></div>
+      <button class="btn small" data-act="habit-new">Crear</button>
+      <button class="icon-btn" data-act="habit-hint-off" aria-label="Ahora no">${I.close}</button>
+    </div>` };
+  }
+  if (!list.length) return null;
+  const done = list.filter(h => habitDone(h, d)).length;
+  return { sum: done === list.length ? `¡${done} de ${list.length}!` : `${done} de ${list.length}`, ok: done === list.length,
+    body: `<ul class="habit-list glass">${list.map(h => habitRow(h, d)).join('')}</ul><div class="tf-more"><a class="btn small ghost" href="#habitos">Ver todos los hábitos</a></div>` };
+}
 const habitOrder = (a, b) => (a.order ?? a.createdAt) - (b.order ?? b.createdAt);
 
 /* Sección de Progreso */

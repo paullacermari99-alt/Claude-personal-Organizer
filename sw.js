@@ -1,7 +1,7 @@
 /* Service worker: permite abrir la app sin conexión.
    Sube CACHE cuando cambien los archivos para forzar la actualización. */
-const CACHE = 'organizador-v83';
-const ASSETS = ['./', 'index.html', 'styles.css?v=83', 'config.js?v=83', 'core.js?v=83', 'smart.js?v=83', 'colors.js?v=83', 'ui.js?v=83', 'extcal.js?v=83', 'sync.js?v=83', 'onboarding.js?v=83', 'tour.js?v=83', 'calendar.js?v=83', 'gestures.js?v=83', 'extras.js?v=83', 'habits.js?v=83', 'stats.js?v=83', 'planner.js?v=83', 'dayplan.js?v=83', 'voice.js?v=83', 'pro.js?v=83', 'social.js?v=83', 'vendor/qrcode.js?v=1', 'app.js?v=83', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
+const CACHE = 'organizador-v84';
+const ASSETS = ['./', 'index.html', 'styles.css?v=84', 'config.js?v=84', 'core.js?v=84', 'smart.js?v=84', 'colors.js?v=84', 'ui.js?v=84', 'extcal.js?v=84', 'sync.js?v=84', 'onboarding.js?v=84', 'tour.js?v=84', 'calendar.js?v=84', 'gestures.js?v=84', 'extras.js?v=84', 'habits.js?v=84', 'stats.js?v=84', 'planner.js?v=84', 'dayplan.js?v=84', 'voice.js?v=84', 'pro.js?v=84', 'social.js?v=84', 'vendor/qrcode.js?v=1', 'app.js?v=84', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

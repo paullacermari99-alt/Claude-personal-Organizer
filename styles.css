@@ -3115,3 +3115,29 @@ dialog.crop-dlg { width: 100%; max-width: 460px; padding: 0 0 calc(18px + env(sa
 .dp-left { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .dp-left .chip-btn { font-weight: 500; text-align: left; }
 .dp-left .chip-btn.off { opacity: .65; }
+
+/* v82: Hoy con solo lo importante; lo demás plegado en filas */
+.dh-next { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: .5px solid var(--separator); }
+.dh-next .grow { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dh-next-l { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.dh-next-t { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dh-next .btn { flex: none; }
+.tf-list { display: flex; flex-direction: column; gap: 8px; }
+.tf-row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 0; border-radius: 16px; font: inherit; color: var(--text); text-align: left; cursor: pointer; min-height: 52px; }
+.tf-row:active { transform: scale(.99); }
+.tf-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: none; background: color-mix(in srgb, var(--action) 13%, transparent); color: var(--action); font-size: 16px; line-height: 1; }
+.tf-ic svg { width: 17px; height: 17px; }
+.tf-ic.warn { background: color-mix(in srgb, var(--orange) 16%, transparent); color: var(--orange); }
+.tf-t { font-weight: 600; flex: none; }
+.tf-s { margin-left: auto; color: var(--muted); font-size: 14px; text-align: right; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+.tf-s.ok-text { color: var(--green); }
+.tf-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex: none; }
+.tf-row > svg { width: 16px; height: 16px; flex: none; color: var(--muted); transform: rotate(-90deg); transition: transform .2s; }
+.tf.open .tf-row > svg { transform: none; }
+.tf-body { display: none; padding: 10px 0 6px; }
+.tf.open .tf-body { display: block; }
+.tf-body > .plan-card { margin-bottom: 0; }
+.tf-body .timeline, .tf-body .allday-row { margin-bottom: 4px; }
+.tf-more { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+@media (max-width: 1023.98px) { .today-grid .today-side { display: none; } }
+@media (min-width: 1024px) { .tf.mobile-fold { display: none; } }

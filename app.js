@@ -453,6 +453,25 @@ function dayHero(d, tasks, agenda, isToday, now) {
     <div class="dh-text"><div class="dh-title">${title}</div>${lines.join('')}</div>
   </div>`;
 }
+/* v82: una sola cosa que hacer ahora: la primera prioridad sin hacer, o la primera tarea del día */
+function dayNext(tasks) {
+  const t = tasks.find(x => !x.done);
+  return `<div data-live="day-next">${t ? `<div class="dh-next">
+    <div class="grow"><span class="dh-next-l">Ahora toca</span><span class="dh-next-t">${esc(t.title)}</span></div>
+    <button class="btn small primary" data-act="focus-open" data-id="${t.id}">${I.play}<span>Empezar</span></button>
+  </div>` : ''}</div>`;
+}
+/* v82: lo secundario de Hoy, plegado en filas que se abren al tocarlas */
+function todayFold(key, icon, title, sum, body, opts = {}) {
+  const open = !!(state.settings.ui.todayOpen || {})[key];
+  return `<div class="tf ${open ? 'open' : ''} ${opts.cls || ''}" data-key="${key}">
+    <button class="tf-row glass" data-act="today-fold" data-key="${key}" aria-expanded="${open}">
+      <span class="tf-ic ${opts.warn ? 'warn' : ''}">${icon}</span><span class="tf-t">${title}</span>
+      <span class="tf-s ${opts.warn ? 'warn-text' : opts.ok ? 'ok-text' : ''}" data-live="tf-${key}">${sum}${opts.dot ? '<i class="tf-dot"></i>' : ''}</span>${I.down}
+    </button>
+    <div class="tf-body">${body}</div>
+  </div>`;
+}
 
 function viewToday() {
   const d = viewDate, today = todayStr(), isToday = d === today;
@@ -492,7 +511,7 @@ function viewToday() {
         ${isToday && !(state.dayPlans[d] && state.dayPlans[d].planned) ? `<div class="dh-plan">
           <button class="btn primary" data-act="plan-day">Planificar mi día</button>
           <button class="btn ghost" data-act="plan-skip">Ahora no</button>
-        </div>` : ''}
+        </div>` : isToday ? dayNext([...prios, ...dayTasks]) : ''}
       </div>
 
       <div class="section">
@@ -501,23 +520,34 @@ function viewToday() {
           : emptyBox('¿Qué 3 cosas harían que hoy fuera un buen día? Elígelas y escribe por dónde empezarás cada una.')}
       </div>
 
-      ${overdue.length ? collapsible('vencidas', 'Vencidas', overdue.length, taskList(overdue, { star: true, moveToday: true }),
-        `<button class="btn small ghost" data-act="bulk-resched">${I.resched}<span>Reprogramar</span></button>`) : ''}
-
       <div class="section">
-        <div class="section-head"><h2>${prios.length ? 'También hoy' : 'Tareas'}</h2>${isToday && !routines.length ? `<a class="btn small ghost" href="#diarias">${I.daily}<span>Diarias</span></a>` : ''}</div>
+        <div class="section-head"><h2>${prios.length ? 'También hoy' : 'Tareas'}</h2></div>
         ${taskList(dayTasks, { star: true, lite: true, noResched: true, hideDue: d })}
         ${quickAdd({ due: d }, 'Nueva tarea para ' + relDay(d).toLowerCase())}
-        <p class="hint touch-only">Desliza a la derecha para completar o a la izquierda para pasar a mañana.</p>
       </div>
-      ${routines.length ? collapsible('diarias', 'Diarias pendientes', totalPend, routines.map(r => routineGroup(r)).join(''),
-        `<a class="btn small ghost" href="#diarias">Ver diarias</a>`) : ''}
-      ${typeof teamTodaySection === 'function' ? teamTodaySection(d) : ''}
-      ${habitsTodaySection(d)}
       ${journalCard(d)}
+      ${(() => {
+        const folds = [];
+        const nextB = isToday ? agenda.filter(e => !e.allDay).find(e => e.end > now) : agenda.find(e => !e.allDay);
+        folds.push(todayFold('horario', I.clock, 'Horario',
+          agenda.length ? (nextB ? `${agenda.length === 1 ? '1 bloque' : agenda.length + ' bloques'} · ${nextB.start <= now && isToday ? 'ahora' : 'a las ' + esc(nextB.start)}` : 'Terminado') : 'Libre',
+          `${extEvs.some(e => e.allDay) ? `<div class="allday-row">${extEvs.filter(e => e.allDay).map(e => `<button class="chip ext" data-act="ext-event" data-id="${e.id}" style="--c:${e.color}">${esc(e.title)}</button>`).join('')}</div>` : ''}
+          ${agenda.length ? `<div class="timeline">${agenda.map(e => blockItem(e, isToday, now)).join('')}</div>` : emptyBox('Reserva tiempo para lo que importa. Un bloque es una cita contigo.')}
+          <div class="tf-more"><a class="btn small" href="#planificar">${I.clock}<span>Planificar por horas</span></a><button class="btn small" data-act="new-event" data-date="${d}">${I.plus}<span>Añadir bloque</span></button></div>`,
+          { cls: 'mobile-fold' }));
+        if (overdue.length) folds.push(todayFold('vencidas', I.resched, 'Vencidas', `${overdue.length} atrasada${overdue.length === 1 ? '' : 's'}`,
+          `${taskList(overdue, { star: true, moveToday: true })}<div class="tf-more"><button class="btn small" data-act="bulk-resched">${I.resched}<span>Reprogramar todas</span></button></div>`, { warn: true }));
+        if (isToday && state.routines.length) folds.push(todayFold('diarias', I.daily, 'Diarias', routines.length ? `${totalPend} pendiente${totalPend === 1 ? '' : 's'}` : 'Al día',
+          `${routines.length ? routines.map(r => routineGroup(r)).join('') : emptyBox('No tienes diarias pendientes.')}<div class="tf-more"><a class="btn small ghost" href="#diarias">Ver diarias</a></div>`, { ok: !routines.length }));
+        const hb = typeof habitsTodayParts === 'function' && habitsTodayParts(d);
+        if (hb) folds.push(todayFold('habitos', '🔥', 'Hábitos', hb.sum, hb.body, { ok: hb.ok }));
+        const tm = typeof teamTodayParts === 'function' && teamTodayParts(d);
+        if (tm) folds.push(todayFold('amigos', I.people, 'Con tus amigos', tm.sum, tm.body, { dot: tm.dot }));
+        return `<div class="section today-more ${folds.length > 1 ? '' : 'mobile-only'}"><div class="section-head"><h2>Más de ${isToday ? 'hoy' : 'este día'}</h2></div><div class="tf-list">${folds.join('')}</div></div>`;
+      })()}
     </div>
 
-    <aside class="col-side">
+    <aside class="col-side today-side">
       <div class="section">
         <div class="section-head"><h2>Horario</h2><div class="head-btns"><a class="btn small" href="#planificar">${I.clock}<span>Planificar por horas</span></a><button class="icon-btn round" data-act="new-event" data-date="${d}" aria-label="Añadir bloque" title="Añadir bloque">${I.plus}</button></div></div>
         <div class="agenda-list">
@@ -2640,6 +2670,13 @@ document.addEventListener('click', e => {
       save(); rerender();
       toast(`${moved.length} pasadas a hoy`, { action: 'Deshacer', onAction: () => { moved.forEach(([t, d]) => { t.due = d; }); save(); rerender(); } });
       return;
+    }
+    case 'today-fold': {
+      const k = el.dataset.key, o = state.settings.ui.todayOpen || (state.settings.ui.todayOpen = {});
+      o[k] = !o[k];
+      el.closest('.tf').classList.toggle('open', !!o[k]);
+      el.setAttribute('aria-expanded', String(!!o[k]));
+      haptic(4); save(); return;
     }
     case 'collapse': {
       const k = el.dataset.key, c = state.settings.ui.collapsed;

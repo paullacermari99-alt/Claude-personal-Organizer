@@ -125,7 +125,7 @@ const SCREEN_TOURS = {
   hoy: [
     { target: () => firstVisible('.page .day-hero') || sectionBy('prioridades'), title: 'Tu día en un vistazo', text: 'Cuántas tareas llevas, si te da tiempo y qué toca ahora. «Planificar mi día» te ayuda a elegir 3 prioridades en un minuto.' },
     { target: () => sectionBy('prioridades'), title: 'Prioridades', text: 'Las 3 cosas que de verdad importan hoy. Con «Elegir» las cambias cuando quieras.' },
-    { target: () => sectionBy('horario') || firstVisible('.page [data-act="day"]'), title: 'Tu horario', text: 'Los bloques de tiempo del día. Con las flechas de arriba miras otros días.' },
+    { target: () => sectionBy('horario') || firstVisible('.page .today-more') || firstVisible('.page [data-act="day"]'), title: 'Lo demás, plegado', text: 'Horario, vencidas, diarias, hábitos y amigos están aquí abajo. Toca una fila para abrirla. Con las flechas de arriba miras otros días.' },
   ],
   semana: [
     { target: () => firstVisible('.page .week-toolbar .segmented') || firstVisible('.page .week-toolbar'), title: 'Cómo ver la semana', text: 'Elige ver la semana entera, 3 días o un solo día.' },
