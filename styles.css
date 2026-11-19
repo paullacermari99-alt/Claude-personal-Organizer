@@ -3365,7 +3365,6 @@ dialog.crop-dlg { width: 100%; max-width: 460px; padding: 0 0 calc(18px + env(sa
    · en el modo sueño, la tarjeta del consejo, las pastillas y los botones son de cristal sin desenfoque
      en vivo (el fondo ya es todo difuminado, así que se ven igual) y la app de detrás deja de dibujarse. */
 body::before, body::after { filter: none; }
-html.bg-still body::before, html.bg-still body::after, html.bg-still .fh-bg i,
 html:has(dialog[open]) body::before, html:has(dialog[open]) body::after, html:has(dialog[open]) .fh-bg i,
 html:has(#focus:not([hidden])) body::before, html:has(#focus:not([hidden])) body::after { animation-play-state: paused; }
 html.dreaming body > :not(#focus), html.dreaming body::before, html.dreaming body::after { visibility: hidden; }
@@ -3374,3 +3373,13 @@ html.dreaming body::before, html.dreaming body::after { animation-play-state: pa
 .dream-tip { background: linear-gradient(160deg, rgba(255,255,255,.12), rgba(255,255,255,.035)), rgba(12, 12, 26, .38); }
 .dream-chip { background: rgba(255,255,255,.1); }
 .dc-ic { background: rgba(255,255,255,.12); }
+
+/* ---------- v94: sin parpadeos al hacer scroll en el móvil ----------
+   En el iPhone, parar y volver a arrancar el fondo al hacer scroll (v93) y tener cristales fijos encima
+   de un fondo que se mueve hacía parpadear la pantalla. En el móvil el fondo de color se queda quieto
+   (los colores y manchas son los mismos) y la tarjeta Modo foco de Hoy recorta sus manchas en su propia
+   capa, para que sus esquinas redondeadas no parpadeen al desplazarse. */
+@media (max-width: 1023px) {
+  body::before, body::after { animation: none; }
+}
+.focus-home { transform: translateZ(0); -webkit-mask-image: -webkit-radial-gradient(white, black); }

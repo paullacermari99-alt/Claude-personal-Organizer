@@ -3362,24 +3362,3 @@ if (typeof socAfterLogin === 'function' && !cameFromLogin && getSession()) setTi
 /* Con la app abierta se miran los cambios de tus otros dispositivos cada 30 s */
 setInterval(() => { if (document.visibilityState === 'visible' && !modal.open) syncNow(); }, 30000);
 
-/* ---------- v93: el fondo de color se queda quieto cuando no hace falta que se mueva ----------
-   Mientras haces scroll (así el scroll va fino), y si llevas un rato sin tocar la app (así no gasta
-   batería ni calienta el móvil con la pantalla encendida). Se congela donde está y sigue al volver. */
-(() => {
-  const html = document.documentElement;
-  let scrollT = 0, idleT = 0, scrolling = false, idle = false;
-  const apply = () => html.classList.toggle('bg-still', scrolling || idle);
-  const wake = () => {
-    clearTimeout(idleT);
-    if (idle) { idle = false; apply(); }
-    idleT = setTimeout(() => { idle = true; apply(); }, 20000);
-  };
-  document.addEventListener('scroll', () => {
-    if (!scrolling) { scrolling = true; apply(); }
-    clearTimeout(scrollT);
-    scrollT = setTimeout(() => { scrolling = false; apply(); }, 220);
-  }, { capture: true, passive: true });
-  ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(ev => document.addEventListener(ev, wake, { capture: true, passive: true }));
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
-  wake();
-})();
