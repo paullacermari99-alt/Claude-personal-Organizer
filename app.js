@@ -464,23 +464,22 @@ function dayNext(tasks) {
 /* v87: Modo foco en Hoy. Tarjeta oscura con el fondo del modo sueño: «Entrar» abre el enfoque con lo que toca ahora;
    con un enfoque en marcha enseña el tiempo y «Volver». Sustituye a la fila «Ahora toca» del resumen. */
 function focusHome(tasks) {
-  const tm = getTimer(), tt = tm && task(tm.taskId);
+  const tm = getTimer(), tt = tm && focusSubject(tm.taskId);
   if (tm && tt) {
     const paused = tm.pausedLeft != null, brk = tm.phase === 'break';
     const st = paused ? 'En pausa' : brk ? 'Descanso' : tm.mode === 'long' ? `Concentrado · ronda ${tm.round} de ${tm.rounds}` : 'Concentrado';
     return `<div class="fh-in is-on ${paused ? 'is-paused' : ''} ${brk ? 'is-break' : ''}">
-      <div class="fh-text"><span class="fh-l"><i class="fh-dot"></i>${st}</span><span class="fh-time" id="fh-time">${mmss(timerLeft(tm))}</span><span class="fh-s">${esc(tt.title)}</span></div>
-      <button class="fh-go" data-act="focus-open" data-id="${tt.id}">${I.play}<span>Volver</span></button>
+      <div class="fh-text"><span class="fh-l"><i class="fh-dot"></i>${st}</span><span class="fh-time" id="fh-time">${mmss(timerLeft(tm))}</span>${tt.free ? '' : `<span class="fh-s">${esc(tt.title)}</span>`}</div>
+      <button class="fh-go" data-act="${tt.free ? 'focus-free' : 'focus-open'}" ${tt.free ? '' : `data-id="${tt.id}"`}>${I.play}<span>Volver</span></button>
     </div>`;
   }
-  const t = tasks.find(x => !x.done);
   const plan = focusPlan(), mins = plan.mode === 'long' ? plan.work : (focusMins || limFocus('work', state.settings.focusMinutes, 25));
   const how = plan.mode === 'long' ? `${plan.rounds} × ${fmtMins(plan.work)} con descansos` : fmtMins(mins);
   return `<div class="fh-in">
     <div class="fh-text"><span class="fh-l"><span class="fh-spark" aria-hidden="true">✦</span>Modo foco</span>
-      <span class="fh-t">${t ? esc(t.title) : 'Elige en qué enfocarte'}</span>
-      <span class="fh-s">${t ? 'Ahora toca · ' : ''}${how}</span></div>
-    <button class="fh-go" data-act="${t ? 'focus-open' : 'focus-home'}" ${t ? `data-id="${t.id}"` : ''}>${I.play}<span>Entrar</span></button>
+      <span class="fh-t">Concéntrate sin distracciones</span>
+      <span class="fh-s">${how}</span></div>
+    <button class="fh-go" data-act="focus-free">${I.play}<span>Entrar</span></button>
   </div>`;
 }
 /* v82: lo secundario de Hoy, plegado en filas que se abren al tocarlas */
@@ -2147,6 +2146,7 @@ const CHEERS = {
   last: ['Última ronda. Remata y lo tienes.', 'Esta es la buena: la última. ¡Vamos!', 'Ya casi. Dale el último empujón.', 'Última vuelta: termina lo que empezaste.'],
   half: ['Ya vas por la mitad. Sigue así.', 'Mitad hecha. Lo más difícil ya ha pasado.', 'Buen ritmo. Mantén el foco un poco más.', 'Llevas la mitad: no te pares ahora.'],
   brk: ['Levántate y estira un poco.', 'Bebe agua y respira hondo.', 'Mira lejos un momento: tus ojos lo agradecen.', 'Descansa de verdad: nada de pantallas.', 'Camina un poco y vuelve con energía.'],
+  tip: ['Una cosa cada vez. Solo esta.', 'Si te distraes, vuelve sin juzgarte.', 'Respira hondo y sigue un poco más.', 'Hecho es mejor que perfecto.', 'Tu atención es tu superpoder.', 'El móvil puede esperar. Esto no.', 'Avanzar despacio sigue siendo avanzar.', 'Ahora mismo, solo importa este minuto.', 'Cada minuto aquí cuenta.', 'Lo difícil se hace fácil cuando empiezas.', 'Termina la frase, el paso, la línea. Luego la siguiente.', 'Vas bien. Mantén el ritmo.', 'Si se atasca, haz la parte más pequeña.', 'Hoy eres un poco mejor que ayer.', 'Sin prisa, pero sin pausa.', 'Confía en el proceso y sigue.', 'Solo esto, nada más. Tú puedes.', 'Móvil lejos, cabeza aquí. Vamos.', 'No tiene que salir perfecto, tiene que salir.', 'Piensa solo en el siguiente minuto. Así se avanza.'],
   end: ['Lo has conseguido. Eso es avanzar de verdad.', 'Cumpliste lo que te propusiste. Bien hecho.', 'Un poco mejor que ayer. Así se hace.', 'Esto es no procrastinar. Enhorabuena.', 'Hoy has sido tu mejor versión un rato más.'],
 };
 /* Con semilla sale siempre el mismo (así el aviso del servidor y la app dicen lo mismo); sin ella, uno al azar que no repite el anterior */
@@ -2166,9 +2166,36 @@ function cheerHTML(c, anim) {
 function swapCheer(c) {
   const el = $('#focus-cheer');
   if (!el) return;
-  el.outerHTML = el.classList.contains('dream-cheer') ? dreamCheerHTML(c, true) : cheerHTML(c, true);
+  if (el.classList.contains('dream-cheer')) fadeCheer(c); else el.outerHTML = cheerHTML(c, true);
 }
-const dreamCheerHTML = (c, anim) => `<p class="dream-cheer ${anim ? 'in' : ''}" id="focus-cheer" role="status"><span class="dream-cheer-ic" aria-hidden="true">${c.k === 'brk' ? '☕' : '✦'}</span>${esc(c.t)}</p>`;
+const dreamCheerInner = c => `<span class="dream-cheer-ic" aria-hidden="true">${c.k === 'brk' ? '☕' : '✦'}</span>${esc(c.t)}`;
+const dreamCheerHTML = (c, anim) => `<p class="dream-cheer ${anim ? 'in' : ''}" id="focus-cheer" role="status">${dreamCheerInner(c)}</p>`;
+/* v90: en el modo sueño el consejo cambia cada 30 s: se desvanece despacio y aparece el siguiente */
+let tipAt = 0;
+function fadeCheer(c) {
+  tipAt = Date.now();
+  const el = $('#focus-cheer');
+  if (!el) return;
+  if (reduceMotion()) { el.innerHTML = dreamCheerInner(c); return; }
+  el.classList.remove('in'); el.classList.add('out');
+  clearTimeout(fadeCheer.t);
+  fadeCheer.t = setTimeout(() => {
+    const e = $('#focus-cheer');
+    if (!e) return;
+    e.innerHTML = dreamCheerInner(c);
+    e.classList.remove('out'); void e.offsetWidth; e.classList.add('in');
+  }, 1400);
+}
+function rotateTip() {
+  const tm = getTimer();
+  if (!tm || tm.pausedLeft != null || !$('#focus .dream')) return;
+  if (!tipAt) { tipAt = Date.now(); return; }
+  if (Date.now() - tipAt < 30000) return;
+  const k = tm.phase === 'break' ? 'brk' : 'tip';
+  const c = { k, t: cheer(k) };
+  setTimer({ ...tm, cheer: c });
+  fadeCheer(c);
+}
 
 /* ---------- v86: modo sueño. Con el enfoque en marcha la ventana ocupa toda la pantalla:
    fondo oscuro con manchas de color difuminadas que se mueven, la hora grande arriba (sin círculo),
@@ -2194,6 +2221,7 @@ function renderDream(t, timer) {
   const status = paused ? 'En pausa' : brk ? 'Descanso' : long ? `Ronda ${timer.round} de ${timer.rounds}` : 'Concentrado';
   const ch = timer.cheer || { k: 'start', t: CHEERS.start[0] };
   const fx = dreamFx; dreamFx = null;
+  if (!was || ch.t !== prevCheer) tipAt = Date.now();
   layer.classList.remove('focus-full', 'is-closing');
   layer.classList.add('focus-dream');
   layer.classList.toggle('dr-break', brk);
@@ -2207,18 +2235,18 @@ function renderDream(t, timer) {
     </div>
     <div class="dream-clock">
       <div class="dream-time ${left >= 3600000 ? 'hrs' : ''}" id="focus-time">${mmss(left)}</div>
-      <div class="dream-task">${esc(t.title)}</div>
+      ${t.free ? '' : `<div class="dream-task">${esc(t.title)}</div>`}
       <div class="dream-meta" id="dream-meta">${dreamMeta(timer)}</div>
     </div>
-    <div class="dream-mid">
-      ${paused ? `<p class="dream-cheer ${was ? 'in' : ''}" id="focus-cheer"><span class="dream-cheer-ic" aria-hidden="true">⏸</span>Tómate tu tiempo. Seguimos cuando quieras.</p>` : dreamCheerHTML(ch, !was || ch.t !== prevCheer)}
-    </div>
+    <div class="dream-mid"><div class="dream-tip">
+      ${paused ? `<p class="dream-cheer ${was ? 'in' : ''}" id="focus-cheer"><span class="dream-cheer-ic" aria-hidden="true">⏸</span>Tómate tu tiempo. Seguimos cuando quieras.</p>` : dreamCheerHTML(ch, was && ch.t !== prevCheer)}
+    </div></div>
     <div class="dream-ctrl">
       ${btn('focus-stop', I.stop, 'Parar')}
       ${btn(paused ? 'focus-resume' : 'focus-pause', paused ? I.play : I.pause, paused ? 'Reanudar' : 'Pausar', 'main' + (paused ? ' is-play' : ''))}
       ${btn('focus-restart', I.reset, 'Reiniciar')}
     </div>
-    <button class="dream-done" data-act="focus-done" data-id="${t.id}">${I.check}<span>Tarea hecha</span></button>
+    ${t.free ? '' : `<button class="dream-done" data-act="focus-done" data-id="${t.id}">${I.check}<span>Tarea hecha</span></button>`}
   </div>`;
   /* El fondo vive fuera de la ventana: sigue moviéndose sin saltos al pausar o reanudar */
   if (was && layer.querySelector('.dream-bg')) was.outerHTML = html;
@@ -2283,11 +2311,15 @@ function askNotify() {
   if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
 }
 
+/* v90: sesión libre, sin tarea (se entra desde la tarjeta Modo foco de Hoy) */
+const freeTask = () => ({ id: null, title: 'Modo foco', subtasks: [], firstStep: '', done: false, free: true });
+const focusSubject = id => id ? task(id) : freeTask();
 function openFocus(id) {
-  const t = task(id);
+  id = id || null;
+  const t = focusSubject(id);
   if (!t) return;
   focusTaskId = id;
-  if (!t.startedAt) { t.startedAt = Date.now(); save(); }
+  if (!t.free && !t.startedAt) { t.startedAt = Date.now(); save(); }
   if (limFocus('work', focusMins, 0) !== focusMins) focusMins = limFocus('work', state.settings.focusMinutes, 25);
   const layer = $('#focus');
   clearTimeout(closeFocus.t); layer.classList.remove('is-closing');
@@ -2371,7 +2403,7 @@ function summaryHTML(s, t) {
   </div>`;
 }
 function renderFocus(noMorph) {
-  const t = task(focusTaskId);
+  const t = focusSubject(focusTaskId);
   if (!t) { closeFocus(); return; }
   const layer = $('#focus'), prevCard = layer.hidden ? null : layer.querySelector('.focus-card');
   const prevRing = prevCard && $('#focus-ring') ? $('#focus-ring').style.strokeDashoffset || $('#focus-ring').getAttribute('stroke-dashoffset') : null;
@@ -2420,8 +2452,8 @@ function renderFocus(noMorph) {
     <div class="eyebrow focus-status s-${status[0]}"><i aria-hidden="true"></i><span>${status[1]}</span></div>
     <h2 class="focus-title ${t.done ? 'done' : ''}">${esc(t.title)}</h2>
     ${showSum ? summaryHTML(sum, t) : ''}
-    <label class="field focus-extra">¿Por dónde empiezas?<input type="text" data-input="first-step" data-id="${t.id}" value="${esc(t.firstStep)}" placeholder="Ej.: abrir el documento y escribir el título" enterkeyhint="done">
-      <span class="hint">Una acción pequeña y concreta, de menos de 2 minutos. Así arrancar cuesta mucho menos.</span></label>
+    ${t.free ? '' : `<label class="field focus-extra">¿Por dónde empiezas?<input type="text" data-input="first-step" data-id="${t.id}" value="${esc(t.firstStep)}" placeholder="Ej.: abrir el documento y escribir el título" enterkeyhint="done">
+      <span class="hint">Una acción pequeña y concreta, de menos de 2 minutos. Así arrancar cuesta mucho menos.</span></label>`}
     ${t.subtasks.length ? `<div class="focus-subs focus-extra">${t.subtasks.map(s => `<label><input type="checkbox" class="check sm" data-act="sub-toggle" data-id="${t.id}" data-sub="${s.id}" ${s.done ? 'checked' : ''}><span>${esc(s.title)}</span></label>`).join('')}</div>` : ''}
     <div class="focus-timer ${paused ? 'is-paused' : ''} ${brk ? 'is-break' : ''} ${mine && !paused ? 'is-live' : ''} ${showSum ? 'is-hidden' : ''}">
       <div class="ring big dial ${!mine && !showSum ? 'is-setable' : ''}" ${!mine && !showSum ? `role="slider" tabindex="0" aria-label="Minutos de foco" aria-valuemin="1" aria-valuemax="180" aria-valuenow="${startMins}"` : 'aria-hidden="true"'}>
@@ -2447,8 +2479,8 @@ function renderFocus(noMorph) {
       </div>`
     : `<div class="focus-actions">
       ${showSum ? `<button class="btn" data-act="focus-again">${I.repeat}<span>Otra sesión</span></button>
-      <button class="btn primary" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar tarea'}</button>`
-      : `<button class="btn fc-done" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar'}</button>
+      ${t.free ? `<button class="btn primary" data-act="focus-close">Listo</button>` : `<button class="btn primary" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar tarea'}</button>`}`
+      : `${t.free ? '' : `<button class="btn fc-done" data-act="focus-done" data-id="${t.id}">${t.done ? 'Hecha ✓' : 'Completar'}</button>`}
       <button class="btn primary fc-start" data-act="focus-start">${I.play}<span>Empezar<span class="fc-mins"> · ${fmtMins(startMins)}</span></span></button>`}
     </div>`}
   </div>`;
@@ -2507,6 +2539,7 @@ function focusAction(act) {
 }
 /* La tarea del contador ya no existe o se ha completado: el contador se va con ella */
 function timerOrphan(tm) {
+  if (!tm.taskId) return false;
   const t = tm.taskId && task(tm.taskId);
   if (t && !t.done) return false;
   cancelTimer(!!t);
@@ -2544,6 +2577,7 @@ function updateTimerUI() {
     const k = $('#focus-knob'); if (k) k.style.transform = `rotate(${knobDeg(left)}deg)`;
   }
   { const fh = $('#fh-time'); if (fh) fh.textContent = txt; }
+  rotateTip();
   /* A mitad de una sesión de trabajo (de 10 min o más), un empujón */
   if (!paused && !brk && timer.minutes >= 10 && left <= timer.minutes * 30000 && timer.half !== timer.round) {
     const c = { k: 'half', t: cheer('half') };
@@ -2578,7 +2612,7 @@ function advanceTimer(tm) {
   if ($('#focus').hidden) toast(msg);
   /* Con avisos push activos, los avisos de cambio los manda el servidor (llegan aunque la app esté cerrada) */
   if (document.visibilityState !== 'visible' && !pushActive()) notify('focus:' + tm.endAt, last === 'end' ? 'Enfoque completado' : last === 'break' ? 'Descanso' : `Ronda ${n.round} de ${n.rounds}`, msg, 'focus-live');
-  if (last === 'end' && tm.taskId && task(tm.taskId) && $('#focus').hidden && document.visibilityState === 'visible') openFocus(tm.taskId);
+  if (last === 'end' && (!tm.taskId || task(tm.taskId)) && $('#focus').hidden && document.visibilityState === 'visible') openFocus(tm.taskId);
   else if (!$('#focus').hidden) renderFocus();
   else updateTimerUI();
 }
@@ -2867,7 +2901,8 @@ document.addEventListener('click', e => {
     case 'focus-restart': focusAction('restart'); return;
     case 'focus-stop': stopFocus(); return;
     case 'focus-home': startFocusShortcut(); return;
-    case 'focus-pill': { const tm = getTimer(); if (tm && tm.taskId) openFocus(tm.taskId); return; }
+    case 'focus-free': { const tm = getTimer(); openFocus(tm ? tm.taskId : null); return; }
+    case 'focus-pill': { const tm = getTimer(); if (tm) openFocus(tm.taskId); return; }
     case 'focus-done': {
       const t = task(id);
       const tm = getTimer(); if (tm && tm.taskId === id) cancelTimer(true);
@@ -3227,7 +3262,7 @@ setInterval(() => {
   if (onNewDayOrReturn() && !modal.open) rerender();
   checkReminders();
 }, 30000);
-$('#focus-pill').addEventListener('click', () => { const tm = getTimer(); if (tm && tm.taskId) openFocus(tm.taskId); });
+$('#focus-pill').addEventListener('click', () => { const tm = getTimer(); if (tm) openFocus(tm.taskId); });
 $('#focus').addEventListener('click', e => { if (backdropTap(e, $('#focus'))) closeFocus(); });
 
 /* ---------- PWA ---------- */
