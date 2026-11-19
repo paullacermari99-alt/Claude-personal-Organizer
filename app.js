@@ -461,6 +461,28 @@ function dayNext(tasks) {
     <button class="btn small primary" data-act="focus-open" data-id="${t.id}">${I.play}<span>Empezar</span></button>
   </div>` : ''}</div>`;
 }
+/* v87: Modo foco en Hoy. Tarjeta oscura con el fondo del modo sueño: «Entrar» abre el enfoque con lo que toca ahora;
+   con un enfoque en marcha enseña el tiempo y «Volver». Sustituye a la fila «Ahora toca» del resumen. */
+function focusHome(tasks) {
+  const tm = getTimer(), tt = tm && task(tm.taskId);
+  if (tm && tt) {
+    const paused = tm.pausedLeft != null, brk = tm.phase === 'break';
+    const st = paused ? 'En pausa' : brk ? 'Descanso' : tm.mode === 'long' ? `Concentrado · ronda ${tm.round} de ${tm.rounds}` : 'Concentrado';
+    return `<div class="fh-in is-on ${paused ? 'is-paused' : ''} ${brk ? 'is-break' : ''}">
+      <div class="fh-text"><span class="fh-l"><i class="fh-dot"></i>${st}</span><span class="fh-time" id="fh-time">${mmss(timerLeft(tm))}</span><span class="fh-s">${esc(tt.title)}</span></div>
+      <button class="fh-go" data-act="focus-open" data-id="${tt.id}">${I.play}<span>Volver</span></button>
+    </div>`;
+  }
+  const t = tasks.find(x => !x.done);
+  const plan = focusPlan(), mins = plan.mode === 'long' ? plan.work : (focusMins || limFocus('work', state.settings.focusMinutes, 25));
+  const how = plan.mode === 'long' ? `${plan.rounds} × ${fmtMins(plan.work)} con descansos` : fmtMins(mins);
+  return `<div class="fh-in">
+    <div class="fh-text"><span class="fh-l"><span class="fh-spark" aria-hidden="true">✦</span>Modo foco</span>
+      <span class="fh-t">${t ? esc(t.title) : 'Elige en qué enfocarte'}</span>
+      <span class="fh-s">${t ? 'Ahora toca · ' : ''}${how}</span></div>
+    <button class="fh-go" data-act="${t ? 'focus-open' : 'focus-home'}" ${t ? `data-id="${t.id}"` : ''}>${I.play}<span>Entrar</span></button>
+  </div>`;
+}
 /* v82: lo secundario de Hoy, plegado en filas que se abren al tocarlas */
 function todayFold(key, icon, title, sum, body, opts = {}) {
   const open = !!(state.settings.ui.todayOpen || {})[key];
@@ -511,8 +533,12 @@ function viewToday() {
         ${isToday && !(state.dayPlans[d] && state.dayPlans[d].planned) ? `<div class="dh-plan">
           <button class="btn primary" data-act="plan-day">Planificar mi día</button>
           <button class="btn ghost" data-act="plan-skip">Ahora no</button>
-        </div>` : isToday ? dayNext([...prios, ...dayTasks]) : ''}
+        </div>` : ''}
       </div>
+      ${isToday ? `<div class="focus-home" role="region" aria-label="Modo foco">
+        <div class="fh-bg" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
+        <div data-live="focus-home">${focusHome([...prios, ...dayTasks])}</div>
+      </div>` : ''}
 
       <div class="section">
         <div class="section-head"><h2>Prioridades · ${prios.length}/3</h2><button class="btn small" data-act="pick-priorities">${prios.length ? 'Cambiar' : 'Elegir'}</button></div>
@@ -2282,7 +2308,7 @@ function closeFocus() {
   try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch {}
   { const s = getSummary(); if (s && s.taskId === focusTaskId) setSummary(null); }
   document.body.classList.remove('focus-open');
-  const done = () => { layer.hidden = true; layer.classList.remove('focus-full', 'is-closing'); updateTimerUI(); };
+  const done = () => { layer.hidden = true; layer.classList.remove('focus-full', 'is-closing'); updateTimerUI(); refreshLive(); };
   clearTimeout(closeFocus.t);
   if (layer.hidden || reduceMotion()) { layer.classList.remove('focus-dream', 'is-minimizing', 'dr-break', 'dr-paused'); return done(); }
   /* Modo sueño: baja difuminándose y se queda abajo la pastilla con el tiempo */
@@ -2500,6 +2526,7 @@ function updateTimerUI() {
   if (!timer) {
     document.title = 'Boldup';
     pill.hidden = true;
+    if ($('#fh-time') && !modal.open) refreshLive();
     const el = $('#focus-time');
     const m0 = focusPlan().mode === 'long' ? focusPlan().work : focusMins || 25;
     if (el && !dialDrag && !el.classList.contains('dream-time')) { el.textContent = mmss(m0 * 60000); el.classList.toggle('hrs', m0 >= 60); const ring = $('#focus-ring'); if (ring) ring.style.strokeDashoffset = ringOffset(m0 * 60000); const k = $('#focus-knob'); if (k) k.style.transform = `rotate(${knobDeg(m0 * 60000)}deg)`; }
@@ -2521,6 +2548,7 @@ function updateTimerUI() {
     const dm = $('#dream-meta'); if (dm) dm.innerHTML = dreamMeta(timer);
     const k = $('#focus-knob'); if (k) k.style.transform = `rotate(${knobDeg(left)}deg)`;
   }
+  { const fh = $('#fh-time'); if (fh) fh.textContent = txt; }
   /* A mitad de una sesión de trabajo (de 10 min o más), un empujón */
   if (!paused && !brk && timer.minutes >= 10 && left <= timer.minutes * 30000 && timer.half !== timer.round) {
     const c = { k: 'half', t: cheer('half') };
@@ -2843,6 +2871,7 @@ document.addEventListener('click', e => {
     case 'focus-reset': focusAction('reset'); return;
     case 'focus-restart': focusAction('restart'); return;
     case 'focus-stop': stopFocus(); return;
+    case 'focus-home': startFocusShortcut(); return;
     case 'dream-note': { const f = $('#focus .dream-note'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.querySelector('input').focus(); } return; }
     case 'focus-pill': { const tm = getTimer(); if (tm && tm.taskId) openFocus(tm.taskId); return; }
     case 'focus-done': {
