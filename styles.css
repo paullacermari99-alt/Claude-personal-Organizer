@@ -1239,25 +1239,23 @@ body.ob-open { overflow: hidden; }
 .on .dw-hand { animation: dw-hand 4.5s cubic-bezier(.45,.05,.3,1) infinite; }
 @keyframes dw-hand { 0%, 8% { opacity: 0; transform: scale(1.5); } 14%, 50% { opacity: 1; transform: none; } 58%, 100% { opacity: 0; transform: scale(1.5); } }
 
-/* 5 · ¿Me cabe hoy? */
-.df-row { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
-.df-ic { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--fill); }
-.df-title { font-weight: 700; position: relative; height: 22px; }
-.df-title span { position: absolute; left: 0; top: 0; white-space: nowrap; }
-.df-title .ok { color: var(--green); } .df-title .ko { color: var(--red); opacity: 0; }
-.df-bar { display: flex; gap: 3px; height: 12px; border-radius: 99px; background: var(--fill-2); overflow: hidden; }
-.df-bar span { height: 100%; width: 0; border-radius: 3px; background: var(--c); }
-.df-bar .s1 { --c: #5e5ce6; --w: 22%; } .df-bar .s2 { --c: var(--orange); --w: 18%; } .df-bar .s3 { --c: var(--green); --w: 14%; } .df-bar .s4 { --c: var(--red); --w: 46%; }
-.on .df-bar .s1 { animation: df-s 7s infinite; } .on .df-bar .s2 { animation: df-s 7s .25s infinite; } .on .df-bar .s3 { animation: df-s 7s .5s infinite; }
-.on .df-bar .s4 { animation: df-s4 7s infinite; }
-@keyframes df-s { 0%, 6% { width: 0; } 16%, 94% { width: var(--w); } 100% { width: 0; } }
-@keyframes df-s4 { 0%, 34% { width: 0; } 44%, 64% { width: var(--w); } 74%, 100% { width: 0; } }
-.on .df-title .ok { animation: df-ok 7s infinite; } .on .df-title .ko { animation: df-ko 7s infinite; }
-@keyframes df-ok { 0%, 36% { opacity: 1; } 40%, 70% { opacity: 0; } 74%, 100% { opacity: 1; } }
-@keyframes df-ko { 0%, 36% { opacity: 0; } 40%, 70% { opacity: 1; } 74%, 100% { opacity: 0; } }
-.df-btn { margin-top: 16px; display: inline-block; padding: 8px 14px; border-radius: 99px; background: var(--fill); font-size: 14px; font-weight: 600; }
-.on .df-btn { animation: df-btn 7s infinite; }
-@keyframes df-btn { 0%, 52% { transform: none; } 56% { transform: scale(.92); background: var(--fill-2); } 60%, 100% { transform: none; } }
+/* 5 · Avisos: llega la notificación y la campana se mueve */
+.demo-remind { width: 100%; display: grid; gap: 16px; }
+.dr-note { display: flex; gap: 10px; align-items: center; padding: 12px 14px; border-radius: 18px; background: var(--glass-strong); border: .5px solid var(--glass-border); box-shadow: 0 14px 34px rgba(0,0,0,.18); opacity: 0; transform: translateY(-18px) scale(.96); }
+.dr-note img { width: 36px; height: 36px; border-radius: 9px; flex: none; }
+.dr-app { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.dr-app b { font-weight: 600; color: var(--text); }
+.dr-t { font-weight: 700; font-size: 15px; }
+.on .dr-note { animation: dr-note 6s cubic-bezier(.2,.8,.2,1) infinite; }
+@keyframes dr-note { 0%, 38% { opacity: 0; transform: translateY(-18px) scale(.96); } 46%, 90% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; transform: translateY(-18px) scale(.96); } }
+.dr-card .ob-task { border-top: 0; padding-top: 2px; }
+.dr-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: .5px solid var(--separator); padding-top: 12px; font-size: 14px; font-weight: 600; }
+.dr-opts { position: relative; display: inline-grid; justify-items: end; }
+.dr-opts .ob-chip { grid-area: 1 / 1; white-space: nowrap; }
+.dr-opts .o2 { background: color-mix(in srgb, var(--orange) 22%, transparent); opacity: 0; }
+.on .dr-opts .o1 { animation: dr-o1 6s infinite; } .on .dr-opts .o2 { animation: dr-o2 6s infinite; }
+@keyframes dr-o1 { 0%, 14% { opacity: 1; transform: none; } 18% { transform: scale(.9); } 22%, 100% { opacity: 0; } }
+@keyframes dr-o2 { 0%, 18% { opacity: 0; transform: scale(.8); } 24% { opacity: 1; transform: scale(1.06); } 28%, 94% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 
 /* 6 · Enfoque */
 .demo-focus { position: relative; width: 230px; height: 230px; display: grid; place-items: center; }
@@ -1281,21 +1279,20 @@ body.ob-open { overflow: hidden; }
 .on .ob-bar .g2 { animation: dg-bar 5s .7s cubic-bezier(.2,.8,.2,1) infinite; --w: 60%; background: #0a84ff; }
 @keyframes dg-bar { 0% { width: 0; } 30%, 90% { width: var(--w); } 100% { width: var(--w); opacity: 0; } }
 
-/* 8 · Progreso y sincronización */
-.dp-top { display: flex; align-items: baseline; gap: 8px; margin-bottom: 14px; }
-.dp-fire { font-size: 26px; display: inline-block; }
-.on .dp-fire { animation: dp-fire 1.6s ease-in-out infinite; transform-origin: 50% 90%; }
-@keyframes dp-fire { 50% { transform: scale(1.12) rotate(-4deg); } }
-.dp-n { font-size: 30px; }
-.dp-bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; height: 110px; align-items: end; }
-.dp-bars span { height: var(--h); border-radius: 6px; background: var(--accent); transform-origin: bottom; transform: scaleY(0); }
-.on .dp-bars span { animation: dp-bar .7s var(--d) cubic-bezier(.2,.9,.3,1.2) forwards; }
-@keyframes dp-bar { to { transform: none; } }
-.dp-sync { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 16px; font-size: 24px; }
-.dp-dots { display: flex; gap: 6px; }
-.dp-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); opacity: .25; }
-.on .dp-dots i { animation: dp-dot 1.2s infinite; } .on .dp-dots i:nth-child(2) { animation-delay: .2s; } .on .dp-dots i:nth-child(3) { animation-delay: .4s; }
-@keyframes dp-dot { 30% { opacity: 1; transform: scale(1.3); } }
+/* 6 · Proyectos con amigos: se pulsa «Añadir amigos» y entran sus caras */
+.demo-team .dg-card { position: relative; }
+.dt-avs { display: inline-flex; }
+.dt-av { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; background: var(--c); border: 2px solid var(--bg); margin-left: -7px; opacity: 0; transform: scale(.4); }
+.on .dt-av { animation: dt-av 6s cubic-bezier(.3,1.5,.5,1) infinite; }
+.on .dt-av.a2 { animation-delay: .25s; } .on .dt-av.a3 { animation-delay: .5s; }
+@keyframes dt-av { 0%, 24% { opacity: 0; transform: scale(.4); } 30%, 92% { opacity: 1; transform: none; } 98%, 100% { opacity: 0; transform: scale(.4); } }
+.dt-add { justify-self: start; margin-top: 2px; padding: 6px 12px; border-radius: 99px; background: var(--fill); font-size: 13px; font-weight: 600; }
+.on .dt-add { animation: dt-add 6s infinite; }
+@keyframes dt-add { 0%, 14% { transform: none; } 18% { transform: scale(.9); background: var(--fill-2); } 22%, 100% { transform: none; } }
+@media (max-height: 700px) { .demo-team .dg-card:nth-child(2) { display: none; } }
+/* 7 · Enfoque: la racha debajo del reloj */
+.df-streak { position: absolute; bottom: -34px; left: 50%; translate: -50% 0; white-space: nowrap; padding: 6px 12px; border-radius: 99px; background: var(--glass-strong); border: .5px solid var(--glass-border); font-size: 13px; font-weight: 600; opacity: 0; }
+.on .df-streak { animation: ob-in .6s .6s cubic-bezier(.2,.8,.2,1) forwards; }
 
 /* 9 · Entrar o crear cuenta */
 .ob-login { justify-content: center; }
@@ -1323,8 +1320,8 @@ body.ob-open { overflow: hidden; }
 @media (max-height: 640px) { .ob-stage { height: 38vh; } .ob-slide { gap: 18px; padding-top: 56px; } .ob h2 { font-size: 22px; } }
 @media (prefers-reduced-motion: reduce) {
   .ob *, .ob *::before, .ob *::after { animation: none !important; transition: none !important; }
-  .ob-slide .ob-copy > *, .dw-card, .dg-card, .ob-login-box > *, .dq-chips .ob-chip, .dq-task { opacity: 1 !important; transform: none !important; }
-  .dp-bars span { transform: none; }
+  .ob-slide .ob-copy > *, .dw-card, .dg-card, .ob-login-box > *, .dq-chips .ob-chip, .dq-task, .dr-note, .dt-av, .df-streak { opacity: 1 !important; transform: none !important; }
+  .dr-opts .o1 { opacity: 0 !important; } .dr-opts .o2 { opacity: 1 !important; }
   .ob-bar > span { width: 60%; }
 }
 
@@ -1351,7 +1348,6 @@ body.ob-open { overflow: hidden; }
 .ob-next:focus:not(:focus-visible), .ob-back:focus:not(:focus-visible), .ob-dots button:focus:not(:focus-visible) { outline: none; }
 .dq-plus { background: var(--action-bg); color: var(--on-action); }
 .df-ring .arc { stroke: var(--action); }
-.dp-bars span { background: var(--action); }
 .ob-form input:focus { outline-color: var(--action); }
 .ob-form .btn.primary { background: var(--action-bg); color: var(--on-action); }
 .dw-icon { top: 52%; width: 92px; height: 92px; margin: -46px 0 0 -46px; border-radius: 22px; }

@@ -1,5 +1,5 @@
 /* Boldup — bienvenida para quien abre la app por primera vez:
-   8 pantallas con demostraciones animadas de la app y, al final, entrar o crear cuenta. */
+   7 pantallas cortas con demostraciones animadas de la app y, al final, entrar o crear cuenta. */
 'use strict';
 
 const OB_KEY = 'organizador.onboarded';
@@ -14,12 +14,12 @@ const obTask = (title, meta, cls = '') => `<div class="ob-task ${cls}"><span cla
 const OB_SLIDES = [
   {
     title: 'Planifica tu día y deja de procrastinar',
-    text: 'Boldup junta tus tareas, tu calendario y tus objetivos en un solo sitio. Te enseño lo principal en un minuto.',
+    text: 'Tus tareas, tu calendario, tus proyectos y tus metas en un solo sitio. Te enseño lo principal en un minuto.',
     demo: `<div class="demo-welcome">
       <img class="dw-icon" src="icons/icon.svg" alt="">
       <div class="dw-card dw-1">☀️ Elige lo importante</div>
-      <div class="dw-card dw-2">🗓️ Dale una hora</div>
-      <div class="dw-card dw-3">🎯 Avanza hacia tus metas</div>
+      <div class="dw-card dw-2">🔔 Te aviso a tiempo</div>
+      <div class="dw-card dw-3">👥 Avanza con amigos</div>
     </div>`,
   },
   {
@@ -35,7 +35,7 @@ const OB_SLIDES = [
   },
   {
     title: 'Apunta como hablas',
-    text: 'Escribe la tarea tal cual y la app entiende el día, la hora, la etiqueta, la duración y si se repite.',
+    text: 'Escribe la tarea tal cual y la app entiende el día, la hora y la etiqueta. En Tareas, «Filtros» te enseña solo lo que buscas.',
     demo: `<div class="demo-quick ob-card">
       <div class="dq-input"><span class="dq-text"></span><span class="dq-caret"></span><span class="dq-plus">+</span></div>
       <div class="dq-chips"><span class="ob-chip c1">📅 Mañana</span><span class="ob-chip c2">🕔 17:00</span><span class="ob-chip c3">#Salud</span></div>
@@ -45,7 +45,7 @@ const OB_SLIDES = [
   },
   {
     title: 'Dale una hora en tu semana',
-    text: 'Arrastra una tarea al calendario para reservarle tiempo. Mueve o estira los bloques cuando cambien tus planes.',
+    text: 'Arrastra una tarea al calendario para reservarle tiempo. Si un día no te cabe todo, la app te lo dice.',
     demo: `<div class="demo-week ob-card">
       <div class="dw-days"><span>L</span><span class="on">M</span><span>X</span><span>J</span><span>V</span></div>
       <div class="dw-grid">${Array.from({ length: 20 }, () => '<i></i>').join('')}
@@ -56,38 +56,32 @@ const OB_SLIDES = [
     </div>`,
   },
   {
-    title: '¿Me cabe hoy?',
-    text: 'La app suma lo que tienes y te dice si te da tiempo. Si no, te propone qué mover a otro día.',
-    demo: `<div class="demo-fit ob-card">
-      <div class="df-row"><span class="df-ic">⏱</span><div class="grow"><div class="df-title"><span class="ok">Te cabe. Te sobran 2 h 30</span><span class="ko">No te cabe: faltan 45 min</span></div><div class="ob-m">De 9:00 a 21:00</div></div></div>
-      <div class="df-bar"><span class="s1"></span><span class="s2"></span><span class="s3"></span><span class="s4"></span></div>
-      <div class="df-btn">Ajustar mi día</div>
+    title: 'Te avisa antes de empezar',
+    text: 'Ponle hora a una tarea y elige en «Avisarme» cuándo: a la hora, unos minutos antes o el día anterior.',
+    demo: `<div class="demo-remind">
+      <div class="dr-note"><img src="icons/icon.svg" alt=""><div class="grow"><div class="dr-app"><b>Boldup</b><span>ahora</span></div><div class="dr-t">Dentista en 15 min</div><div class="ob-m">Hoy a las 17:00</div></div></div>
+      <div class="ob-card dr-card">
+        ${obTask('Dentista', 'Hoy · 17:00 · Salud')}
+        <div class="dr-row"><span>Avisarme</span><span class="dr-opts"><span class="ob-chip o1">A la hora</span><span class="ob-chip o2">🔔 15 min antes</span></span></div>
+      </div>
     </div>`,
   },
   {
-    title: 'Modo enfoque',
-    text: 'Pulsa ▶ en una tarea y empieza un temporizador sin distracciones. Lo que trabajas cuenta en tu progreso.',
-    demo: `<div class="demo-focus">
-      <svg viewBox="0 0 120 120" class="df-ring"><circle cx="60" cy="60" r="52"/><circle cx="60" cy="60" r="52" class="arc"/></svg>
-      <div class="df-time">25:00</div>
-      <div class="df-label">Terminar el informe</div>
-    </div>`,
-  },
-  {
-    title: 'Objetivos y proyectos',
-    text: 'Pon a cada objetivo su «para qué». Las tareas que completas hacen avanzar su progreso solas.',
-    demo: `<div class="demo-goals">
-      <div class="ob-card dg-card"><div class="dg-h"><span class="dg-ic" style="--c:#34c759">◎</span><b>Ponerme en forma</b></div><div class="ob-m">Para qué: tener más energía cada día</div><div class="ob-bar"><span class="g1"></span></div></div>
+    title: 'Proyectos, solo o con amigos',
+    text: 'Agrupa las tareas y los objetivos de algo grande. Pulsa «Añadir amigos» en cualquier proyecto y lo lleváis juntos.',
+    demo: `<div class="demo-goals demo-team">
+      <div class="ob-card dg-card"><div class="dg-h"><span class="dg-ic" style="--c:#ff9f0a">✈️</span><b class="grow">Viaje a Lisboa</b><span class="dt-avs"><span class="dt-av a1" style="--c:#5e5ce6">L</span><span class="dt-av a2" style="--c:#34c759">M</span><span class="dt-av a3" style="--c:#ff375f">🐼</span></span></div><div class="ob-m">Ahora toca: reservar el hotel</div><div class="ob-bar"><span class="g1"></span></div><span class="dt-add">👥 Añadir amigos</span></div>
       <div class="ob-card dg-card"><div class="dg-h"><span class="dg-ic" style="--c:#0a84ff">💻</span><b>Lanzar mi web</b></div><div class="ob-m">3 de 5 tareas</div><div class="ob-bar"><span class="g2"></span></div></div>
     </div>`,
   },
   {
-    title: 'Hábitos, progreso y todos tus dispositivos',
-    text: 'Crea tareas diarias, mira tu racha y tu semana, y lleva tus datos del móvil al ordenador con tu cuenta.',
-    demo: `<div class="demo-progress ob-card">
-      <div class="dp-top"><span class="dp-fire">🔥</span><b class="dp-n">5</b><span class="ob-m">días seguidos</span></div>
-      <div class="dp-bars">${[40, 65, 30, 80, 55, 90, 70].map((h, i) => `<span style="--h:${h}%;--d:${i * 70}ms"></span>`).join('')}</div>
-      <div class="dp-sync"><span>📱</span><span class="dp-dots"><i></i><i></i><i></i></span><span>💻</span></div>
+    title: 'Concéntrate y mira cómo avanzas',
+    text: 'Pulsa ▶ en una tarea para empezar un temporizador sin distracciones. En Progreso ves tu racha y todo lo que llevas.',
+    demo: `<div class="demo-focus">
+      <svg viewBox="0 0 120 120" class="df-ring"><circle cx="60" cy="60" r="52"/><circle cx="60" cy="60" r="52" class="arc"/></svg>
+      <div class="df-time">25:00</div>
+      <div class="df-label">Terminar el informe</div>
+      <div class="df-streak">🔥 5 días seguidos</div>
     </div>`,
   },
 ];
