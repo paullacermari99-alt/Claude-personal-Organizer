@@ -477,19 +477,19 @@ function focusHome(tasks) {
   const tm = getTimer(), tt = tm && focusSubject(tm.taskId);
   if (tm && tt) {
     const paused = tm.pausedLeft != null, brk = tm.phase === 'break';
-    const st = paused ? 'En pausa' : brk ? 'Descanso' : tm.mode === 'long' ? `Concentrado · ronda ${tm.round} de ${tm.rounds}` : 'Concentrado';
+    const st = paused ? 'En pausa' : brk ? 'Descanso' : tm.mode === 'long' && tm.rounds > 1 ? `Ronda ${tm.round} de ${tm.rounds}` : 'En foco';
     return `<div class="fh-in is-on ${paused ? 'is-paused' : ''} ${brk ? 'is-break' : ''}">
       <div class="fh-text"><span class="fh-l"><i class="fh-dot"></i>${st}</span><span class="fh-time" id="fh-time">${mmss(timerLeft(tm))}</span>${tt.free ? '' : `<span class="fh-s">${esc(tt.title)}</span>`}</div>
-      <button class="fh-go" data-act="${tt.free ? 'focus-free' : 'focus-open'}" ${tt.free ? '' : `data-id="${tt.id}"`}>${I.play}<span>Volver</span></button>
+      <button class="fh-go" data-act="${tt.free ? 'focus-free' : 'focus-open'}" ${tt.free ? '' : `data-id="${tt.id}"`}><span>Volver</span></button>
     </div>`;
   }
   const plan = focusPlan(), mins = plan.mode === 'long' ? plan.work : (focusMins || limFocus('work', state.settings.focusMinutes, 25));
-  const how = plan.mode === 'long' && plan.rounds > 1 ? `${plan.rounds} × ${fmtMins(plan.work)} con descansos` : fmtMins(plan.mode === 'long' ? plan.work : mins);
+  const how = plan.mode === 'long' && plan.rounds > 1 ? `${plan.rounds} × ${fmtMins(plan.work)}` : fmtMins(plan.mode === 'long' ? plan.work : mins);
+  /* v97: más simple y ligero: «Modo foco», la duración y un botón de cristal */
   return `<div class="fh-in">
-    <div class="fh-text"><span class="fh-l"><span class="fh-spark" aria-hidden="true">✦</span>Modo foco</span>
-      <span class="fh-t">Concéntrate sin distracciones</span>
+    <div class="fh-text"><span class="fh-t"><span class="fh-spark" aria-hidden="true">✦</span>Modo foco</span>
       <span class="fh-s">${how}</span></div>
-    <button class="fh-go" data-act="focus-free">${I.play}<span>Entrar</span></button>
+    <button class="fh-go" data-act="focus-free">Entrar</button>
   </div>`;
 }
 /* v82: lo secundario de Hoy, plegado en filas que se abren al tocarlas */
