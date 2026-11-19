@@ -217,3 +217,29 @@ function endSheet(commit) {
     setTimeout(reset, rm() ? 0 : 310);
   }
 }
+
+/* ---------- v96: la barra de abajo responde al primer toque, también justo después de un scroll ----------
+   En el iPhone, si la página aún se desliza por la inercia del scroll, el primer toque solo la frena y no
+   llega a ser un «clic»: había que tocar dos veces. Aquí la barra cambia de pantalla al levantar el dedo
+   (si no lo has arrastrado), sin esperar a ese clic. */
+(() => {
+  let t = null;
+  document.addEventListener('touchstart', e => {
+    const a = e.touches.length === 1 && e.target.closest && e.target.closest('.nav a[href^="#"]');
+    t = a ? { a, x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now() } : null;
+  }, { passive: true, capture: true });
+  document.addEventListener('touchmove', e => {
+    if (!t) return;
+    const p = e.touches[0];
+    if (Math.abs(p.clientX - t.x) > 10 || Math.abs(p.clientY - t.y) > 10) t = null;
+  }, { passive: true, capture: true });
+  document.addEventListener('touchend', e => {
+    const s = t; t = null;
+    if (!s || Date.now() - s.at > 600 || !s.a.isConnected) return;
+    const end = e.target.closest && e.target.closest('.nav a[href^="#"]');
+    if (end !== s.a || !e.cancelable) return;
+    e.preventDefault();   /* sin el clic del sistema (que tras un scroll no llega, y si llega iría doble) */
+    s.a.click();          /* el mismo camino que un toque normal */
+  }, { passive: false, capture: true });
+  document.addEventListener('touchcancel', () => { t = null; }, { passive: true, capture: true });
+})();
