@@ -3171,3 +3171,124 @@ dialog.crop-dlg { width: 100%; max-width: 460px; padding: 0 0 calc(18px + env(sa
 .focus-card:not(.is-running):not(.is-summary) .focus-extra .hint { display: none; }
 @media (max-height: 820px) and (max-width: 600px) { .focus-card:not(.is-running) .dial.is-setable { --ds: 196px; } }
 @media (max-height: 640px) and (max-width: 600px) { .focus-card:not(.is-running) .dial.is-setable { --ds: 172px; } }
+
+/* ---------- v86: modo sueño (enfoque en marcha a pantalla completa) ---------- */
+.focus-layer.focus-dream { padding: 0; place-items: stretch; background: #05050b; -webkit-backdrop-filter: none; backdrop-filter: none; overflow: hidden; animation: none; }
+.focus-layer.focus-dream { --d1: #4a72cf; --d2: #7b5cff; --d3: #1fb6ff; --d4: #ff6fa8; }
+.dream {
+  position: relative; z-index: 1; width: 100%; height: 100%; min-height: 100dvh; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center;
+  padding: calc(12px + env(safe-area-inset-top)) 20px calc(18px + env(safe-area-inset-bottom));
+  color: #f5f5f7; text-align: center; -webkit-user-select: none; user-select: none;
+}
+[data-skin="vivo"] .focus-dream { --d1: #7c3aed; --d2: #ec4899; --d3: #6366f1; --d4: #f59e0b; }
+[data-skin="sereno"] .focus-dream { --d1: #b8875a; --d2: #6b7a8f; --d3: #e2b88a; --d4: #8f5f6b; }
+[data-skin="compacto"] .focus-dream { --d1: #0e8f84; --d2: #2563eb; --d3: #3dd6c6; --d4: #22c55e; }
+.focus-layer.focus-dream.dr-break { --d1: #1fae6a; --d2: #11a3a0; --d3: #9be15d; --d4: #3fc1ff; }
+/* Fondo: manchas de color muy difuminadas que se mueven despacio (solo transform: suave también en el móvil) */
+.dream-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; background: radial-gradient(120% 80% at 50% 0%, #0d0d1c 0%, #05050b 70%); transition: opacity .6s; }
+.dream-bg i { position: absolute; width: 85vmax; height: 85vmax; border-radius: 50%; opacity: .55; will-change: transform; transition: background .9s; }
+.dream-bg .b1 { left: -35vmax; top: -30vmax; background: radial-gradient(circle, var(--d1) 0%, transparent 62%); animation: dr-a 26s ease-in-out infinite alternate; }
+.dream-bg .b2 { right: -40vmax; top: 10vh; background: radial-gradient(circle, var(--d2) 0%, transparent 62%); animation: dr-b 32s ease-in-out infinite alternate; }
+.dream-bg .b3 { left: -20vmax; bottom: -45vmax; background: radial-gradient(circle, var(--d3) 0%, transparent 60%); opacity: .4; animation: dr-c 38s ease-in-out infinite alternate; }
+.dream-bg .b4 { right: -30vmax; bottom: -50vmax; width: 60vmax; height: 60vmax; background: radial-gradient(circle, var(--d4) 0%, transparent 62%); opacity: .25; animation: dr-d 30s ease-in-out infinite alternate; }
+.dream-bg::after { content: ""; position: absolute; inset: 0; background: radial-gradient(90% 70% at 50% 45%, transparent 40%, rgba(0,0,0,.55) 100%); }
+@keyframes dr-a { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(18vw, 12vh) scale(1.12); } 100% { transform: translate(6vw, 28vh) scale(.95); } }
+@keyframes dr-b { 0% { transform: translate(0, 0) scale(1.05); } 50% { transform: translate(-22vw, 18vh) scale(.9); } 100% { transform: translate(-8vw, -10vh) scale(1.1); } }
+@keyframes dr-c { 0% { transform: translate(0, 0) scale(.95); } 50% { transform: translate(24vw, -16vh) scale(1.1); } 100% { transform: translate(10vw, -4vh) scale(1); } }
+@keyframes dr-d { 0% { transform: translate(0, 0); } 100% { transform: translate(-26vw, -30vh) scale(1.2); } }
+.focus-dream.dr-paused .dream-bg i { animation-play-state: paused; }
+.focus-dream.dr-paused .dream-bg { opacity: .6; }
+/* Arriba: ✕ pequeña, estado y apuntar */
+.dream-top { width: 100%; max-width: 560px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.dream-icon { width: 36px; height: 36px; flex: none; border: 0; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.1); color: #fff; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.dream-icon svg { width: 16px; height: 16px; }
+.dream-icon:active { transform: scale(.92); }
+.dream-status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; letter-spacing: .04em; color: rgba(255,255,255,.75); }
+.dream-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--d3); box-shadow: 0 0 10px var(--d3); animation: st-pulse 2.2s ease-in-out infinite; }
+.dream.is-paused .dream-status i { background: #ff9f0a; box-shadow: 0 0 10px #ff9f0a; animation: none; }
+/* La hora, grande y fina, sin círculo */
+.dream-clock { position: relative; margin-top: clamp(18px, 7vh, 80px); display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+.dream-clock::before { content: ""; position: absolute; z-index: -1; left: 50%; top: 18%; width: 70vmin; height: 34vmin; margin-left: -35vmin; border-radius: 50%; background: radial-gradient(closest-side, rgba(255,255,255,.12), transparent); animation: dr-glow 6s ease-in-out infinite; }
+@keyframes dr-glow { 0%, 100% { transform: scale(.9); opacity: .6; } 50% { transform: scale(1.08); opacity: 1; } }
+.dream-time { font-size: clamp(78px, 25vw, 172px); font-weight: 200; line-height: .95; letter-spacing: -.045em; font-variant-numeric: tabular-nums; color: #fff; text-shadow: 0 0 40px rgba(255,255,255,.18); transition: opacity .4s; }
+.dream-time.hrs { font-size: clamp(60px, 19vw, 136px); }
+.dream.is-paused .dream-time { opacity: .45; animation: dr-paused 2.4s ease-in-out infinite; }
+@keyframes dr-paused { 50% { opacity: .75; } }
+.dream-task { max-width: min(92%, 460px); font-size: 16px; font-weight: 500; color: rgba(255,255,255,.72); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dream-meta { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin-top: 6px; }
+.dream-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 99px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,.88); background: rgba(255,255,255,.08); border: .5px solid rgba(255,255,255,.14); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.dream-chip b { font-weight: 700; font-variant-numeric: tabular-nums; color: #fff; }
+.dream-dots { display: inline-flex; gap: 5px; align-items: center; padding: 0 4px; flex-basis: 100%; justify-content: center; }
+.dream-dots i { width: 7px; height: 7px; border-radius: 4px; background: rgba(255,255,255,.22); transition: width .3s; }
+.dream-dots i.done { background: rgba(255,255,255,.85); }
+.dream-dots i.cur { width: 20px; background: #fff; box-shadow: 0 0 10px rgba(255,255,255,.5); }
+/* El consejo, en medio */
+.dream-mid { flex: 1; display: grid; place-items: center; width: 100%; max-width: 460px; padding: 16px 12px; min-height: 90px; }
+.dream-cheer { margin: 0; font-size: clamp(20px, 5.6vw, 27px); font-weight: 500; line-height: 1.32; letter-spacing: -.01em; color: rgba(255,255,255,.92); text-wrap: balance; }
+.dream-cheer-ic { display: block; margin: 0 auto 10px; font-size: 18px; color: var(--d3); text-shadow: 0 0 14px var(--d3); }
+.dream-cheer.in { animation: dr-blur-in 1s cubic-bezier(.2,.8,.2,1) both; }
+/* Apuntar una idea */
+.dream-note { display: flex; gap: 8px; width: 100%; max-width: 420px; margin-bottom: 10px; animation: dr-blur-in .45s cubic-bezier(.2,.8,.2,1); }
+.dream-note[hidden] { display: none; }
+.dream-note input { flex: 1; min-width: 0; min-height: 40px; border-radius: 12px; border: .5px solid rgba(255,255,255,.18); background: rgba(255,255,255,.1); color: #fff; padding: 0 12px; font-size: 16px; }
+.dream-note input::placeholder { color: rgba(255,255,255,.5); }
+.dream-note .dream-icon { width: 40px; height: 40px; }
+.dream-dis { margin: -2px 0 10px; font-size: 12px; color: rgba(255,255,255,.55); }
+/* Botones: Parar · Pausar/Reanudar · Reiniciar */
+.dream-ctrl { display: flex; align-items: flex-start; justify-content: center; gap: clamp(26px, 9vw, 44px); }
+.dream-ctrl button { border: 0; background: none; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; color: #fff; cursor: pointer; font: inherit; -webkit-tap-highlight-color: transparent; }
+.dream-ctrl small { font-size: 12px; font-weight: 600; color: rgba(255,255,255,.65); }
+.dc-ic { display: grid; place-items: center; width: 60px; height: 60px; margin: 12px 0; border-radius: 50%; background: rgba(255,255,255,.1); border: .5px solid rgba(255,255,255,.16); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); transition: transform .15s; }
+.dc-ic svg { width: 20px; height: 20px; }
+.dream-ctrl .main .dc-ic { width: 84px; height: 84px; margin: 0; background: #fff; color: #0b0b12; border: 0; box-shadow: 0 0 0 8px rgba(255,255,255,.06), 0 12px 40px rgba(0,0,0,.4); }
+.dream-ctrl .main .dc-ic svg { width: 28px; height: 28px; }
+.dream-ctrl .main.is-play .dc-ic svg { transform: translateX(2px); }
+.dream-ctrl button:active .dc-ic { transform: scale(.92); }
+.dream-ctrl button:focus-visible { outline: none; }
+.dream-ctrl button:focus-visible .dc-ic, .dream-icon:focus-visible, .dream-done:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.dream-done { margin-top: 14px; display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: rgba(255,255,255,.55); font: inherit; font-size: 13px; font-weight: 600; padding: 8px 12px; cursor: pointer; }
+.dream-done svg { width: 14px; height: 14px; }
+/* Entrada espectacular: el fondo florece, la hora llega desenfocada y se enfoca, lo demás va apareciendo */
+@keyframes dr-blur-in { from { opacity: 0; filter: blur(12px); transform: translateY(10px); } }
+@keyframes dr-time-in { 0% { opacity: 0; filter: blur(28px); transform: scale(1.18); letter-spacing: .02em; } 60% { opacity: 1; } 100% { opacity: 1; filter: blur(0); transform: none; } }
+@keyframes dr-bg-in { from { opacity: 0; transform: scale(.4); } }
+@keyframes dr-fade { from { opacity: 0; } }
+.dream-bg.enter { animation: dr-fade 1.2s ease both; }
+.dream-bg.enter i { animation-name: dr-bg-in, var(--dr-anim); animation-duration: 1.8s, var(--dr-dur); animation-timing-function: cubic-bezier(.2,.8,.2,1), ease-in-out; animation-iteration-count: 1, infinite; animation-direction: normal, alternate; animation-delay: 0s, 1.8s; animation-fill-mode: both, none; }
+.dream-bg .b1 { --dr-anim: dr-a; --dr-dur: 26s; } .dream-bg .b2 { --dr-anim: dr-b; --dr-dur: 32s; } .dream-bg .b3 { --dr-anim: dr-c; --dr-dur: 38s; } .dream-bg .b4 { --dr-anim: dr-d; --dr-dur: 30s; }
+.dream.enter .dream-time { animation: dr-time-in 1.4s cubic-bezier(.2,.8,.2,1) .2s both; }
+.dream.enter .dream-top { animation: dr-blur-in .8s cubic-bezier(.2,.8,.2,1) .5s both; }
+.dream.enter .dream-task { animation: dr-blur-in .8s cubic-bezier(.2,.8,.2,1) .7s both; }
+.dream.enter .dream-meta { animation: dr-blur-in .8s cubic-bezier(.2,.8,.2,1) .85s both; }
+.dream.enter .dream-cheer { animation: dr-blur-in 1.1s cubic-bezier(.2,.8,.2,1) 1.05s both; }
+.dream.enter .dream-ctrl, .dream.enter .dream-done { animation: dr-blur-in .8s cubic-bezier(.2,.8,.2,1) 1.2s both; }
+.dream.fx-restart .dream-time { animation: dr-time-in .9s cubic-bezier(.2,.8,.2,1) both; }
+/* Parar: todo se difumina y se apaga */
+@keyframes dr-blur-out { to { opacity: 0; filter: blur(22px); transform: scale(1.06); } }
+.dream.is-leaving > * { animation: dr-blur-out .55s cubic-bezier(.4,0,1,1) forwards; }
+.dream.is-leaving .dream-time { animation-duration: .7s; }
+.focus-dream.dr-leaving .dream-bg { animation: fade-out .7s ease-in forwards; }
+.focus-layer.focus-dream.dr-leaving { transition: background-color .7s; background: rgba(5,5,11,0); }
+/* ✕: baja difuminándose hasta la pastilla de abajo */
+.focus-layer.focus-dream.is-minimizing { animation: dr-min-bg .5s cubic-bezier(.4,0,1,1) forwards; }
+.focus-layer.focus-dream.is-minimizing .dream-bg { animation: fade-out .5s ease-in forwards; }
+.focus-layer.focus-dream.is-minimizing .dream { animation: dr-min .5s cubic-bezier(.4,0,1,1) forwards; transform-origin: 50% 100%; }
+@keyframes dr-min { to { opacity: 0; filter: blur(16px); transform: translateY(32vh) scale(.55); border-radius: 40px; } }
+@keyframes dr-min-bg { to { background-color: rgba(5,5,11,0); } }
+.focus-pill.pop { animation: pill-pop .6s cubic-bezier(.2,1.3,.4,1); }
+@keyframes pill-pop { from { opacity: 0; filter: blur(10px); transform: translateX(-50%) translateY(-26px) scale(1.25); } }
+@media (min-width: 1024px) { @keyframes pill-pop { from { opacity: 0; filter: blur(10px); transform: translateY(-26px) scale(1.25); } } }
+/* Pantallas bajas */
+@media (max-height: 700px) {
+  .dream-clock { margin-top: 10px; gap: 6px; }
+  .dream-time { font-size: clamp(64px, 21vw, 120px); }
+  .dream-cheer { font-size: 19px; }
+  .dream-mid { padding: 8px 10px; min-height: 70px; }
+  .dc-ic { width: 52px; height: 52px; margin: 10px 0; }
+  .dream-ctrl .main .dc-ic { width: 72px; height: 72px; }
+  .dream-done { margin-top: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dream *, .dream-bg, .dream-bg i, .dream-clock::before, .focus-pill.pop { animation: none !important; }
+}

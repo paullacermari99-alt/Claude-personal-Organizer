@@ -2138,7 +2138,90 @@ function cheerHTML(c, anim) {
 function swapCheer(c) {
   const el = $('#focus-cheer');
   if (!el) return;
-  el.outerHTML = cheerHTML(c, true);
+  el.outerHTML = el.classList.contains('dream-cheer') ? dreamCheerHTML(c, true) : cheerHTML(c, true);
+}
+const dreamCheerHTML = (c, anim) => `<p class="dream-cheer ${anim ? 'in' : ''}" id="focus-cheer" role="status"><span class="dream-cheer-ic" aria-hidden="true">${c.k === 'brk' ? '☕' : '✦'}</span>${esc(c.t)}</p>`;
+
+/* ---------- v86: modo sueño. Con el enfoque en marcha la ventana ocupa toda la pantalla:
+   fondo oscuro con manchas de color difuminadas que se mueven, la hora grande arriba (sin círculo),
+   el consejo en medio y abajo Parar · Pausar/Reanudar · Reiniciar. La ✕ lo minimiza a la pastilla de abajo. ---------- */
+let dreamFx = null;
+/* Cuánto queda para el descanso y cuántos descansos hay */
+function dreamMeta(tm) {
+  const left = timerLeft(tm), long = tm.mode === 'long', brk = tm.phase === 'break';
+  const chip = (ic, txt) => `<span class="dream-chip"><span aria-hidden="true">${ic}</span>${txt}</span>`;
+  if (!long) return chip('🏁', `Sin descansos · termina a las ${clockAt(Date.now() + left)}`);
+  const breaks = tm.rounds - 1;
+  const dots = `<span class="dream-dots" aria-label="Ronda ${tm.round} de ${tm.rounds}">${Array.from({ length: tm.rounds }, (_, k) => `<i class="${k + 1 < tm.round || (k + 1 === tm.round && brk) ? 'done' : k + 1 === tm.round ? 'cur' : ''}"></i>`).join('')}</span>`;
+  if (brk) return chip('☕', `Descanso ${tm.round} de ${breaks} · vuelves en <b>${mmss(left)}</b>`) + dots;
+  const ahead = tm.rounds - tm.round;
+  return (ahead ? chip('☕', `Descanso en <b>${mmss(left)}</b>`) + chip('', `${ahead} descanso${ahead === 1 ? '' : 's'} por delante`) : chip('🏁', `Última ronda · terminas en <b>${mmss(left)}</b>`)) + dots;
+}
+function renderDream(t, timer) {
+  const layer = $('#focus');
+  const was = !layer.hidden && !layer.classList.contains('is-minimizing') && layer.querySelector('.dream');
+  const prevCheer = was && $('#focus-cheer') ? $('#focus-cheer').textContent.slice(1) : null;
+  const noteOpen = was && was.querySelector('.dream-note:not([hidden])');
+  const paused = timer.pausedLeft != null, brk = timer.phase === 'break', long = timer.mode === 'long';
+  const left = timerLeft(timer);
+  const status = paused ? 'En pausa' : brk ? 'Descanso' : long ? `Ronda ${timer.round} de ${timer.rounds}` : 'Concentrado';
+  const ch = timer.cheer || { k: 'start', t: CHEERS.start[0] };
+  const fx = dreamFx; dreamFx = null;
+  layer.classList.remove('focus-full', 'is-closing');
+  layer.classList.add('focus-dream');
+  layer.classList.toggle('dr-break', brk);
+  layer.classList.toggle('dr-paused', paused);
+  const btn = (act, icon, label, cls = '') => `<button class="${cls}" data-act="${act}" aria-label="${label}"><span class="dc-ic">${icon}</span><small>${label}</small></button>`;
+  const n = (timer.distractions || []).length;
+  const html = `<div class="dream ${was ? '' : 'enter'} ${paused ? 'is-paused' : ''} ${brk ? 'is-break' : ''} ${fx === 'restart' ? 'fx-restart' : ''}" role="dialog" aria-label="Enfoque en marcha">
+    <div class="dream-top">
+      <button class="dream-icon" data-act="focus-close" aria-label="Minimizar (el tiempo sigue)" title="Minimizar">${I.close}</button>
+      <div class="dream-status"><i aria-hidden="true"></i>${status}</div>
+      <button class="dream-icon" data-act="dream-note" aria-label="Apuntar una idea para después" title="Apuntar una idea">${I.plus}</button>
+    </div>
+    <div class="dream-clock">
+      <div class="dream-time ${left >= 3600000 ? 'hrs' : ''}" id="focus-time">${mmss(left)}</div>
+      <div class="dream-task">${esc(t.title)}</div>
+      <div class="dream-meta" id="dream-meta">${dreamMeta(timer)}</div>
+    </div>
+    <div class="dream-mid">
+      ${paused ? `<p class="dream-cheer ${was ? 'in' : ''}" id="focus-cheer"><span class="dream-cheer-ic" aria-hidden="true">⏸</span>Tómate tu tiempo. Seguimos cuando quieras.</p>` : dreamCheerHTML(ch, !was || ch.t !== prevCheer)}
+    </div>
+    <form class="dream-note" data-act="focus-distraction" ${noteOpen ? '' : 'hidden'}>
+      <input type="text" name="title" placeholder="¿Te viene algo a la cabeza? Apúntalo y sigue" autocomplete="off" enterkeyhint="done" aria-label="Apuntar una idea">
+      <button class="dream-icon" type="submit" aria-label="Apuntar">${I.check}</button>
+    </form>
+    ${n ? `<p class="dream-dis dis-count">${n} apuntada${n === 1 ? '' : 's'} en la bandeja para después</p>` : ''}
+    <div class="dream-ctrl">
+      ${btn('focus-stop', I.stop, 'Parar')}
+      ${btn(paused ? 'focus-resume' : 'focus-pause', paused ? I.play : I.pause, paused ? 'Reanudar' : 'Pausar', 'main' + (paused ? ' is-play' : ''))}
+      ${btn('focus-restart', I.reset, 'Reiniciar')}
+    </div>
+    <button class="dream-done" data-act="focus-done" data-id="${t.id}">${I.check}<span>Tarea hecha</span></button>
+  </div>`;
+  /* El fondo vive fuera de la ventana: sigue moviéndose sin saltos al pausar o reanudar */
+  if (was && layer.querySelector('.dream-bg')) was.outerHTML = html;
+  else layer.innerHTML = `<div class="dream-bg enter" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i></div>` + html;
+  updateTimerUI();
+}
+/* Parar: todo se difumina y se va; lo trabajado cuenta en Progreso */
+function stopFocus() {
+  const layer = $('#focus'), d = layer.querySelector('.dream');
+  const fin = () => {
+    cancelTimer(true);
+    layer.hidden = true;
+    layer.classList.remove('focus-dream', 'dr-leaving', 'dr-break', 'dr-paused');
+    layer.innerHTML = '';
+    document.body.classList.remove('focus-open');
+    updateTimerUI();
+    rerender();
+    toast('Sesión parada. Lo que has hecho cuenta en Progreso.');
+  };
+  if (!d || reduceMotion()) return fin();
+  if (stopFocus.busy) return;
+  stopFocus.busy = true;
+  d.classList.add('is-leaving'); layer.classList.add('dr-leaving');
+  setTimeout(() => { stopFocus.busy = false; fin(); }, 700);
 }
 let celebratedAt = null;
 
@@ -2201,7 +2284,18 @@ function closeFocus() {
   document.body.classList.remove('focus-open');
   const done = () => { layer.hidden = true; layer.classList.remove('focus-full', 'is-closing'); updateTimerUI(); };
   clearTimeout(closeFocus.t);
-  if (layer.hidden || reduceMotion()) return done();
+  if (layer.hidden || reduceMotion()) { layer.classList.remove('focus-dream', 'is-minimizing', 'dr-break', 'dr-paused'); return done(); }
+  /* Modo sueño: baja difuminándose y se queda abajo la pastilla con el tiempo */
+  if (layer.classList.contains('focus-dream')) {
+    layer.classList.add('is-minimizing');
+    closeFocus.t = setTimeout(() => {
+      layer.classList.remove('focus-dream', 'is-minimizing', 'dr-break', 'dr-paused');
+      done();
+      const pill = $('#focus-pill');
+      if (!pill.hidden) { pill.classList.remove('pop'); void pill.offsetWidth; pill.classList.add('pop'); }
+    }, 520);
+    return;
+  }
   layer.classList.add('is-closing');
   closeFocus.t = setTimeout(done, 190);
 }
@@ -2267,6 +2361,8 @@ function renderFocus(noMorph) {
   const full = $('#focus').classList.contains('focus-full');
   const timer = getTimer(), mine = timer && timer.taskId === t.id, paused = mine && timer.pausedLeft != null;
   const other = timer && !mine, plan = focusPlan();
+  if (mine) return renderDream(t, timer);
+  layer.classList.remove('focus-dream', 'is-minimizing', 'dr-break', 'dr-paused');
   const total = plan.rounds * plan.work + (plan.rounds - 1) * plan.brk;
   const stepper = (k, v, label, txt) => `<div class="fstep" data-k="${k}"><span class="fstep-l">${label}</span>
         <button class="fstep-b" data-act="focus-step" data-k="${k}" data-d="-1" aria-label="Menos ${label.toLowerCase()}" ${v <= FOCUS_LIM[k][0] ? 'disabled' : ''}>−</button>
@@ -2364,7 +2460,21 @@ function focusAction(act) {
     setSummary(null);
     const plan = focusPlan(), long = plan.mode === 'long', mins = long ? plan.work : focusMins;
     setTimer({ taskId: focusTaskId, mode: plan.mode, work: long ? plan.work : mins, brk: plan.brk, rounds: long ? plan.rounds : 1, round: 1, phase: 'work', minutes: mins, endAt: Date.now() + mins * 60000, pausedLeft: null, cheer: { k: 'start', t: cheer('start') } });
+    const c = $('#focus .focus-card');
+    if (c && c.animate && !reduceMotion()) {
+      const go = () => renderFocus();
+      c.animate([{ opacity: 1, filter: 'blur(0)', transform: 'none' }, { opacity: 0, filter: 'blur(16px)', transform: 'scale(.93)' }], { duration: 300, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished.then(go, go);
+      return;
+    }
   } else if (!tm) return;
+  else if (act === 'restart') {
+    /* Vuelve a empezar la fase actual; lo ya trabajado cuenta */
+    if (tm.phase === 'work') logFocus(workedNow(tm), tm.taskId);
+    const full = tm.minutes * 60000;
+    setTimer({ ...tm, ...(tm.pausedLeft != null ? { pausedLeft: full } : { endAt: Date.now() + full }), half: null });
+    save();
+    dreamFx = 'restart';
+  }
   else if (act === 'pause') setTimer({ ...tm, pausedLeft: timerLeft(tm) });
   else if (act === 'resume') setTimer({ ...tm, endAt: Date.now() + tm.pausedLeft, pausedLeft: null, cheer: tm.phase === 'break' ? tm.cheer : { k: 'resume', t: cheer('resume') } });
   else if (act === 'reset') {
@@ -2392,7 +2502,7 @@ function updateTimerUI() {
     pill.hidden = true;
     const el = $('#focus-time');
     const m0 = focusPlan().mode === 'long' ? focusPlan().work : focusMins || 25;
-    if (el && !dialDrag) { el.textContent = mmss(m0 * 60000); el.classList.toggle('hrs', m0 >= 60); $('#focus-ring').style.strokeDashoffset = ringOffset(m0 * 60000); const k = $('#focus-knob'); if (k) k.style.transform = `rotate(${knobDeg(m0 * 60000)}deg)`; }
+    if (el && !dialDrag && !el.classList.contains('dream-time')) { el.textContent = mmss(m0 * 60000); el.classList.toggle('hrs', m0 >= 60); const ring = $('#focus-ring'); if (ring) ring.style.strokeDashoffset = ringOffset(m0 * 60000); const k = $('#focus-knob'); if (k) k.style.transform = `rotate(${knobDeg(m0 * 60000)}deg)`; }
     closeFocusNote();
     return;
   }
@@ -2407,7 +2517,8 @@ function updateTimerUI() {
   const el = $('#focus-time');
   if (el && timer.taskId === focusTaskId) {
     el.textContent = txt; el.classList.toggle('hrs', left >= 3600000);
-    $('#focus-ring').style.strokeDashoffset = ringOffset(left);
+    const ring = $('#focus-ring'); if (ring) ring.style.strokeDashoffset = ringOffset(left);
+    const dm = $('#dream-meta'); if (dm) dm.innerHTML = dreamMeta(timer);
     const k = $('#focus-knob'); if (k) k.style.transform = `rotate(${knobDeg(left)}deg)`;
   }
   /* A mitad de una sesión de trabajo (de 10 min o más), un empujón */
@@ -2730,6 +2841,9 @@ document.addEventListener('click', e => {
     case 'focus-pause': focusAction('pause'); return;
     case 'focus-resume': focusAction('resume'); return;
     case 'focus-reset': focusAction('reset'); return;
+    case 'focus-restart': focusAction('restart'); return;
+    case 'focus-stop': stopFocus(); return;
+    case 'dream-note': { const f = $('#focus .dream-note'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.querySelector('input').focus(); } return; }
     case 'focus-pill': { const tm = getTimer(); if (tm && tm.taskId) openFocus(tm.taskId); return; }
     case 'focus-done': {
       const t = task(id);
