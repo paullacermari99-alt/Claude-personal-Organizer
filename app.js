@@ -1423,6 +1423,8 @@ function accountCard() {
     <span class="chev">${I.right}</span>
   </a>`;
 }
+/* v88: número de versión en Ajustes, para comprobar que la app ya se ha actualizado */
+const APP_VERSION = ((document.querySelector('script[src*="app.js?v="]') || {}).src || '').replace(/.*v=/, '') || '?';
 function viewSettings(sec) {
   if (!sec) return `
   <div class="page page-narrow page-settings">
@@ -1431,7 +1433,7 @@ function viewSettings(sec) {
   <div class="settings-group glass set-menu">
     ${SET_SECTIONS.map(([k, l, c, ic]) => `<a class="item set-row" href="#ajustes/${k}"><span class="set-ic" style="--c:${c}">${ic}</span><span class="grow">${l}<span class="small muted item-sub">${esc(settingsSummary(k))}</span></span><span class="chev">${I.right}</span></a>`).join('')}
   </div>
-  <p class="hint">${state.tasks.filter(t => !isRoutineTask(t)).length} tareas · ${state.projects.length} proyectos · ${state.goals.length} objetivos</p>
+  <p class="hint">${state.tasks.filter(t => !isRoutineTask(t)).length} tareas · ${state.projects.length} proyectos · ${state.goals.length} objetivos · versión ${APP_VERSION}</p>
   </div>`;
   const title = sec === 'cuenta' ? 'Cuenta' : ((SET_SECTIONS.find(([k]) => k === sec) || [])[1] || 'Ajustes');
   return `<div class="page page-narrow page-settings settings-sub">
