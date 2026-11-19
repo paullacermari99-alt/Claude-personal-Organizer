@@ -3204,6 +3204,7 @@ dialog.crop-dlg { width: 100%; max-width: 460px; padding: 0 0 calc(18px + env(sa
 .dream-icon { width: 36px; height: 36px; flex: none; border: 0; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.1); color: #fff; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .dream-icon svg { width: 16px; height: 16px; }
 .dream-icon:active { transform: scale(.92); }
+.dream-spacer { visibility: hidden; }
 .dream-status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; letter-spacing: .04em; color: rgba(255,255,255,.75); }
 .dream-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--d3); box-shadow: 0 0 10px var(--d3); animation: st-pulse 2.2s ease-in-out infinite; }
 .dream.is-paused .dream-status i { background: #ff9f0a; box-shadow: 0 0 10px #ff9f0a; animation: none; }

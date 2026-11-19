@@ -2189,7 +2189,6 @@ function renderDream(t, timer) {
   const layer = $('#focus');
   const was = !layer.hidden && !layer.classList.contains('is-minimizing') && layer.querySelector('.dream');
   const prevCheer = was && $('#focus-cheer') ? $('#focus-cheer').textContent.slice(1) : null;
-  const noteOpen = was && was.querySelector('.dream-note:not([hidden])');
   const paused = timer.pausedLeft != null, brk = timer.phase === 'break', long = timer.mode === 'long';
   const left = timerLeft(timer);
   const status = paused ? 'En pausa' : brk ? 'Descanso' : long ? `Ronda ${timer.round} de ${timer.rounds}` : 'Concentrado';
@@ -2200,12 +2199,11 @@ function renderDream(t, timer) {
   layer.classList.toggle('dr-break', brk);
   layer.classList.toggle('dr-paused', paused);
   const btn = (act, icon, label, cls = '') => `<button class="${cls}" data-act="${act}" aria-label="${label}"><span class="dc-ic">${icon}</span><small>${label}</small></button>`;
-  const n = (timer.distractions || []).length;
   const html = `<div class="dream ${was ? '' : 'enter'} ${paused ? 'is-paused' : ''} ${brk ? 'is-break' : ''} ${fx === 'restart' ? 'fx-restart' : ''}" role="dialog" aria-label="Enfoque en marcha">
     <div class="dream-top">
       <button class="dream-icon" data-act="focus-close" aria-label="Minimizar (el tiempo sigue)" title="Minimizar">${I.close}</button>
       <div class="dream-status"><i aria-hidden="true"></i>${status}</div>
-      <button class="dream-icon" data-act="dream-note" aria-label="Apuntar una idea para después" title="Apuntar una idea">${I.plus}</button>
+      <span class="dream-icon dream-spacer" aria-hidden="true"></span>
     </div>
     <div class="dream-clock">
       <div class="dream-time ${left >= 3600000 ? 'hrs' : ''}" id="focus-time">${mmss(left)}</div>
@@ -2215,11 +2213,6 @@ function renderDream(t, timer) {
     <div class="dream-mid">
       ${paused ? `<p class="dream-cheer ${was ? 'in' : ''}" id="focus-cheer"><span class="dream-cheer-ic" aria-hidden="true">⏸</span>Tómate tu tiempo. Seguimos cuando quieras.</p>` : dreamCheerHTML(ch, !was || ch.t !== prevCheer)}
     </div>
-    <form class="dream-note" data-act="focus-distraction" ${noteOpen ? '' : 'hidden'}>
-      <input type="text" name="title" placeholder="¿Te viene algo a la cabeza? Apúntalo y sigue" autocomplete="off" enterkeyhint="done" aria-label="Apuntar una idea">
-      <button class="dream-icon" type="submit" aria-label="Apuntar">${I.check}</button>
-    </form>
-    ${n ? `<p class="dream-dis dis-count">${n} apuntada${n === 1 ? '' : 's'} en la bandeja para después</p>` : ''}
     <div class="dream-ctrl">
       ${btn('focus-stop', I.stop, 'Parar')}
       ${btn(paused ? 'focus-resume' : 'focus-pause', paused ? I.play : I.pause, paused ? 'Reanudar' : 'Pausar', 'main' + (paused ? ' is-play' : ''))}
@@ -2874,7 +2867,6 @@ document.addEventListener('click', e => {
     case 'focus-restart': focusAction('restart'); return;
     case 'focus-stop': stopFocus(); return;
     case 'focus-home': startFocusShortcut(); return;
-    case 'dream-note': { const f = $('#focus .dream-note'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.querySelector('input').focus(); } return; }
     case 'focus-pill': { const tm = getTimer(); if (tm && tm.taskId) openFocus(tm.taskId); return; }
     case 'focus-done': {
       const t = task(id);
