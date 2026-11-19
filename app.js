@@ -2206,6 +2206,24 @@ function rotateTip() {
    fondo oscuro con manchas de color difuminadas que se mueven, la hora grande arriba (sin círculo),
    el consejo en medio y abajo Parar · Pausar/Reanudar · Reiniciar. La ✕ lo minimiza a la pastilla de abajo. ---------- */
 let dreamFx = null;
+/* v93: con el modo sueño a pantalla completa la app de detrás no se ve: se deja de dibujar y su fondo
+   se para (así el móvil no trabaja el doble ni se calienta). Se activa cuando la entrada ya ha tapado todo. */
+function setDreaming(on) {
+  clearTimeout(setDreaming.t);
+  const html = document.documentElement;
+  if (!on) { html.classList.remove('dreaming'); return; }
+  setDreaming.t = setTimeout(() => {
+    const l = $('#focus');
+    if (!l.hidden && l.classList.contains('focus-dream') && !l.classList.contains('is-minimizing') && !l.classList.contains('dr-leaving')) html.classList.add('dreaming');
+  }, 600);
+}
+/* Cambia solo los números (<b>) si el resto no ha cambiado: no se rehacen las pastillas cada segundo */
+function patchHTML(el, html) {
+  const key = html.replace(/<b>[^<]*<\/b>/g, '<b></b>');
+  if (el._k !== key) { el._k = key; el.innerHTML = html; return; }
+  const vals = [...html.matchAll(/<b>([^<]*)<\/b>/g)].map(m => m[1]);
+  el.querySelectorAll('b').forEach((b, i) => { if (b.textContent !== vals[i]) b.textContent = vals[i]; });
+}
 /* Cuánto queda para el descanso y cuántos descansos hay */
 function dreamMeta(tm) {
   const left = timerLeft(tm), long = tm.mode === 'long', brk = tm.phase === 'break';
@@ -2259,11 +2277,13 @@ function renderDream(t, timer) {
   /* El fondo vive fuera de la ventana: sigue moviéndose sin saltos al pausar o reanudar */
   if (was && layer.querySelector('.dream-bg')) was.outerHTML = html;
   else layer.innerHTML = `<div class="dream-bg enter" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i></div>` + html;
+  setDreaming(true);
   updateTimerUI();
 }
 /* Parar: todo se difumina y se va; lo trabajado cuenta en Progreso */
 function stopFocus() {
   const layer = $('#focus'), d = layer.querySelector('.dream');
+  setDreaming(false);
   const fin = () => {
     cancelTimer(true);
     layer.hidden = true;
@@ -2343,6 +2363,7 @@ function closeFocus() {
   try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch {}
   { const s = getSummary(); if (s && s.taskId === focusTaskId) setSummary(null); }
   document.body.classList.remove('focus-open');
+  setDreaming(false);
   const done = () => { layer.hidden = true; layer.classList.remove('focus-full', 'is-closing'); updateTimerUI(); refreshLive(); };
   clearTimeout(closeFocus.t);
   if (layer.hidden || reduceMotion()) { layer.classList.remove('focus-dream', 'is-minimizing', 'dr-break', 'dr-paused'); return done(); }
@@ -2423,6 +2444,7 @@ function renderFocus(noMorph) {
   const timer = getTimer(), mine = timer && timer.taskId === t.id, paused = mine && timer.pausedLeft != null;
   const other = timer && !mine, plan = focusPlan();
   if (mine) return renderDream(t, timer);
+  setDreaming(false);
   layer.classList.remove('focus-dream', 'is-minimizing', 'dr-break', 'dr-paused');
   const total = plan.rounds * plan.work + (plan.rounds - 1) * plan.brk;
   const stepper = (k, v, label, txt) => `<div class="fstep" data-k="${k}"><span class="fstep-l">${label}</span>
@@ -2576,12 +2598,12 @@ function updateTimerUI() {
   const t = timer.taskId && task(timer.taskId);
   pill.hidden = layerOpen;
   pill.classList.toggle('is-paused', paused);
-  pill.innerHTML = `${paused ? I.pause : I.play}<span class="one-line">${brk ? 'Descanso' : esc(t ? t.title : 'Enfoque')}</span><b>${txt}</b>`;
+  if (!layerOpen) patchHTML(pill, `${paused ? I.pause : I.play}<span class="one-line">${brk ? 'Descanso' : esc(t ? t.title : 'Enfoque')}</span><b>${txt}</b>`);
   const el = $('#focus-time');
   if (el && timer.taskId === focusTaskId) {
     el.textContent = txt; el.classList.toggle('hrs', left >= 3600000);
     const ring = $('#focus-ring'); if (ring) ring.style.strokeDashoffset = ringOffset(left);
-    const dm = $('#dream-meta'); if (dm) dm.innerHTML = dreamMeta(timer);
+    const dm = $('#dream-meta'); if (dm) patchHTML(dm, dreamMeta(timer));
     const k = $('#focus-knob'); if (k) k.style.transform = `rotate(${knobDeg(left)}deg)`;
   }
   { const fh = $('#fh-time'); if (fh) fh.textContent = txt; }
@@ -3339,3 +3361,25 @@ if (cameFromLogin) firstSync().then(rerender).catch(e => toast(e.message)); else
 if (typeof socAfterLogin === 'function' && !cameFromLogin && getSession()) setTimeout(() => socAfterLogin(), 2500);
 /* Con la app abierta se miran los cambios de tus otros dispositivos cada 30 s */
 setInterval(() => { if (document.visibilityState === 'visible' && !modal.open) syncNow(); }, 30000);
+
+/* ---------- v93: el fondo de color se queda quieto cuando no hace falta que se mueva ----------
+   Mientras haces scroll (así el scroll va fino), y si llevas un rato sin tocar la app (así no gasta
+   batería ni calienta el móvil con la pantalla encendida). Se congela donde está y sigue al volver. */
+(() => {
+  const html = document.documentElement;
+  let scrollT = 0, idleT = 0, scrolling = false, idle = false;
+  const apply = () => html.classList.toggle('bg-still', scrolling || idle);
+  const wake = () => {
+    clearTimeout(idleT);
+    if (idle) { idle = false; apply(); }
+    idleT = setTimeout(() => { idle = true; apply(); }, 20000);
+  };
+  document.addEventListener('scroll', () => {
+    if (!scrolling) { scrolling = true; apply(); }
+    clearTimeout(scrollT);
+    scrollT = setTimeout(() => { scrolling = false; apply(); }, 220);
+  }, { capture: true, passive: true });
+  ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(ev => document.addEventListener(ev, wake, { capture: true, passive: true }));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
+  wake();
+})();

@@ -3355,3 +3355,22 @@ dialog.crop-dlg { width: 100%; max-width: 460px; padding: 0 0 calc(18px + env(sa
 .dream.enter .dream-tip { animation: none; }
 @media (max-height: 700px) { .dream-tip { min-height: 0; padding: 12px 16px; } .dream-tip .dream-cheer { font-size: 14px; } }
 @media (prefers-reduced-motion: reduce) { .dream-tip { transition: none; filter: none; transform: none; } }
+
+/* ---------- v93: rendimiento (tirones y móvil caliente en el modo foco) ----------
+   Lo que más gasta en el móvil es el desenfoque de lo que hay detrás (backdrop-filter) encima de algo
+   que se mueve: hay que volver a calcularlo en cada fotograma. Por eso:
+   · el fondo de color de la app ya no lleva filtro de desenfoque (sus manchas ya son difusas: se ve igual);
+   · el fondo se queda quieto mientras haces scroll, con una hoja abierta, en el modo foco o si no tocas
+     la app en un rato (vuelve a moverse al tocar); se congela donde está, sin saltos;
+   · en el modo sueño, la tarjeta del consejo, las pastillas y los botones son de cristal sin desenfoque
+     en vivo (el fondo ya es todo difuminado, así que se ven igual) y la app de detrás deja de dibujarse. */
+body::before, body::after { filter: none; }
+html.bg-still body::before, html.bg-still body::after, html.bg-still .fh-bg i,
+html:has(dialog[open]) body::before, html:has(dialog[open]) body::after, html:has(dialog[open]) .fh-bg i,
+html:has(#focus:not([hidden])) body::before, html:has(#focus:not([hidden])) body::after { animation-play-state: paused; }
+html.dreaming body > :not(#focus), html.dreaming body::before, html.dreaming body::after { visibility: hidden; }
+html.dreaming body::before, html.dreaming body::after { animation-play-state: paused; }
+.dream-tip, .dream-chip, .dc-ic { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.dream-tip { background: linear-gradient(160deg, rgba(255,255,255,.12), rgba(255,255,255,.035)), rgba(12, 12, 26, .38); }
+.dream-chip { background: rgba(255,255,255,.1); }
+.dc-ic { background: rgba(255,255,255,.12); }
