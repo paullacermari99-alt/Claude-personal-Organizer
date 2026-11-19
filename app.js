@@ -2171,7 +2171,7 @@ function swapCheer(c) {
 const dreamCheerInner = c => `<span class="dream-cheer-ic" aria-hidden="true">${c.k === 'brk' ? '☕' : '✦'}</span>${esc(c.t)}`;
 const dreamCheerHTML = (c, anim) => `<p class="dream-cheer ${anim ? 'in' : ''}" id="focus-cheer" role="status">${dreamCheerInner(c)}</p>`;
 /* v90: en el modo sueño el consejo cambia cada 30 s: se desvanece despacio y aparece el siguiente */
-let tipAt = 0;
+let tipAt = 0, dreamAt = 0;
 function fadeCheer(c) {
   tipAt = Date.now();
   const el = $('#focus-cheer');
@@ -2187,8 +2187,13 @@ function fadeCheer(c) {
   }, 1400);
 }
 function rotateTip() {
-  const tm = getTimer();
-  if (!tm || tm.pausedLeft != null || !$('#focus .dream')) return;
+  const tm = getTimer(), box = $('#focus .dream-tip');
+  if (!tm || !box) return;
+  if (!box.classList.contains('show')) {
+    if (Date.now() - dreamAt >= 20000) { box.classList.add('show'); tipAt = Date.now(); }
+    return;
+  }
+  if (tm.pausedLeft != null) return;
   if (!tipAt) { tipAt = Date.now(); return; }
   if (Date.now() - tipAt < 30000) return;
   const k = tm.phase === 'break' ? 'brk' : 'tip';
@@ -2222,6 +2227,9 @@ function renderDream(t, timer) {
   const ch = timer.cheer || { k: 'start', t: CHEERS.start[0] };
   const fx = dreamFx; dreamFx = null;
   if (!was || ch.t !== prevCheer) tipAt = Date.now();
+  /* v92: el consejo no sale hasta llevar 20 s en esta pantalla, y entra con un fundido */
+  if (!was) dreamAt = Date.now();
+  const tipShown = !!(was && was.querySelector('.dream-tip.show'));
   layer.classList.remove('focus-full', 'is-closing');
   layer.classList.add('focus-dream');
   layer.classList.toggle('dr-break', brk);
@@ -2238,7 +2246,7 @@ function renderDream(t, timer) {
       ${t.free ? '' : `<div class="dream-task">${esc(t.title)}</div>`}
       <div class="dream-meta" id="dream-meta">${dreamMeta(timer)}</div>
     </div>
-    <div class="dream-mid"><div class="dream-tip">
+    <div class="dream-mid"><div class="dream-tip ${tipShown ? 'show' : ''}">
       ${paused ? `<p class="dream-cheer ${was ? 'in' : ''}" id="focus-cheer"><span class="dream-cheer-ic" aria-hidden="true">⏸</span>Tómate tu tiempo. Seguimos cuando quieras.</p>` : dreamCheerHTML(ch, was && ch.t !== prevCheer)}
     </div></div>
     <div class="dream-ctrl">
