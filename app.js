@@ -68,7 +68,17 @@ function route() {
   updateTimerUI();
   afterRenderCalendar(keep);
 }
-function rerender() { const y = window.scrollY; route(); window.scrollTo(0, y); }
+/* v95: si estás desplazando la pantalla, el repintado (p. ej. tras sincronizar) espera a que pares:
+   repintar y volver a colocar la página a mitad de un scroll lo frenaba en seco */
+let lastScrollAt = 0, lastDragAt = 0;
+document.addEventListener('scroll', () => { lastScrollAt = Date.now(); }, { capture: true, passive: true });
+document.addEventListener('touchmove', () => { lastDragAt = Date.now(); }, { capture: true, passive: true });
+const fingerScrolling = () => Date.now() - lastScrollAt < 250 && Date.now() - lastDragAt < 4000;
+function rerender() {
+  clearTimeout(rerender.t);
+  if (fingerScrolling()) { rerender.t = setTimeout(rerender, 300); return; }
+  const y = window.scrollY; route(); window.scrollTo(0, y);
+}
 /* En el móvil el cambio de pantalla es instantáneo, como las pestañas de una app: el fundido
    entre pantallas oscurecía un instante el fondo (parpadeo). En el ordenador, fundido suave. */
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1543,8 +1553,14 @@ const modal = $('#modal');
     const max = Math.max(0, root.scrollHeight - window.innerHeight);
     return window.scrollY > max + 1 || (vv && vv.offsetTop > 1) || (locked() && y0 !== null && Math.abs(window.scrollY - y0) > 1);
   };
+  /* v95: solo se corrige justo después de usar el teclado. Antes también se hacía al cambiar el tamaño
+     de la pantalla (en iPhone pasa al subir: aparece la barra del navegador) y el scrollTo frenaba
+     en seco el desplazamiento a mitad de camino. */
+  let kbAt = 0;
+  const recent = () => y0 !== null || Date.now() - kbAt < 2500;
   const fix = () => {
     if (typing() || kbOpen()) return;
+    if (!recent() || !shifted()) { if (!recent()) y0 = null; return; }
     const max = Math.max(0, root.scrollHeight - window.innerHeight);
     const y = Math.min(Math.max(0, locked() && y0 !== null ? y0 : window.scrollY), max);
     /* Con un popup abierto la página está bloqueada (overflow: hidden) y iOS ignora scrollTo: se desbloquea un instante */
@@ -1556,15 +1572,13 @@ const modal = $('#modal');
   };
   const settle = () => { timers.forEach(clearTimeout); timers = [80, 300, 650].map(ms => setTimeout(fix, ms)); };
   document.addEventListener('focusin', e => { if (isField(e.target) && y0 === null) y0 = window.scrollY; }, true);
-  document.addEventListener('focusout', e => { if (isField(e.target)) settle(); }, true);
+  document.addEventListener('focusout', e => { if (isField(e.target)) { kbAt = Date.now(); settle(); } }, true);
   if (vv) {
-    vv.addEventListener('resize', () => { if (!typing()) settle(); });
-    vv.addEventListener('scroll', () => { if (!typing() && !kbOpen() && shifted()) settle(); });
+    vv.addEventListener('resize', () => { if (!typing() && recent()) settle(); });
+    vv.addEventListener('scroll', () => { if (!typing() && !kbOpen() && recent() && shifted()) settle(); });
   }
   /* Red de seguridad: si algo quitó el campo sin avisar (p. ej. al refrescar la hoja), se arregla al tocar */
-  document.addEventListener('touchstart', () => { if (!typing() && !kbOpen() && shifted()) fix(); }, { passive: true, capture: true });
-  window.addEventListener('pageshow', settle);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) settle(); });
+  document.addEventListener('touchstart', () => { if (y0 !== null && !typing() && !kbOpen() && shifted()) fix(); }, { passive: true, capture: true });
 })();
 const modalForm = $('#modal-form');
 let modalOpts = {};
