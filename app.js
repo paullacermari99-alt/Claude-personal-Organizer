@@ -490,7 +490,7 @@ function viewToday() {
       <div class="day-hero glass">
         ${dayHero(d, [...prios, ...dayTasks], agenda, isToday, now)}
         ${isToday && !(state.dayPlans[d] && state.dayPlans[d].planned) ? `<div class="dh-plan">
-          <button class="btn primary" data-act="plan-day">Planificar mi día · 1 min</button>
+          <button class="btn primary" data-act="plan-day">Planificar mi día</button>
           <button class="btn ghost" data-act="plan-skip">Ahora no</button>
         </div>` : ''}
       </div>
@@ -1870,42 +1870,7 @@ function pickPriorities(d) {
   });
 }
 
-/* Planificar el día en 1 minuto: prioridades + huecos */
-function planDaySheet() {
-  const d = todayStr(), cur = dayPriorities(d);
-  const rank = t => cur.includes(t.id) ? 0 : t.due && t.due < d ? 1 : t.due === d ? 1 : PRI_ORDER[t.priority] >= 2 ? 2 : t.due && daysBetween(d, t.due) <= 3 ? 2 : t.due && daysBetween(d, t.due) <= 7 ? 3 : 4;
-  const cands = state.tasks.filter(t => !isRoutineTask(t) && !t.done).sort((a, b) => rank(a) - rank(b) || sortByDue(a, b)).slice(0, 30);
-  const pre = cur.length ? cur : cands.slice(0, 3).map(t => t.id);
-  const free = freeIntervals(d);
-  const evs = eventsOn(d);
-  const pend = state.routines.reduce((a, r) => a + pendingOfRoutine(r.id).length, 0);
-  openModal('Planificar hoy', `
-    <div class="plan-summary">
-      <div><b>${evs.length}</b><span>bloques</span></div>
-      <div><b>${free.reduce((a, [s, e]) => a + e - s, 0) >= 60 ? Math.floor(free.reduce((a, [s, e]) => a + e - s, 0) / 60) + ' h' : free.reduce((a, [s, e]) => a + e - s, 0) + ' min'}</b><span>libres</span></div>
-      <div><b>${pend}</b><span>diarias</span></div>
-    </div>
-    <div class="field">Huecos libres<div class="free-slots">${free.length ? free.map(([s, e]) => `<span class="tag">${fmtHM(s)}–${fmtHM(e)}</span>`).join('') : '<span class="muted">No queda tiempo libre hoy</span>'}</div></div>
-    <div class="field">Elige hasta 3 prioridades
-      ${cands.length ? `<div class="pick-list glass">${cands.map(t => `<label class="pick"><input type="checkbox" class="check" name="p" value="${t.id}" ${pre.includes(t.id) ? 'checked' : ''}><span class="grow">${esc(t.title)}${t.estimate ? ` <span class="muted small">· ${durLabel(t.estimate)}</span>` : ''}</span>${t.due ? `<span class="tag ${t.due < d ? 'warn' : ''}">${esc(relDay(t.due))}</span>` : ''}</label>`).join('')}</div>` : emptyBox('No tienes tareas abiertas. Apunta alguna primero.')}
-    </div>
-    <label class="field toggle-row">Reservarles hueco hoy<input type="checkbox" class="switch" name="reserve" value="1" checked></label>`, {
-    saveLabel: 'Listo',
-    onSave: (data, fd) => {
-      const ids = fd.getAll('p');
-      if (ids.length > 3) { toast('Como máximo 3'); return false; }
-      let booked = 0;
-      if (data.reserve) ids.forEach(id => {
-        const t = task(id);
-        if (eventsOn(d).some(e => e.taskId === id)) return;
-        const slot = nextFreeSlot(d, t.estimate || 60);
-        if (slot) { scheduleTask(t, d, slot.start, slot.end); booked++; }
-      });
-      state.dayPlans[d] = { ...(state.dayPlans[d] || {}), priorities: ids, planned: true };
-      toast(`Día planificado: ${ids.length} prioridad${ids.length === 1 ? '' : 'es'}${booked ? `, ${booked} con hueco reservado` : ''}`);
-    },
-  });
-}
+/* «Planificar mi día»: ver dayplan.js */
 
 /* ---------- Vista: Progreso ---------- */
 

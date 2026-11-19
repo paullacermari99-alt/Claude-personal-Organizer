@@ -3093,3 +3093,29 @@ dialog.crop-dlg { width: 100%; max-width: 460px; padding: 0 0 calc(18px + env(sa
 .tk-active { flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
 .tk-active .chip-btn svg { width: 12px; height: 12px; margin-left: 2px; vertical-align: -1px; }
 .tk-active .chip-btn { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+
+/* v82 Planificar mi día */
+.dp-chips { flex-wrap: wrap; margin: 6px 0 4px; }
+.dp-tip { display: block; margin-bottom: 10px; }
+.dp-hint { display: block; margin-bottom: 10px; }
+.dp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.dp-list { border-radius: 14px; padding: 2px 0; margin: 6px 0 4px; color: var(--text); }
+.dp-row { display: flex; align-items: flex-start; gap: 12px; padding: 9px 8px 6px 12px; border-left: 3px solid var(--c, var(--action)); margin: 5px 6px; border-radius: 10px; background: color-mix(in srgb, var(--c, var(--action)) 9%, transparent); }
+.dp-row.fixed { border-left-color: var(--muted); background: var(--fill); opacity: .75; padding-bottom: 9px; }
+.dp-time { display: flex; flex-direction: column; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; min-width: 44px; color: var(--text); }
+.dp-time small { font-weight: 500; color: var(--muted); font-size: 12px; }
+.dp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.dp-main b { font-weight: 600; font-size: 15px; color: var(--text); overflow-wrap: anywhere; }
+.dp-why { font-size: 12px; color: var(--muted); }
+.dp-tools { display: flex; align-items: center; gap: 2px; margin-top: 4px; }
+.dp-tools .icon-btn { width: 30px; height: 30px; color: var(--text); }
+.dp-tools .icon-btn svg { width: 16px; height: 16px; }
+.dp-tools .icon-btn:disabled { opacity: .25; }
+.dp-tools .icon-btn:first-of-type { margin-left: auto; }
+.dp-up { display: inline-flex; }
+.dp-up svg { transform: rotate(180deg); }
+.dp-dur { border: 0; background: var(--fill); color: var(--text); border-radius: 99px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.dp-rest { font-size: 12px; color: var(--muted); padding: 1px 12px 1px 70px; }
+.dp-left { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.dp-left .chip-btn { font-weight: 500; text-align: left; }
+.dp-left .chip-btn.off { opacity: .65; }

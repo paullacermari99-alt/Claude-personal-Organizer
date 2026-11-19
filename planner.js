@@ -49,7 +49,7 @@ function viewPlanDay() {
     <aside class="plan-tray glass" data-drop="tray-plan">
       <div class="plan-tray-head">
         <h2>Por colocar · ${cands.length}</h2>
-        ${cands.length ? `<button class="btn small" data-act="plan-auto">${I.star}<span>Colocar solas</span></button>` : ''}
+        ${cands.length ? `<button class="btn small" data-act="plan-auto">${I.star}<span>Proponme un plan</span></button>` : ''}
       </div>
       ${cands.length ? `<div class="plan-chips">${cands.map(c => planChip(c.t, c.why)).join('')}</div>`
         : `<div class="tray-empty">${placed.length ? 'Todo tiene su hora. ✓' : `No hay tareas para ${d === today ? 'hoy' : 'este día'}.`} <button class="btn small ghost" data-act="new-task" data-due="${d}">${I.plus}<span>Tarea</span></button></div>`}
@@ -95,7 +95,7 @@ document.addEventListener('click', e => {
   if (typeof suppressClickUntil !== 'undefined' && Date.now() < suppressClickUntil) return;
   const chip = e.target.closest('[data-act="plan-pick"]');
   if (chip) { if (!e.target.closest('input')) { e.stopPropagation(); planPick(chip.dataset.id); } return; }
-  if (e.target.closest('[data-act="plan-auto"]')) { e.stopPropagation(); planAuto(); return; }
+  if (e.target.closest('[data-act="plan-auto"]')) { e.stopPropagation(); planDaySheet(viewDate); return; }
   if (!planPickId) return;
   const col = e.target.closest('.cal-col');
   if (!col) return;
