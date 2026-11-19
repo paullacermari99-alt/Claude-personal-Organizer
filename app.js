@@ -841,46 +841,45 @@ function projectsViewSheet() {
   });
 }
 function viewProjects() {
-  const ui = state.settings.ui, list = sortedProjects();
-  const nArch = state.projects.filter(p => p.archived).length, nAct = state.projects.length - nArch;
-  const sortName = (PROJ_SORTS.find(([v]) => v === (ui.projectsSort || 'manual')) || PROJ_SORTS[0])[1];
-  /* v69: «Míos» (los de siempre, solo tuyos) y «Con amigos» (tableros compartidos, social.js) */
-  const shared = !!ui.projectsShared && typeof viewSharedProjects === 'function';
-  const nTeams = typeof SOC !== 'undefined' && SOC.teams ? SOC.teams.filter(p => !p.archived_at).length : 0;
-  const inc = typeof SOC !== 'undefined' && SOC.friends ? SOC.friends.incoming.length : 0;
-  const switcher = typeof viewSharedProjects === 'function' ? `<div class="segmented pj-scope" role="tablist">
-    <button role="tab" class="${!shared ? 'on' : ''}" data-sact="shared-tab" data-v="">Míos${nAct ? ' · ' + nAct : ''}</button>
-    <button role="tab" class="${shared ? 'on' : ''}" data-sact="shared-tab" data-v="1">Con amigos${nTeams ? ' · ' + nTeams : ''}${inc ? '<span class="soc-dot sm"></span>' : ''}</button>
-  </div>` : '';
-  if (shared) return `
-  <div class="page page-projects page-shared">
-  ${pageHead({ eyebrow: 'Proyectos en equipo', title: 'Proyectos', actions: socOn() && SOC.profile ? `
-    <button class="btn primary pj-new" data-sact="team-new" aria-label="Nuevo proyecto con amigos">${I.plus}<span>Nuevo</span></button>` : '' })}
-  ${switcher}
-  ${viewSharedProjects()}
-  </div>`;
+  const ui = state.settings.ui, mine = sortedProjects(), arch = !!ui.projectsArchived;
+  /* v80: una sola lista. Los proyectos que compartes con amigos salen junto a los tuyos */
+  const social = typeof sharedForList === 'function';
+  const teams = social ? sharedForList(arch) : [];
+  const nArch = state.projects.filter(p => p.archived).length + (social ? sharedCount(true) : 0);
+  const nAct = state.projects.filter(p => !p.archived).length + (social ? sharedCount(false) : 0);
+  const sort = ui.projectsSort || 'manual';
+  const items = [...mine.map(p => ({ k: 'me', p, name: p.name, fav: !!p.favorite, ts: p.createdAt || 0, pct: projectStats(p).pr.pct })),
+    ...teams.map(p => ({ k: 'team', p, name: p.name, fav: false, ts: Date.parse(p.created_at || p.updated_at || 0) || 0, pct: p.total ? Math.round(p.done / p.total * 100) : 0 }))];
+  if (sort !== 'manual') {
+    const by = { nombre: (a, b) => a.name.localeCompare(b.name, 'es'), recientes: (a, b) => b.ts - a.ts, progreso: (a, b) => b.pct - a.pct }[sort];
+    if (by) items.sort((a, b) => (b.fav - a.fav) || by(a, b));
+  }
+  const sortName = (PROJ_SORTS.find(([v]) => v === sort) || PROJ_SORTS[0])[1];
+  const list = ui.projectsView === 'list';
   return `
   <div class="page page-projects">
   ${pageHead({ eyebrow: nAct ? `${nAct} en marcha` : 'Lo que estás construyendo', title: 'Proyectos', actions: `
+    ${social ? friendsHeadBtn() : ''}
     <button class="btn primary pj-new" data-act="new-project" aria-label="Nuevo proyecto">${I.plus}<span>Nuevo</span></button>` })}
-  ${switcher}
+  ${social ? friendsBanner() : ''}
   <div class="pj-bar">
     <div class="segmented compact" role="tablist">
-      <button role="tab" class="${!ui.projectsArchived ? 'on' : ''}" data-act="set-ui" data-k="projectsArchived" data-v="">Activos${nAct ? ' · ' + nAct : ''}</button>
-      <button role="tab" class="${ui.projectsArchived ? 'on' : ''}" data-act="set-ui" data-k="projectsArchived" data-v="1">Archivados${nArch ? ' · ' + nArch : ''}</button>
+      <button role="tab" class="${!arch ? 'on' : ''}" data-act="set-ui" data-k="projectsArchived" data-v="">Activos${nAct ? ' · ' + nAct : ''}</button>
+      <button role="tab" class="${arch ? 'on' : ''}" data-act="set-ui" data-k="projectsArchived" data-v="1">Archivados${nArch ? ' · ' + nArch : ''}</button>
     </div>
-    <button class="btn small ghost pj-sort" data-act="projects-view" aria-label="Ver y ordenar: ${esc(sortName)}">${ui.projectsView === 'list' ? I.list : I.grid}<span>${esc(sortName)}</span></button>
+    <button class="btn small ghost pj-sort" data-act="projects-view" aria-label="Ver y ordenar: ${esc(sortName)}">${list ? I.list : I.grid}<span>${esc(sortName)}</span></button>
   </div>
-  ${!list.length ? (ui.projectsArchived ? emptyBox('No hay proyectos archivados. Cuando termines uno, archívalo desde su menú ⋯ y quedará aquí.') : `<div class="empty pj-empty">
-      <b>Tu primer proyecto</b>Algo grande que quieres sacar adelante, dividido en objetivos y pasos pequeños.
+  ${!items.length ? (arch ? emptyBox('No hay proyectos archivados. Cuando termines uno, archívalo desde su menú ⋯ y quedará aquí.') : `<div class="empty pj-empty">
+      <b>Tu primer proyecto</b>Algo grande que quieres sacar adelante, dividido en objetivos y pasos pequeños. Hazlo solo o añade amigos para repartiros las tareas.
       <div class="tpl-suggest"><div class="small muted">Empieza rápido con una plantilla:</div><div class="chips-row">${BUILTIN_TEMPLATES.slice(0, 4).map(t => `<button class="chip-btn" data-act="tpl-pick" data-id="${t.id}">${t.data.project.icon} ${esc(t.name)}</button>`).join('')}</div></div>
       <button class="btn primary" data-act="new-project">${I.plus}<span>Crear proyecto</span></button></div>`)
-    : ui.projectsView === 'list' ? `<ul class="pj-list glass">${list.map(projectRow).join('')}</ul>` : `<div class="pj-grid">${list.map(projectCard).join('')}</div>`}
+    : list ? `<ul class="pj-list glass">${items.map(x => x.k === 'me' ? projectRow(x.p) : teamRow(x.p)).join('')}</ul>` : `<div class="pj-grid">${items.map(x => x.k === 'me' ? projectCard(x.p) : teamCard(x.p)).join('')}</div>`}
   </div>`;
 }
 function projectMenu(p) {
   actionSheet(`${p.icon || ''} ${p.name}`.trim(), [
     [p.favorite ? 'Quitar de favoritos' : 'Marcar como favorito', p.favorite ? I.star : I.starFill, () => { p.favorite = !p.favorite; save(); softSwap(); haptic(); }],
+    ...(typeof shareProjectSheet === 'function' ? [['Añadir amigos', I.people, () => shareProjectSheet(p)]] : []),
     ['Nuevo objetivo', I.target, () => goalModal({ projectId: p.id })],
     ['Guardar como plantilla', I.template, () => templatesSheet('project', { projectId: p.id })],
     ['Editar proyecto', I.gear, () => projectModal(p)],
@@ -1037,7 +1036,7 @@ function viewProject(id, sub) {
   }
   return `
   <div class="page page-project page-proj2">
-  ${pageHead({ eyebrow: backLink('#proyectos', 'Proyectos'), title: `${p.icon ? `<span class="h1-emoji">${esc(p.icon)}</span> ` : ''}${esc(p.name)}`, actions: `<button class="btn" data-act="edit-project" data-id="${p.id}">Editar</button><button class="icon-btn pj-more" data-act="project-menu" data-id="${p.id}" aria-label="Más opciones">${I.more}</button>` })}
+  ${pageHead({ eyebrow: backLink('#proyectos', 'Proyectos'), title: `${p.icon ? `<span class="h1-emoji">${esc(p.icon)}</span> ` : ''}${esc(p.name)}`, actions: `${typeof shareProjectSheet === 'function' ? `<button class="btn pj-share" data-act="share-project" data-id="${p.id}">${I.people}<span>Añadir amigos</span></button>` : ''}<button class="btn" data-act="edit-project" data-id="${p.id}">Editar</button><button class="icon-btn pj-more" data-act="project-menu" data-id="${p.id}" aria-label="Más opciones">${I.more}</button>` })}
   ${hero}
   <div class="segmented pj-tabs" role="tablist">${[['resumen', 'Resumen'], ['objetivos', `Objetivos${goals.length ? ' · ' + goals.length : ''}`], ['tareas', `Tareas${open.length ? ' · ' + open.length : ''}`], ['calendario', 'Calendario']].map(([v, l]) => `<button role="tab" class="${tab === v ? 'on' : ''}" data-act="proj-tab" data-id="${p.id}" data-v="${v}">${l}</button>`).join('')}</div>
   ${body}
@@ -1931,9 +1930,6 @@ function viewStats() {
   </div>
   ${statsLinksSection()}
   ${habitsStatsSection()}
-  <div class="section"><div class="section-head"><h2>Tareas hechas · últimos 7 días</h2><a class="btn small ghost" href="#progreso/tareas">Gráfica</a></div><div class="card glass">${bars(days.map(d => row(doneBy, d)), 'tareas', 5)}</div></div>
-  <div class="section"><div class="section-head"><h2>Minutos de enfoque · últimos 7 días</h2><a class="btn small ghost" href="#progreso/enfoque">Gráfica</a></div><div class="card glass">${bars(days.map(d => row(focusBy, d)), 'min', 60)}<p class="small muted bars-note">La barra llena es 1 hora de enfoque.</p></div></div>
-  ${journalStats()}
   <div class="section"><div class="section-head"><h2>Rachas de diarias</h2><a class="btn small ghost" href="#diarias">Diarias</a></div>
     ${rstats.length ? `<div class="settings-group glass">${rstats.map(x => `<div class="item"><div class="grow"><div>${esc(x.r.title)}</div><div class="small muted">Mejor racha ${x.best}${x.rate !== null ? ` · ${x.rate}% cumplido en 30 días` : ''}${isPaused(x.r) ? ' · en pausa' : ''}</div></div><b class="streak big">🔥 ${x.streak}</b></div>`).join('')}</div>`
       : emptyBox('Crea una diaria para empezar una racha.')}
@@ -2011,20 +2007,26 @@ function goalModal(g0 = {}) {
 
 /* Proyecto: icono, color y vista por defecto */
 function projectModal(p0 = {}) {
+  /* v80: para poder elegir amigos al crear, ten su lista cargada antes de abrir */
+  if (!p0.id && !p0._fl && typeof socReady === 'function' && socReady() && !SOC.friends) return withFriends(() => projectModal({ ...p0, _fl: 1 }));
   const isNew = !p0.id;
   const p = isNew ? { name: '', icon: '📁', color: COLORS[state.projects.length % COLORS.length], defaultView: 'resumen', notes: '', favorite: false, archived: false } : p0;
   openModal(isNew ? 'Nuevo proyecto' : 'Proyecto', `
     <label class="field">Nombre<input type="text" name="name" required value="${esc(p.name)}"></label>
+    ${isNew && typeof friendPickField === 'function' ? friendPickField(p0.members || []) : ''}
     <div class="field">Icono<div class="icon-pick">${PROJECT_ICONS.map(ic => `<label><input type="radio" name="icon" value="${ic}" ${ic === p.icon ? 'checked' : ''}><span>${ic}</span></label>`).join('')}</div></div>
     <div class="field">Color${colorField('color', p.color)}</div>
-    <label class="field">Al abrirlo, mostrar<select name="defaultView">${[['resumen', 'Resumen'], ['objetivos', 'Objetivos'], ['tareas', 'Tareas'], ['calendario', 'Calendario']].map(([v, l]) => `<option value="${v}" ${p.defaultView === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    ${isNew ? '' : `<label class="field">Al abrirlo, mostrar<select name="defaultView">${[['resumen', 'Resumen'], ['objetivos', 'Objetivos'], ['tareas', 'Tareas'], ['calendario', 'Calendario']].map(([v, l]) => `<option value="${v}" ${p.defaultView === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
     <label class="field">Notas<textarea name="notes" placeholder="Qué es y cómo sabrás que está terminado">${esc(p.notes)}</textarea></label>
     <label class="field toggle-row">Favorito<input type="checkbox" class="switch" name="favorite" value="1" ${p.favorite ? 'checked' : ''}></label>
     ${isNew ? '' : `<label class="field toggle-row">Archivado<input type="checkbox" class="switch" name="archived" value="1" ${p.archived ? 'checked' : ''}></label>
     <p class="hint">Archivar lo oculta de las listas pero conserva sus objetivos, tareas e historial.</p>`}`, {
-    onSave: d => {
+    onSave: (d, fd) => {
+      /* Con amigos elegidos, se crea directamente como proyecto compartido */
+      const members = isNew && fd ? fd.getAll('member') : [];
+      if (members.length) { createTeamFromForm({ name: d.name.trim(), icon: d.icon, color: readColor(d, 'color'), notes: d.notes.trim() }, members, $('button[type=submit]', modalForm)); return false; }
       const obj = isNew ? { id: uid(), createdAt: Date.now(), order: state.projects.length } : project(p.id);
-      Object.assign(obj, { name: d.name.trim(), icon: d.icon || '📁', color: readColor(d, 'color') || COLORS[0], defaultView: d.defaultView, notes: d.notes.trim(), favorite: !!d.favorite, archived: !!d.archived });
+      Object.assign(obj, { name: d.name.trim(), icon: d.icon || '📁', color: readColor(d, 'color') || COLORS[0], defaultView: d.defaultView || obj.defaultView || 'resumen', notes: d.notes.trim(), favorite: !!d.favorite, archived: !!d.archived });
       if (isNew) { state.projects.push(obj); setTimeout(() => { location.hash = '#proyecto/' + obj.id; }); }
     },
     onDelete: isNew ? null : () => {
@@ -2754,6 +2756,7 @@ document.addEventListener('click', e => {
     case 'edit-project': projectModal(project(id)); return;
     case 'project-fav': e.preventDefault(); { const p = project(id); p.favorite = !p.favorite; haptic(); } break;
     case 'project-menu': projectMenu(project(id)); return;
+    case 'share-project': shareProjectSheet(project(id)); return;
     case 'project-archive': setProjectArchived(project(id), !project(id).archived); return;
     case 'projects-view': projectsViewSheet(); return;
     case 'proj-tab': location.hash = `#proyecto/${id}/${el.dataset.v}`; return;

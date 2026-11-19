@@ -138,7 +138,7 @@ const SCREEN_TOURS = {
     { target: () => firstVisible('.page [data-act="new-project"]'), title: 'Tus proyectos', text: 'Agrupa tareas, objetivos y bloques de algo grande, como un trabajo o una asignatura.' },
     { target: () => firstVisible('.page .pj-card') || firstVisible('.page .pj-bar'), title: 'De un vistazo', text: 'Cada proyecto te dice cómo va y qué toca ahora. Marca el paso con el círculo o empiézalo con ▶.' },
     { target: () => firstVisible('.page .pj-sort'), title: 'Cómo verlos', text: 'En tarjetas o en lista y ordenados como prefieras. Los archivados, en su pestaña.' },
-    { target: () => firstVisible('.page .pj-scope'), title: 'Con amigos', text: 'Aquí tienes los proyectos que compartes con tus amigos: un tablero común donde cada uno ve qué hace el resto.' },
+    { target: () => firstVisible('.page .pj-friends'), title: 'Con amigos', text: 'Tus proyectos compartidos salen en esta misma lista. Para hacer uno con amigos, añádelos al crearlo o desde el propio proyecto.' },
   ],
   equipo: [
     { target: () => firstVisible('.page .tb-board'), title: 'El tablero del equipo', text: 'Cada lista es una fase. Arrastra las tarjetas (en el móvil, mantén pulsado) y toca una para ver quién la hace, sus fechas, sus pasos y los comentarios.' },

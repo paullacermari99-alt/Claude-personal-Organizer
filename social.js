@@ -463,7 +463,7 @@ function openNickDialog({ initial = '', change = false, onDone } = {}) {
     const s = e.target.closest('[data-nick-s]');
     if (s) { inp.value = s.dataset.nickS; check(); return; }
     if (e.target.closest('[data-nick="later"]')) {
-      if (!change) { try { localStorage.setItem(NICK_LATER, String(Date.now())); } catch {} toast('Puedes elegirlo cuando quieras en Proyectos → Con amigos'); }
+      if (!change) { try { localStorage.setItem(NICK_LATER, String(Date.now())); } catch {} toast('Puedes elegirlo cuando quieras en Proyectos → Amigos'); }
       closeNick();
     }
   });
@@ -565,34 +565,122 @@ function meCard(compact) {
     ${compact ? `<a class="btn soc-friends-btn" href="#amigos">${inc ? `<span class="soc-dot">${inc}</span>` : ''}<span>Amigos${nf ? ' · ' + nf : ''}</span></a>` : `<button class="btn small" data-sact="edit-profile">Editar</button>`}
   </div>`;
 }
-function viewSharedProjects() {
-  const gate = socGate();
-  if (gate) return gate;
-  if (SOC.teams === null) { refreshShared(); }
-  const all = SOC.teams || [], ui = state.settings.ui;
-  const list = all.filter(p => !!p.archived_at === !!ui.teamsArchived);
-  const nArch = all.filter(p => p.archived_at).length;
-  const inc = (SOC.friends && SOC.friends.incoming.length) || 0;
-  return `${meCard(true)}
-    ${inc ? `<a class="soc-req-banner glass" href="#amigos"><span class="soc-dot">${inc}</span><span class="grow">${inc === 1 ? 'Tienes 1 solicitud de amistad' : `Tienes ${inc} solicitudes de amistad`}</span>${I.right}</a>` : ''}
-    ${nArch ? `<div class="pj-bar"><div class="segmented compact" role="tablist">
-      <button role="tab" class="${!ui.teamsArchived ? 'on' : ''}" data-sact="teams-arch" data-v="">Activos · ${all.length - nArch}</button>
-      <button role="tab" class="${ui.teamsArchived ? 'on' : ''}" data-sact="teams-arch" data-v="1">Archivados · ${nArch}</button></div></div>` : ''}
-    ${SOC.teams === null ? `<div class="soc-loading glass"><span class="spin"></span>Cargando tus proyectos compartidos…</div>`
-      : list.length ? `<div class="pj-grid">${list.map(teamCard).join('')}</div>`
-      : ui.teamsArchived ? emptyBox('No hay proyectos compartidos archivados.')
-      : `<div class="empty pj-empty tm-empty"><b>Tu primer proyecto en equipo</b>Un tablero compartido con tus amigos: columnas con tarjetas, quién hace cada cosa, objetivos y un calendario común.
-        <div class="tm-how"><span>1. Añade a tus amigos por su nick o ID</span><span>2. Crea el proyecto y elige quién entra</span><span>3. Repartid las tarjetas y moved cada una cuando avance</span></div>
-        <button class="btn primary" data-sact="team-new">${I.plus}<span>Crear proyecto con amigos</span></button></div>`}
-    ${SOC.errors.teams ? `<p class="hint warn-text">${esc(SOC.errors.teams)}</p>` : ''}
-    ${list.length && typeof pushActive === 'function' && !pushActive() && CFG.vapidPublicKey ? `<a class="soc-push glass" href="#ajustes/cuenta">🔔<span class="grow">Activa los avisos para enterarte cuando te asignen una tarjeta, te comenten o te pidan amistad.</span>${I.right}</a>` : ''}`;
-}
 function refreshShared() {
   if (!socOn()) return;
   const key = () => [SOC.backend, SOC.profileLoaded, SOC.profile, SOC.teams, SOC.friends, SOC.errors.teams];
   const job = (SOC.profileLoaded ? Promise.resolve(SOC.profile) : loadProfile())
     .then(p => p ? Promise.all([loadTeams(), loadFriends()]) : null).then(() => socBadge());
   return socFetch(job, key);
+}
+
+/* ---------- v80: una sola lista de proyectos ----------
+   Los compartidos salen junto a los tuyos en Proyectos. Cualquier proyecto puede llevar amigos:
+   al añadirlos, el proyecto pasa a ser compartido (tablero común) con sus objetivos y tareas. */
+const socReady = () => typeof socOn === 'function' && socOn() && SOC.backend !== false && !!SOC.profile;
+function sharedForList(archived) {
+  if (!socOn() || SOC.backend === false) return [];
+  if (SOC.teams === null || !SOC.profileLoaded) { refreshShared(); return []; }
+  return (SOC.teams || []).filter(p => !!p.archived_at === !!archived);
+}
+function sharedCount(archived) { return (SOC.teams || []).filter(p => !!p.archived_at === !!archived).length; }
+function teamRow(p) {
+  const left = (p.total || 0) - (p.done || 0), pct = p.total ? Math.round(p.done / p.total * 100) : 0;
+  const st = p.archived_at ? { k: 'arch', txt: 'Archivado' } : !p.total ? { k: 'idle', txt: 'Tablero vacío' } : !left ? { k: 'ok', txt: '¡Todo hecho!' } : p.late ? { k: 'warn', txt: `${p.late} atrasada${p.late === 1 ? '' : 's'}` } : { k: 'go', txt: `En marcha · ${left} pendiente${left === 1 ? '' : 's'}` };
+  return `<li><a class="pj-row" href="#equipo/${p.id}" style="--c:${p.color || '#4a72cf'}">
+    <span class="pj-ic sm">${esc(p.icon || '👥')}</span>
+    <span class="pj-text"><span class="pj-name">${esc(p.name)}</span>${stateLine(st)}</span>
+    ${avStack(p.members || [], 3, 'xs')}${projRing({ done: p.done || 0, total: p.total || 0, pct })}
+  </a></li>`;
+}
+/* Botón «Amigos» en la cabecera de Proyectos (con el punto si te han pedido amistad) */
+function friendsHeadBtn() {
+  if (typeof cloudReady !== 'function' || !cloudReady()) return '';
+  const inc = (SOC.friends && SOC.friends.incoming.length) || 0;
+  return `<a class="btn pj-friends" href="#amigos" aria-label="Amigos${inc ? `, ${inc} solicitudes` : ''}">${I.people}<span>Amigos</span>${inc ? '<span class="soc-dot sm"></span>' : ''}</a>`;
+}
+function friendsBanner() {
+  const inc = socOn() && SOC.friends ? SOC.friends.incoming.length : 0;
+  return inc ? `<a class="soc-req-banner glass" href="#amigos"><span class="soc-dot">${inc}</span><span class="grow">${inc === 1 ? 'Tienes 1 solicitud de amistad' : `Tienes ${inc} solicitudes de amistad`}</span>${I.right}</a>` : '';
+}
+/* Casillas de amigos para «Nuevo proyecto» (opcional) */
+function friendPickField(pre = []) {
+  if (!socReady()) return `<p class="hint pj-share-hint">${I.people} ¿Con amigos? Podrás añadirlos cuando quieras desde el proyecto.</p>`;
+  const friends = (SOC.friends && SOC.friends.list) || [];
+  if (!friends.length) return `<p class="hint pj-share-hint">${I.people} ¿Con amigos? Cuando tengas amigos en Boldup podrás añadirlos desde el proyecto. <a href="#amigos">Buscar amigos</a></p>`;
+  return `<div class="field">Con amigos (opcional)<div class="chips-row wrap">${friends.map(f => `<label class="chip-radio with-av"><input type="checkbox" name="member" value="${f.user.id}" ${pre.includes(f.user.id) ? 'checked' : ''}><span>${avatar(f.user, 'xs')} ${esc(dispName(f.user))}</span></label>`).join('')}</div><span class="hint">Si no eliges a nadie, el proyecto es solo tuyo.</span></div>`;
+}
+/* Antes de abrir «Nuevo proyecto», ten la lista de amigos a mano */
+function withFriends(fn) {
+  if (socReady() && !SOC.friends) loadFriends().then(fn, fn); else fn();
+}
+/* Crear directamente un proyecto compartido desde «Nuevo proyecto» */
+function createTeamFromForm(body, members, btn) {
+  if (btn) btn.disabled = true;
+  rpc('create_team_project', { p_name: body.name.slice(0, 80), p_icon: body.icon || null, p_color: /^#[0-9a-f]{6}$/i.test(body.color || '') ? body.color : null, p_description: (body.notes || '').slice(0, 2000) || null, p_members: members })
+    .then(pid => { modal.close(); SOC.teams = null; haptic(14); location.hash = `#equipo/${pid}`; toast('¡Proyecto creado con tus amigos!'); },
+      e => { toast(niceErr(e)); if (btn) btn.disabled = false; });
+}
+/* «Añadir amigos» en un proyecto tuyo: lo convierte en compartido */
+function shareProjectSheet(p) {
+  if (!p) return;
+  if (typeof cloudReady !== 'function' || !cloudReady()) { toast('Los proyectos con amigos necesitan la nube de Boldup'); return; }
+  if (!getSession()) {
+    openModal('Añadir amigos', `<p class="sheet-sub">Para compartir «${esc(p.name)}» con tus amigos, entra en tu cuenta de Boldup. Es gratis y tus tareas personales siguen siendo solo tuyas.</p>
+      <button type="button" class="btn wide primary" data-modal="acc">Entrar o crear cuenta</button>`, { actions: { acc: () => { modal.close(); location.hash = '#ajustes/cuenta'; } } });
+    return;
+  }
+  if (SOC.backend === false) { toast('Los proyectos con amigos aún se están activando'); return; }
+  if (!SOC.profileLoaded) { loadProfile().then(() => shareProjectSheet(p), e => toast(niceErr(e))); return; }
+  if (!SOC.profile) { openNickDialog({ onDone: () => shareProjectSheet(p) }); return; }
+  if (!SOC.friends) { loadFriends().then(() => shareProjectSheet(p), e => toast(niceErr(e))); return; }
+  const friends = SOC.friends.list;
+  if (!friends.length) {
+    openModal('Añadir amigos', `<p class="sheet-sub">Aún no tienes amigos en Boldup. Búscalos por su nick o comparte tu ID, y luego vuelve aquí para añadirlos a «${esc(p.name)}».</p>
+      <button type="button" class="btn wide primary" data-modal="go">${I.people}<span>Buscar amigos</span></button>`, { actions: { go: () => { modal.close(); location.hash = '#amigos'; } } });
+    return;
+  }
+  const s = projectStats(p);
+  openModal('Añadir amigos', `
+    <p class="sheet-sub">Elige con quién quieres hacer «${esc(p.name)}».</p>
+    <div class="chips-row wrap">${friends.map(f => `<label class="chip-radio with-av"><input type="checkbox" name="member" value="${f.user.id}"><span>${avatar(f.user, 'xs')} ${esc(dispName(f.user))}</span></label>`).join('')}</div>
+    <p class="hint">El proyecto pasará a ser compartido: tus amigos verán ${s.goals.length ? (s.goals.length === 1 ? 'su objetivo y ' : `sus ${s.goals.length} objetivos y `) : ''}${!s.tasks.length ? 'el proyecto' : s.tasks.length === 1 ? 'su tarea' : `sus ${s.tasks.length} tareas`} en un tablero común, y podréis repartirlas. Tus demás proyectos y tareas siguen siendo solo tuyos.</p>`, {
+    saveLabel: 'Compartir',
+    onSave: (d, fd) => {
+      const members = fd.getAll('member');
+      if (!members.length) { toast('Elige al menos a un amigo'); return false; }
+      const btn = $('button[type=submit]', modalForm); if (btn) { btn.disabled = true; btn.textContent = 'Compartiendo…'; }
+      convertToTeam(p, members).then(pid => {
+        modal.close(); SOC.teams = null; haptic(14); location.hash = `#equipo/${pid}`;
+        toast('¡Proyecto compartido! Tu copia personal queda 10 días en la papelera.');
+      }, e => { toast(niceErr(e)); if (btn) { btn.disabled = false; btn.textContent = 'Compartir'; } });
+      return false;
+    },
+  });
+}
+/* Copia el proyecto (objetivos, tareas con sus pasos y plazos) a un tablero compartido
+   y manda la versión personal a la papelera (se puede recuperar 10 días). */
+async function convertToTeam(p, members) {
+  const s = projectStats(p);
+  const pid = await rpc('create_team_project', { p_name: p.name.slice(0, 80), p_icon: p.icon || null, p_color: /^#[0-9a-f]{6}$/i.test(p.color || '') ? p.color : null, p_description: (p.notes || '').slice(0, 2000) || null, p_members: members });
+  const snap = await rpc('team_snapshot', { pid });
+  const cols = (snap && snap.columns) || [], open = cols.find(c => !c.is_done), done = cols.find(c => c.is_done) || open;
+  const gmap = {};
+  const goals = s.goals.map((g, i) => { gmap[g.id] = newId(); return { id: gmap[g.id], project_id: pid, title: (g.title || 'Objetivo').slice(0, 140), notes: (g.notes || '').slice(0, 2000) || null, due: g.due || null, done_at: goalStatus(g) === 'cumplido' ? new Date().toISOString() : null, position: i + 1 }; });
+  if (goals.length) await rest('team_goals', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: goals });
+  const pri = { high: 2, medium: 1 };
+  const tasks = s.tasks.slice().sort((a, b) => (a.done - b.done) || sortByDue(a, b)).map((t, i) => ({
+    id: newId(), project_id: pid, column_id: (t.done ? done : open) ? (t.done ? done : open).id : null, goal_id: gmap[t.goalId] || null,
+    title: (t.title || 'Tarea').slice(0, 200), notes: (t.notes || '').slice(0, 5000) || null, due: t.due || null, priority: pri[t.priority] || 0,
+    checklist: (t.subtasks || []).slice(0, 50).map(x => ({ id: x.id || newId(), text: String(x.title || '').slice(0, 200), done: !!x.done })),
+    position: i + 1, done_at: t.done ? new Date(t.doneAt || Date.now()).toISOString() : null,
+  }));
+  if (tasks.length) await rest('team_tasks', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: tasks });
+  /* Todo copiado: la versión solo tuya va a la papelera */
+  s.tasks.forEach(t => trashTask(t.id));
+  s.goals.forEach(g => trashGoal(g.id));
+  trashProject(p.id);
+  save();
+  return pid;
 }
 
 /* ---------- Amigos ---------- */
@@ -629,7 +717,7 @@ function friendSheet(f) {
     </div>`, {
     actions: {
       go: el => { modal.close(); location.hash = `#equipo/${el.dataset.pid}`; },
-      newteam: () => { modal.close(); setTimeout(() => teamSheet(null, [u.id]), 220); },
+      newteam: () => { modal.close(); setTimeout(() => projectModal({ members: [u.id] }), 220); },
       copy: () => copyText(u.friend_code || '@' + u.username, 'Copiado'),
       del: () => { if (confirm(`¿Eliminar a ${dispName(u)} de tus amigos? Seguiréis en los proyectos que ya compartís.`)) { modal.close(); friendAction(() => rest(`friendships?id=eq.${f.id}`, { method: 'DELETE' }), 'Amigo eliminado'); } },
     },
@@ -953,7 +1041,7 @@ function viewTeamChat(S, pid) {
   </div>`;
 }
 function viewTeam(pid, sub) {
-  const back = backLink('#proyectos', 'Con amigos');
+  const back = backLink('#proyectos', 'Proyectos');
   const gate = socGate();
   if (gate) return `<div class="page">${pageHead({ eyebrow: back, title: 'Proyecto compartido' })}${gate}</div>`;
   const S = snapOf(pid);
@@ -1381,10 +1469,8 @@ document.addEventListener('click', e => {
   switch (el.dataset.sact) {
     case 'nick': openNickDialog({ initial: nickSuggestions((getSession().user && getSession().user.email || '').split('@')[0])[0] }); return;
     case 'soc-retry': SOC.backend = null; SOC.errors = {}; SOC.profileLoaded = false; socRefresh(); refreshShared(); if (pid) teamPoll(pid, true); return;
-    case 'shared-tab': state.settings.ui.projectsShared = el.dataset.v === '1'; save(); softSwap(); if (state.settings.ui.projectsShared) refreshShared(); return;
-    case 'go-shared': state.settings.ui.projectsShared = true; save(); return;
-    case 'teams-arch': state.settings.ui.teamsArchived = !!el.dataset.v; save(); softSwap(); return;
-    case 'team-new': if (!SOC.friends) loadFriends().then(() => teamSheet(null), () => teamSheet(null)); else teamSheet(null); return;
+    case 'go-shared': return;
+    case 'team-new': projectModal({}); return;
     case 'copy-code': copyText(SOC.profile.friend_code, `ID copiado: ${SOC.profile.friend_code}`); return;
     case 'share-code': {
       const p = SOC.profile, url = `${location.origin}${location.pathname}#amigos/${p.friend_code}`;
@@ -1502,7 +1588,7 @@ function socTick(force) {
   if (!socOn() || document.visibilityState !== 'visible') return;
   const r = parseHash();
   if (r.name === 'equipo' && r.id) teamPoll(r.id);
-  else if ((r.name === 'proyectos' && state.settings.ui.projectsShared) || r.name === 'amigos') { if (force || Date.now() - (socTick.list || 0) > 25000) { socTick.list = Date.now(); refreshShared(); } }
+  else if (r.name === 'proyectos' || r.name === 'amigos') { if (force || Date.now() - (socTick.list || 0) > 25000) { socTick.list = Date.now(); refreshShared(); } }
   else if (force || Date.now() - (socTick.bg || 0) > 120000) { socTick.bg = Date.now(); if (SOC.profile) { loadFriends().then(socBadge).catch(() => {}); Promise.all([loadMyTasks(), loadTeams()]).then(() => { if (r.name === 'hoy') socFetch(Promise.resolve(), () => 0); }).catch(() => {}); } }
 }
 clearInterval(teamTimer);
