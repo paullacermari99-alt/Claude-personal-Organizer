@@ -1426,13 +1426,14 @@ function dragEnd(cancel) {
 }
 
 /* ---------- Hoy: lo que te toca en tus proyectos compartidos ---------- */
-function teamTodaySection(d) {
-  if (d !== todayStr() || !SOC.profile) return '';
+/* v82: en Hoy va plegado; devuelve el resumen y el contenido */
+function teamTodayParts(d) {
+  if (d !== todayStr() || !SOC.profile) return null;
   const soon = addDays(d, 7);
   const list = (SOC.myTasks || []).filter(t => !t.due || t.due <= soon).slice(0, 5);
   const teams = (SOC.teams || []).filter(p => !p.archived_at)
     .sort((a, b) => ((b.last_act > seenAct(b.id)) - (a.last_act > seenAct(a.id))) || String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
-  if (!list.length && !teams.length) return '';
+  if (!list.length && !teams.length) return null;
   const strip = teams.length ? `<div class="tm-strip">${teams.slice(0, 8).map(p => {
     const pct = p.total ? Math.round(p.done / p.total * 100) : 0, fresh = p.last_act && p.last_act > seenAct(p.id) && p.last_kind;
     const who = fresh && (p.members || []).find(m => m.id === p.last_kind.user);
@@ -1445,12 +1446,14 @@ function teamTodaySection(d) {
       <span class="tm-mini-l">${line}</span>
     </a>`;
   }).join('')}</div>` : '';
-  return `<div class="section"><div class="section-head"><h2>Con tus amigos${list.length ? ' · ' + list.length : ''}</h2><a class="btn small ghost" href="#proyectos" data-sact="go-shared">Ver proyectos</a></div>
-    ${strip}
+  const fresh = teams.filter(p => p.last_act && p.last_act > seenAct(p.id)).length;
+  return { n: list.length, sum: list.length ? `${list.length} para ti` : fresh ? `${fresh} con novedades` : `${teams.length} proyecto${teams.length === 1 ? '' : 's'}`, dot: !!fresh,
+    body: `${strip}
     ${list.length ? `<ul class="tasks glass tm-today">${list.map(t => `<li class="tm-today-row" style="--c:${t.color || '#4a72cf'}">
       <button class="tb-check" data-sact="my-done" data-id="${t.id}" data-pid="${t.project_id}" aria-label="Completar ${esc(t.title)}">${I.check}</button>
       <a class="tm-today-b" href="#equipo/${t.project_id}"><span>${esc(t.title)}</span><span class="small muted">${esc(t.icon || '👥')} ${esc(t.project)}${t.due ? ` · <span class="${t.due < d ? 'warn-text' : ''}">${esc(relDay(t.due).toLowerCase())}</span>` : ''}</span></a>
-    </li>`).join('')}</ul>` : (teams.length ? '<p class="hint">Nada asignado a ti para esta semana en los proyectos con amigos.</p>' : '')}</div>`;
+    </li>`).join('')}</ul>` : (teams.length ? '<p class="hint">Nada asignado a ti para esta semana en los proyectos con amigos.</p>' : '')}
+    <div class="tf-more"><a class="btn small ghost" href="#proyectos" data-sact="go-shared">Ver proyectos</a></div>` };
 }
 
 /* ---------- Clics, formularios y refresco ---------- */
