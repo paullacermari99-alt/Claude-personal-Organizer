@@ -83,7 +83,7 @@ const TOUR_STEPS = [
     inModal: true,
     target: () => modal.open && modal.querySelector('.sheet-head button[type=submit]'),
     title: 'Ajusta lo que quieras y guarda',
-    text: 'Cambia lo que necesites y pulsa «Guardar». Si no quieres cambiar nada, guarda igualmente.',
+    text: 'Ponle hora si quieres y elige en «Avisarme» cuándo te aviso. Luego pulsa «Guardar» (aunque no cambies nada).',
     done: () => !modal.open,
   },
   {
@@ -108,7 +108,14 @@ const TOUR_STEPS = [
     hash: 'semana',
     target: () => firstVisible('aside.tray') || firstVisible('.ptray-head'),
     title: 'Dale una hora a tus tareas',
-    text: 'Aquí están las tareas sin hora. Arrástralas al calendario para reservarles tiempo. ¡Ya sabes lo básico!',
+    text: 'Aquí están las tareas sin hora. Arrástralas al calendario para reservarles tiempo.',
+    next: 'Siguiente',
+  },
+  {
+    hash: 'proyectos',
+    target: () => firstVisible('.page [data-act="new-project"]') || firstVisible('nav a[data-nav="proyectos"]'),
+    title: 'Proyectos, solo o con amigos',
+    text: 'Agrupa aquí lo grande. Para hacerlo con amigos, añádelos al crear el proyecto o desde el propio proyecto. ¡Ya sabes lo básico!',
     next: '¡Listo!',
   },
 ];
@@ -127,8 +134,8 @@ const SCREEN_TOURS = {
   ],
   tareas: [
     { target: () => firstVisible('.page .segmented'), title: 'Todas tus tareas', text: 'Bandeja son las que no tienen fecha; Próximas, las que tienen plazo; también ves las vencidas y las hechas.' },
-    { target: () => firstVisible('.page .filters'), title: 'Filtra', text: 'Busca por texto o filtra por proyecto, etiqueta o prioridad.' },
     { target: () => firstVisible('.page form.quick-add'), title: 'Apunta rápido', text: 'Escribe como hablas: «dentista mañana 17h #salud» y la app entiende fecha, hora y etiqueta.' },
+    { target: () => firstVisible('.page .tk-filter-btn') || firstVisible('.page .filters'), title: 'Filtros', text: 'Busca por texto o pulsa «Filtros» para ver solo un proyecto, una etiqueta o una prioridad. Lo que filtras sale debajo y lo quitas con un toque.' },
   ],
   objetivos: [
     { target: () => firstVisible('.page [data-act="new-goal"]'), title: 'Tus objetivos', text: 'Crea objetivos con su «para qué». Las tareas que les asignes hacen avanzar su progreso.' },
